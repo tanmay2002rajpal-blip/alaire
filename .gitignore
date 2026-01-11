@@ -1,0 +1,11 @@
+
+# Local development files
+.mcp.json
+admin/.mcp.json
+admin/.hive-mind/
+admin/.claude-flow/
+admin/.swarm/
+admin/.playwright-mcp/
+*.db
+*.db-shm
+*.db-wal
