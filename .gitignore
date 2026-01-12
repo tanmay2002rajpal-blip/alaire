@@ -9,3 +9,4 @@ admin/.playwright-mcp/
 *.db
 *.db-shm
 *.db-wal
+.playwright-mcp/
