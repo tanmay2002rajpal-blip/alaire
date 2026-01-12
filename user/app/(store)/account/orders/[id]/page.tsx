@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { OrderTimeline, OrderItems, OrderTracking } from "@/components/account"
 import { ReorderButton } from "./reorder-button"
+import { InvoiceButton } from "./invoice-button"
+import { ReturnRequestButton } from "./return-request-button"
 
 interface OrderDetailPageProps {
   params: Promise<{ id: string }>
@@ -194,8 +196,19 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
       </div>
 
       {/* Actions */}
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <ReorderButton items={order.items} />
+        <InvoiceButton
+          orderId={order.id}
+          orderNumber={order.order_number}
+          disabled={!["paid", "confirmed", "processing", "shipped", "delivered"].includes(order.status)}
+        />
+        {["delivered"].includes(order.status) && (
+          <ReturnRequestButton
+            orderId={order.id}
+            orderNumber={order.order_number}
+          />
+        )}
         <Button variant="outline" asChild>
           <Link href="/contact">
             <HelpCircle className="mr-2 h-4 w-4" />

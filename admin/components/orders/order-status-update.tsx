@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ArrowRight, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, ArrowRight, CheckCircle2, XCircle, Truck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -42,6 +44,17 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secon
   refunded: { label: "Refunded", variant: "destructive" },
 };
 
+// Courier options
+const COURIER_OPTIONS = [
+  { value: "bluedart", label: "Blue Dart" },
+  { value: "delhivery", label: "Delhivery" },
+  { value: "dtdc", label: "DTDC" },
+  { value: "ecom_express", label: "Ecom Express" },
+  { value: "xpressbees", label: "XpressBees" },
+  { value: "shiprocket", label: "Shiprocket" },
+  { value: "other", label: "Other" },
+];
+
 export function OrderStatusUpdate({
   orderId,
   currentStatus,
@@ -51,8 +64,14 @@ export function OrderStatusUpdate({
   const [note, setNote] = useState<string>("");
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
 
+  // Shipping details for "shipped" status
+  const [trackingNumber, setTrackingNumber] = useState<string>("");
+  const [courierName, setCourierName] = useState<string>("");
+  const [estimatedDelivery, setEstimatedDelivery] = useState<string>("");
+
   const availableStatuses = STATUS_WORKFLOW[currentStatus] || [];
   const canUpdate = availableStatuses.length > 0;
+  const isShippedStatus = selectedStatus === "shipped";
 
   const handleUpdate = async () => {
     // Validation
@@ -71,13 +90,29 @@ export function OrderStatusUpdate({
       return;
     }
 
+    // Validate shipping details for shipped status
+    if (isShippedStatus && !trackingNumber.trim()) {
+      toast.error("Please enter a tracking number");
+      return;
+    }
+
     setIsUpdating(true);
 
     try {
+      const shippingDetails = isShippedStatus
+        ? {
+            trackingNumber: trackingNumber.trim(),
+            courierName: courierName || "Standard Delivery",
+            estimatedDelivery: estimatedDelivery || undefined,
+          }
+        : undefined;
+
       const result = await updateOrderStatusAction(
         orderId,
         selectedStatus,
-        note.trim() || undefined
+        note.trim() || undefined,
+        undefined, // adminId will be set server-side
+        shippingDetails
       );
 
       if (result.success) {
@@ -88,6 +123,9 @@ export function OrderStatusUpdate({
         // Reset form
         setSelectedStatus("");
         setNote("");
+        setTrackingNumber("");
+        setCourierName("");
+        setEstimatedDelivery("");
 
         // Call callback
         onStatusUpdated?.();
@@ -159,6 +197,61 @@ export function OrderStatusUpdate({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Shipping Details (for shipped status) */}
+            {isShippedStatus && (
+              <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <div className="flex items-center gap-2 text-blue-700">
+                  <Truck className="h-4 w-4" />
+                  <span className="text-sm font-medium">Shipping Details</span>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="trackingNumber">
+                    Tracking Number / AWB <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="trackingNumber"
+                    placeholder="Enter tracking number"
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    disabled={isUpdating}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="courierName">Courier Partner</Label>
+                  <Select
+                    value={courierName}
+                    onValueChange={setCourierName}
+                    disabled={isUpdating}
+                  >
+                    <SelectTrigger id="courierName">
+                      <SelectValue placeholder="Select courier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COURIER_OPTIONS.map((courier) => (
+                        <SelectItem key={courier.value} value={courier.label}>
+                          {courier.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
+                  <Input
+                    id="estimatedDelivery"
+                    type="date"
+                    value={estimatedDelivery}
+                    onChange={(e) => setEstimatedDelivery(e.target.value)}
+                    disabled={isUpdating}
+                    min={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Note/Comment */}
             <div className="space-y-2">
