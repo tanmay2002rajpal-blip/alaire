@@ -23,7 +23,7 @@ interface RawBlogPost {
   featured_image: string | null
   published_at: string
   created_at: string
-  author?: { full_name: string | null } | null
+  author?: { full_name: string | null } | { full_name: string | null }[] | null
 }
 
 export async function getBlogPosts(): Promise<BlogPost[]> {
@@ -49,17 +49,24 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
     return []
   }
 
-  return (data || []).map((post: RawBlogPost) => ({
-    id: post.id,
-    title: post.title,
-    slug: post.slug,
-    excerpt: post.excerpt,
-    content: null,
-    featured_image: post.featured_image,
-    published_at: post.published_at,
-    created_at: post.created_at,
-    author_name: post.author?.full_name || "Alaire Team",
-  }))
+  return (data || []).map((post) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const author = post.author as any
+    const authorName = Array.isArray(author)
+      ? author[0]?.full_name
+      : author?.full_name
+    return {
+      id: post.id,
+      title: post.title,
+      slug: post.slug,
+      excerpt: post.excerpt,
+      content: null,
+      featured_image: post.featured_image,
+      published_at: post.published_at,
+      created_at: post.created_at,
+      author_name: authorName || "Alaire Team",
+    }
+  })
 }
 
 export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> {
@@ -87,6 +94,12 @@ export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> 
     return null
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const author = (data as any).author
+  const authorName = Array.isArray(author)
+    ? author[0]?.full_name
+    : author?.full_name
+
   return {
     id: data.id,
     title: data.title,
@@ -96,7 +109,7 @@ export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> 
     featured_image: data.featured_image,
     published_at: data.published_at,
     created_at: data.created_at,
-    author_name: (data as RawBlogPost).author?.full_name || "Alaire Team",
+    author_name: authorName || "Alaire Team",
   }
 }
 

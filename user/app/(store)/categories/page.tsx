@@ -31,8 +31,8 @@ export default async function CategoriesPage() {
       {/* Categories Grid */}
       {categories.length > 0 ? (
         <StaggerReveal className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {categories.map((category, index) => (
-            <CategoryCard key={category.id} category={category} index={index} />
+          {categories.map((category) => (
+            <CategoryCard key={category.id} category={category} />
           ))}
         </StaggerReveal>
       ) : (

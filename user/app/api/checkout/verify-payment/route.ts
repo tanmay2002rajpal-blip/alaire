@@ -237,7 +237,7 @@ export async function POST(request: Request) {
           customerEmail: order.email,
           items: order.items.map((item: OrderItemData) => ({
             product_name: item.product_name,
-            variant_name: item.variant_name,
+            variant_name: item.variant_name ?? undefined,
             quantity: item.quantity,
             price: item.price,
           })),

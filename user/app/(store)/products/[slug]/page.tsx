@@ -115,9 +115,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
       </div>
 
       {/* Product Details Tabs */}
-      {((product as { details?: ProductDetail[] }).details)?.length ? (
+      {((product as unknown as { details?: ProductDetail[] }).details)?.length ? (
         <div className="mt-16">
-          <ProductTabs details={(product as { details: ProductDetail[] }).details} />
+          <ProductTabs details={(product as unknown as { details: ProductDetail[] }).details} />
         </div>
       ) : null}
 
