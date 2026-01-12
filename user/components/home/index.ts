@@ -1,0 +1,6 @@
+export { HeroSection } from "./hero-section"
+export { HeroCarousel } from "./hero-carousel"
+export { CategoryGrid } from "./category-grid"
+export { FeaturedProducts } from "./featured-products"
+export { NewsletterSection } from "./newsletter-section"
+export { InstagramFeed } from "./instagram-feed"
