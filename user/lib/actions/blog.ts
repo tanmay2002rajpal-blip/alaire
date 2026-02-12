@@ -38,8 +38,7 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
       excerpt,
       featured_image,
       published_at,
-      created_at,
-      author:profiles!blog_posts_author_id_fkey(full_name)
+      created_at
     `)
     .eq("is_published", true)
     .order("published_at", { ascending: false })
@@ -49,24 +48,17 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
     return []
   }
 
-  return (data || []).map((post) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const author = post.author as any
-    const authorName = Array.isArray(author)
-      ? author[0]?.full_name
-      : author?.full_name
-    return {
-      id: post.id,
-      title: post.title,
-      slug: post.slug,
-      excerpt: post.excerpt,
-      content: null,
-      featured_image: post.featured_image,
-      published_at: post.published_at,
-      created_at: post.created_at,
-      author_name: authorName || "Alaire Team",
-    }
-  })
+  return (data || []).map((post) => ({
+    id: post.id,
+    title: post.title,
+    slug: post.slug,
+    excerpt: post.excerpt,
+    content: null,
+    featured_image: post.featured_image,
+    published_at: post.published_at,
+    created_at: post.created_at,
+    author_name: "Alaire Team",
+  }))
 }
 
 export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> {
@@ -82,8 +74,7 @@ export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> 
       content,
       featured_image,
       published_at,
-      created_at,
-      author:profiles!blog_posts_author_id_fkey(full_name)
+      created_at
     `)
     .eq("slug", slug)
     .eq("is_published", true)
@@ -94,12 +85,6 @@ export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> 
     return null
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const author = (data as any).author
-  const authorName = Array.isArray(author)
-    ? author[0]?.full_name
-    : author?.full_name
-
   return {
     id: data.id,
     title: data.title,
@@ -109,7 +94,7 @@ export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> 
     featured_image: data.featured_image,
     published_at: data.published_at,
     created_at: data.created_at,
-    author_name: authorName || "Alaire Team",
+    author_name: "Alaire Team",
   }
 }
 
