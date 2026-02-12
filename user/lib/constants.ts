@@ -62,16 +62,16 @@ export const ORDER_STATUSES = {
 } as const
 
 export const NAV_LINKS = [
-  { href: '/products', label: 'Shop' },
-  { href: '/categories', label: 'Categories' },
-  { href: '/blog', label: 'Blog' },
+  { href: '/products?filter=sale', label: 'Sale' },
+  { href: '/categories', label: 'Collection' },
+  { href: '/blog', label: 'Blogs' },
 ] as const
 
 export const FOOTER_LINKS = {
   shop: [
-    { href: '/products', label: 'All Products' },
-    { href: '/categories', label: 'Categories' },
-    { href: '/products?filter=new', label: 'New Arrivals' },
+    { href: '/products?filter=sale', label: 'Sale' },
+    { href: '/categories', label: 'Collection' },
+    { href: '/blog', label: 'Blogs' },
   ],
   account: [
     { href: '/account', label: 'My Account' },
