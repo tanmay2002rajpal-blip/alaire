@@ -16,9 +16,9 @@ import type { NavLink } from "./types"
  * Order determines display order in both desktop and mobile menus.
  */
 export const NAV_LINKS: NavLink[] = [
-  { href: "/products", label: "Shop" },
-  { href: "/categories", label: "Categories" },
-  { href: "/blog", label: "Blog" },
+  { href: "/products?filter=sale", label: "Sale" },
+  { href: "/categories", label: "Collection" },
+  { href: "/blog", label: "Blogs" },
 ]
 
 // ============================================================================
