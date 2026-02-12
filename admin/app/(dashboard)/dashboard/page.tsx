@@ -93,7 +93,7 @@ export default async function DashboardPage() {
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm">
-            <Link href="/coupons/new">
+            <Link href="/coupons">
               <Tag className="h-4 w-4 mr-1" />
               Create Coupon
             </Link>
