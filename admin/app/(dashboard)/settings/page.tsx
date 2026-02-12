@@ -1,8 +1,29 @@
+"use client"
+
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Settings, Store, CreditCard, Bell, Shield, Palette } from "lucide-react"
+import { Settings, Store, CreditCard, Bell, Shield, Palette, X } from "lucide-react"
+import { toast } from "sonner"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export default function SettingsPage() {
+  const [openDialog, setOpenDialog] = useState<string | null>(null)
+
+  const handleComingSoon = (feature: string) => {
+    toast.info(`${feature} settings coming soon!`, {
+      description: "This feature is currently under development."
+    })
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -26,7 +47,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Configure your store name, address, and contact information.
               </p>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => setOpenDialog('store')}>
                 Configure
               </Button>
             </div>
@@ -44,7 +65,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Set up payment gateways and manage transactions.
               </p>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => handleComingSoon('Payment')}>
                 Configure
               </Button>
             </div>
@@ -62,7 +83,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Configure email and push notification preferences.
               </p>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => handleComingSoon('Notification')}>
                 Configure
               </Button>
             </div>
@@ -80,7 +101,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Manage passwords, two-factor authentication, and sessions.
               </p>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => handleComingSoon('Security')}>
                 Configure
               </Button>
             </div>
@@ -98,7 +119,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Customize theme, colors, and display preferences.
               </p>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => handleComingSoon('Appearance')}>
                 Configure
               </Button>
             </div>
@@ -116,7 +137,7 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground mb-4">
                 Language, timezone, currency, and other preferences.
               </p>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => handleComingSoon('General')}>
                 Configure
               </Button>
             </div>
@@ -132,15 +153,59 @@ export default function SettingsPage() {
             Irreversible actions that affect your entire store.
           </p>
           <div className="flex gap-4">
-            <Button variant="outline" className="text-destructive border-destructive/50">
+            <Button 
+              variant="outline" 
+              className="text-destructive border-destructive/50"
+              onClick={() => toast.info("Export feature coming soon!")}
+            >
               Export All Data
             </Button>
-            <Button variant="destructive">
+            <Button 
+              variant="destructive"
+              onClick={() => toast.error("This action is disabled for safety.")}
+            >
               Delete Store
             </Button>
           </div>
         </div>
       </Card>
+
+      {/* Store Settings Dialog */}
+      <Dialog open={openDialog === 'store'} onOpenChange={(open) => !open && setOpenDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Store Settings</DialogTitle>
+            <DialogDescription>
+              Configure your store information. Changes will be reflected across your store.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="storeName">Store Name</Label>
+              <Input id="storeName" defaultValue="ALAIRE" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="storeEmail">Contact Email</Label>
+              <Input id="storeEmail" type="email" defaultValue="support@alaire.in" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="storePhone">Phone Number</Label>
+              <Input id="storePhone" defaultValue="+91 98765 43210" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="storeAddress">Address</Label>
+              <Input id="storeAddress" defaultValue="Mumbai, Maharashtra, India" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOpenDialog(null)}>Cancel</Button>
+            <Button onClick={() => {
+              toast.success("Store settings saved!")
+              setOpenDialog(null)
+            }}>Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
