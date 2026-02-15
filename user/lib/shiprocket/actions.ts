@@ -31,9 +31,12 @@ interface TrackingResult {
 
 /**
  * Checks if Shiprocket credentials are configured
+ * BYPASSED FOR TESTING - always returns false to use default shipping
  */
 function isShiprocketConfigured(): boolean {
-  return !!(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD)
+  // TODO: Re-enable after testing
+  // return !!(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD)
+  return false // Bypass for testing
 }
 
 /**

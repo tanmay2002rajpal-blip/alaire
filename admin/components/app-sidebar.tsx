@@ -43,22 +43,22 @@ const navigation = {
     { title: 'Orders', href: '/orders', icon: IconShoppingCart },
     { title: 'Products', href: '/products', icon: IconPackage },
     { title: 'Categories', href: '/categories', icon: IconCategory },
-    { title: 'Inventory', href: '/inventory', icon: IconBox },
+    // { title: 'Inventory', href: '/inventory', icon: IconBox }, // Removed - stock visible in Products
     { title: 'Customers', href: '/customers', icon: IconUsers },
     { title: 'Coupons', href: '/coupons', icon: IconDiscount },
   ],
   content: [
     { title: 'Hero Slides', href: '/content/hero', icon: IconPhoto },
     { title: 'Blog Posts', href: '/content/blog', icon: IconFileText },
-    { title: 'Promotions', href: '/content/promotions', icon: IconSpeakerphone },
-    { title: 'Newsletter', href: '/newsletter', icon: IconMail },
+    // { title: 'Promotions', href: '/content/promotions', icon: IconSpeakerphone }, // Removed - unused
+    // { title: 'Newsletter', href: '/newsletter', icon: IconMail }, // Removed - not ready
   ],
   analytics: [
     { title: 'Sales Reports', href: '/analytics/sales', icon: IconChartBar },
-    { title: 'Customer Insights', href: '/analytics/customers', icon: IconUsersGroup },
+    // { title: 'Customer Insights', href: '/analytics/customers', icon: IconUsersGroup }, // Removed
   ],
   settings: [
-    { title: 'Team', href: '/team', icon: IconUsersGroup },
+    // { title: 'Team', href: '/team', icon: IconUsersGroup }, // Removed - single admin
     { title: 'Settings', href: '/settings', icon: IconSettings },
   ],
 }

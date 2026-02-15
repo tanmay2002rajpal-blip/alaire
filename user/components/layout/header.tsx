@@ -29,6 +29,7 @@
 
 "use client"
 
+import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useCart } from "@/hooks"
 import { useAuth } from "@/components/auth"
@@ -85,11 +86,18 @@ export function Header() {
   const { getItemCount } = useCart()
   const { user, openAuthDialog } = useAuth()
 
+  // Prevent hydration mismatch - cart count comes from localStorage
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   // ============================================================================
   // Derived State
   // ============================================================================
 
-  const itemCount = getItemCount()
+  // Only show cart count after mount to prevent hydration mismatch
+  const itemCount = mounted ? getItemCount() : 0
 
   // ============================================================================
   // Render

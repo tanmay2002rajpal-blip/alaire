@@ -33,9 +33,20 @@ export interface ActivityLogEntry {
   action: string;
   entity_type: string;
   entity_id: string;
-  details: Record<string, any> | null;
+  details: Record<string, unknown> | null;
   created_at: string;
   admin_name: string;
+}
+
+/** Shipping address structure for orders */
+interface ShippingAddress {
+  full_name?: string;
+  phone?: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
 }
 
 /**
@@ -177,7 +188,7 @@ export async function getRecentOrders(limit = 5): Promise<RecentOrder[]> {
     // Transform the data to match our interface
     return (orders || []).map(order => {
       const profile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
-      const shippingAddr = order.shipping_address as any || {};
+      const shippingAddr = (order.shipping_address as ShippingAddress) || {};
 
       return {
         id: order.id,

@@ -3,16 +3,73 @@
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { signToken, setSessionCookie, clearSessionCookie, getSession } from './jwt'
+import { checkRateLimit, recordLoginAttempt, clearRateLimit } from './rate-limit'
+import { validateCsrfToken, generateCsrfToken, clearCsrfToken } from './csrf'
 import type { AdminUser } from './types'
 
 interface LoginResult {
   success: boolean
   error?: string
+  rateLimited?: boolean
+  retryAfter?: number
 }
 
-export async function login(email: string, password: string): Promise<LoginResult> {
+/**
+ * Get the client IP address from request headers
+ */
+async function getClientIp(): Promise<string> {
+  const headersList = await headers()
+  // Check common proxy headers first
+  const forwarded = headersList.get('x-forwarded-for')
+  if (forwarded) {
+    return forwarded.split(',')[0].trim()
+  }
+  const realIp = headersList.get('x-real-ip')
+  if (realIp) {
+    return realIp
+  }
+  // Fallback
+  return 'unknown'
+}
+
+/**
+ * Generate a new CSRF token for the login form
+ */
+export async function getLoginCsrfToken(): Promise<string> {
+  return generateCsrfToken()
+}
+
+export async function login(
+  email: string,
+  password: string,
+  csrfToken?: string
+): Promise<LoginResult> {
+  // Validate CSRF token
+  const validCsrf = await validateCsrfToken(csrfToken || null)
+  if (!validCsrf) {
+    return { success: false, error: 'Invalid or expired form. Please refresh and try again.' }
+  }
+
+  // Check rate limiting
+  const clientIp = await getClientIp()
+  const rateLimit = checkRateLimit(clientIp)
+  
+  if (!rateLimit.allowed) {
+    const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
+    return {
+      success: false,
+      error: `Too many login attempts. Please try again in ${retryAfter} seconds.`,
+      rateLimited: true,
+      retryAfter,
+    }
+  }
+
+  // Record this attempt
+  recordLoginAttempt(clientIp)
+
   const supabase = createAdminClient()
 
   // Get admin user
@@ -63,6 +120,12 @@ export async function login(email: string, password: string): Promise<LoginResul
   })
 
   await setSessionCookie(token)
+
+  // Clear rate limit on successful login
+  clearRateLimit(clientIp)
+
+  // Clear CSRF token (new one will be generated if needed)
+  await clearCsrfToken()
 
   // Log successful login
   await supabase.from('activity_log').insert({

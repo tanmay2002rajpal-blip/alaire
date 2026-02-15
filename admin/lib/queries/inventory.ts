@@ -26,6 +26,15 @@ export interface InventoryFilters {
   limit?: number
 }
 
+/** Product data from Supabase join */
+interface ProductData {
+  id: string
+  name: string
+  slug: string
+  images?: string[]
+  categories?: { name: string } | { name: string }[]
+}
+
 export interface InventoryStats {
   total_items: number
   total_stock_value: number
@@ -120,7 +129,8 @@ export async function getInventory(filters?: InventoryFilters): Promise<Paginate
 
   // Transform data
   const items: InventoryItem[] = (variantsData || []).map(variant => {
-    const product = variant.products as any
+    const productArray = variant.products as unknown as ProductData[] | ProductData | null
+    const product = Array.isArray(productArray) ? productArray[0] : productArray
     const category = Array.isArray(product?.categories)
       ? product.categories[0]
       : product?.categories

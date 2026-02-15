@@ -12,10 +12,17 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify admin secret
-    const adminSecret = request.headers.get("X-Admin-Secret")
-    const expectedSecret = process.env.ADMIN_API_SECRET || "admin-secret"
+    // Verify admin secret - MUST be set via environment variable
+    const expectedSecret = process.env.ADMIN_API_SECRET
+    if (!expectedSecret) {
+      console.error("ADMIN_API_SECRET environment variable is not configured")
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      )
+    }
 
+    const adminSecret = request.headers.get("X-Admin-Secret")
     if (adminSecret !== expectedSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

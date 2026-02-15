@@ -20,7 +20,18 @@ import { createClient } from "@/lib/supabase/server"
 import { shiprocketClient } from "@/lib/shiprocket/client"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
 import { createOrderSchema, validateRequest, type CreateOrderInput } from "@/lib/validations/api"
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import type { CreateShiprocketOrderRequest } from "@/lib/shiprocket/types"
+
+// ============================================================================
+// Rate Limiting Configuration
+// ============================================================================
+
+/** Maximum checkout attempts per IP within the time window */
+const CHECKOUT_RATE_LIMIT = {
+  maxRequests: 10,  // 10 checkout attempts
+  windowMs: 60000,  // per minute
+}
 
 // ============================================================================
 // Helpers
@@ -85,6 +96,29 @@ function getRazorpay(): Razorpay {
  */
 export async function POST(request: Request) {
   try {
+    // ========================================================================
+    // Rate Limiting
+    // ========================================================================
+    
+    const clientIp = getClientIp(request)
+    const rateLimitResult = checkRateLimit(`checkout:${clientIp}`, CHECKOUT_RATE_LIMIT)
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          message: "Too many checkout attempts. Please try again later.",
+          retryAfter: Math.ceil(rateLimitResult.resetIn / 1000),
+        },
+        { 
+          status: 429,
+          headers: {
+            "Retry-After": Math.ceil(rateLimitResult.resetIn / 1000).toString(),
+            "X-RateLimit-Remaining": "0",
+          },
+        }
+      )
+    }
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 

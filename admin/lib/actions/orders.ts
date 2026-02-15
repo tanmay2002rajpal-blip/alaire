@@ -154,6 +154,13 @@ async function sendStatusNotification(
   }
 ) {
   try {
+    // Verify ADMIN_API_SECRET is configured
+    const adminSecret = process.env.ADMIN_API_SECRET
+    if (!adminSecret) {
+      console.error('ADMIN_API_SECRET environment variable is not configured - skipping email notification')
+      return
+    }
+
     // Call the user app's email API
     const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3001'
 
@@ -161,7 +168,7 @@ async function sendStatusNotification(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Admin-Secret': process.env.ADMIN_API_SECRET || 'admin-secret',
+        'X-Admin-Secret': adminSecret,
       },
       body: JSON.stringify({ status, ...data }),
     })

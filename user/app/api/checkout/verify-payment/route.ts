@@ -346,7 +346,7 @@ export async function POST(request: Request) {
             .eq("id", orderId)
         }
 
-        console.log(`Shiprocket order created: ${shiprocketResponse.order_id}`)
+        // Shiprocket order created successfully
       }
     } catch (shiprocketError) {
       // Log but don't fail - Shiprocket is not critical to payment verification

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { login } from '@/lib/auth/actions'
+import { login, getLoginCsrfToken } from '@/lib/auth/actions'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,6 +16,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [csrfToken, setCsrfToken] = useState<string>('')
+
+  // Fetch CSRF token on mount
+  useEffect(() => {
+    getLoginCsrfToken().then(setCsrfToken)
+  }, [])
 
   useEffect(() => {
     if (cardRef.current) {
@@ -32,13 +38,17 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const result = await login(email, password)
+    const result = await login(email, password, csrfToken)
 
     if (result.success) {
       router.push('/dashboard')
     } else {
       setError(result.error || 'Login failed')
       setLoading(false)
+      
+      // Refresh CSRF token after failed attempt
+      getLoginCsrfToken().then(setCsrfToken)
+      
       // Shake animation on error
       if (cardRef.current) {
         gsap.fromTo(

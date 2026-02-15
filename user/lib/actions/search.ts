@@ -17,13 +17,38 @@ export interface SearchResult {
   }>
 }
 
+/**
+ * Sanitizes user input to prevent XSS and SQL wildcard injection.
+ * Removes potentially dangerous characters while preserving valid search terms.
+ */
+function sanitizeSearchQuery(query: string): string {
+  return query
+    // Remove HTML/script tags
+    .replace(/<[^>]*>/g, "")
+    // Remove dangerous characters that could be used for XSS
+    .replace(/[<>"'`\\]/g, "")
+    // Escape SQL LIKE wildcards to prevent pattern injection
+    .replace(/[%_]/g, "\\$&")
+    // Trim and limit length to prevent abuse
+    .trim()
+    .slice(0, 100)
+}
+
 export async function searchProducts(query: string): Promise<SearchResult> {
   if (!query || query.length < 2) {
     return { products: [], categories: [] }
   }
 
+  // Sanitize the input query
+  const sanitizedQuery = sanitizeSearchQuery(query)
+  
+  // If sanitization removed everything meaningful, return empty
+  if (sanitizedQuery.length < 2) {
+    return { products: [], categories: [] }
+  }
+
   const supabase = await createClient()
-  const searchTerm = `%${query}%`
+  const searchTerm = `%${sanitizedQuery}%`
 
   // Search products
   const { data: products } = await supabase
