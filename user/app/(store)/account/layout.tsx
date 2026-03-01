@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { User, Package, Heart, Wallet, Bell, Settings } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
 
 const accountNavItems = [
   { href: "/account", label: "Profile", icon: User },
@@ -17,11 +17,10 @@ export default async function AccountLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
 
-  if (!user) {
-    redirect("/auth/login")
+  if (!session?.user) {
+    redirect("/")
   }
 
   return (

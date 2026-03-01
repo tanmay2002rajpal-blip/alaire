@@ -1,19 +1,23 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
 
 export async function trackProductView(productId: string): Promise<void> {
-  const supabase = await createClient()
+  const session = await auth()
+  if (!session?.user?.id) return
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
+  const db = await getDb()
 
-  // Upsert the view record
-  await supabase
-    .from("recently_viewed")
-    .upsert({
-      user_id: user.id,
-      product_id: productId,
-      viewed_at: new Date().toISOString(),
-    }, { onConflict: "user_id,product_id" })
+  await db.collection("recently_viewed").updateOne(
+    { user_id: session.user.id, product_id: productId },
+    {
+      $set: {
+        user_id: session.user.id,
+        product_id: productId,
+        viewed_at: new Date().toISOString(),
+      },
+    },
+    { upsert: true }
+  )
 }

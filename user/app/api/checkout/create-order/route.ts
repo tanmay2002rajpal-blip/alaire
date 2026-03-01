@@ -1,49 +1,18 @@
-/**
- * @fileoverview Create Order API endpoint.
- * Handles order creation for both prepaid (Razorpay) and COD payments.
- *
- * Flow:
- * 1. Validate cart items and check stock availability
- * 2. Apply discount code if provided
- * 3. Calculate totals (subtotal, discount, shipping, wallet, final)
- * 4. Create Razorpay order (prepaid only)
- * 5. Create order and order items in database
- * 6. For COD: Send confirmation email, create Shiprocket order
- * 7. Return order details for checkout completion
- *
- * @module app/api/checkout/create-order
- */
-
 import { NextResponse } from "next/server"
+import { ObjectId } from "mongodb"
 import Razorpay from "razorpay"
-import { createClient } from "@/lib/supabase/server"
-import { shiprocketClient } from "@/lib/shiprocket/client"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
+import { blueDartClient } from "@/lib/bluedart/client"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
 import { createOrderSchema, validateRequest, type CreateOrderInput } from "@/lib/validations/api"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
-import type { CreateShiprocketOrderRequest } from "@/lib/shiprocket/types"
 
-// ============================================================================
-// Rate Limiting Configuration
-// ============================================================================
-
-/** Maximum checkout attempts per IP within the time window */
 const CHECKOUT_RATE_LIMIT = {
-  maxRequests: 10,  // 10 checkout attempts
-  windowMs: 60000,  // per minute
+  maxRequests: 10,
+  windowMs: 60000,
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Lazily initializes and returns Razorpay instance.
- * Throws if credentials are not configured.
- *
- * @returns Razorpay instance
- * @throws Error if Razorpay credentials are missing
- */
 function getRazorpay(): Razorpay {
   if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     throw new Error("Razorpay credentials not configured")
@@ -54,62 +23,18 @@ function getRazorpay(): Razorpay {
   })
 }
 
-// ============================================================================
-// Route Handler
-// ============================================================================
-
-/**
- * POST /api/checkout/create-order
- *
- * Creates a new order in the system. Supports both prepaid (Razorpay)
- * and Cash on Delivery payment methods.
- *
- * For prepaid orders:
- * - Creates Razorpay order
- * - Returns Razorpay order details for client-side checkout
- *
- * For COD orders:
- * - Immediately confirms the order
- * - Sends confirmation email
- * - Creates Shiprocket shipment
- *
- * @param request - HTTP request with CreateOrderRequest body
- * @returns Order details and Razorpay info (prepaid) or success confirmation (COD)
- *
- * @example
- * ```ts
- * // Client-side usage
- * const response = await fetch('/api/checkout/create-order', {
- *   method: 'POST',
- *   headers: { 'Content-Type': 'application/json' },
- *   body: JSON.stringify({
- *     items: cart.items,
- *     subtotal: 1999,
- *     shippingCost: 50,
- *     shippingAddress: { ... },
- *     email: 'customer@example.com',
- *     paymentMethod: 'prepaid',
- *   }),
- * })
- * const { razorpayOrderId, amount } = await response.json()
- * ```
- */
 export async function POST(request: Request) {
   try {
-    // ========================================================================
-    // Rate Limiting
-    // ========================================================================
-    
     const clientIp = getClientIp(request)
     const rateLimitResult = checkRateLimit(`checkout:${clientIp}`, CHECKOUT_RATE_LIMIT)
-    
+
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
-        { 
+        {
           message: "Too many checkout attempts. Please try again later.",
           retryAfter: Math.ceil(rateLimitResult.resetIn / 1000),
         },
-        { 
+        {
           status: 429,
           headers: {
             "Retry-After": Math.ceil(rateLimitResult.resetIn / 1000).toString(),
@@ -119,10 +44,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const session = await auth()
+    const userId = session?.user?.id ?? null
 
-    // Parse and validate request body
     let validatedBody: CreateOrderInput
     try {
       const rawBody = await request.json()
@@ -145,16 +69,14 @@ export async function POST(request: Request) {
       paymentMethod = "prepaid",
     } = validatedBody
 
-    // ========================================================================
-    // Validation
-    // ========================================================================
-
     if (!items || items.length === 0) {
       return NextResponse.json(
         { message: "Cart is empty" },
         { status: 400 }
       )
     }
+
+    const db = await getDb()
 
     // ========================================================================
     // Stock Availability Check
@@ -165,22 +87,16 @@ export async function POST(request: Request) {
       let stockQuantity = 0
 
       if (item.variantId) {
-        // Check specific variant stock
-        const { data: variant } = await supabase
-          .from("product_variants")
-          .select("stock_quantity")
-          .eq("id", item.variantId)
-          .single()
-
+        const variant = await db
+          .collection("product_variants")
+          .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.variantId] } })
         stockQuantity = variant?.stock_quantity ?? 0
       } else {
-        // Sum all variant stocks for this product
-        const { data: variants } = await supabase
-          .from("product_variants")
-          .select("stock_quantity")
-          .eq("product_id", item.productId)
-
-        if (variants && variants.length > 0) {
+        const variants = await db
+          .collection("product_variants")
+          .find({ product_id: item.productId })
+          .toArray()
+        if (variants.length > 0) {
           stockQuantity = variants.reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0)
         }
       }
@@ -194,10 +110,7 @@ export async function POST(request: Request) {
 
     if (outOfStockItems.length > 0) {
       return NextResponse.json(
-        {
-          message: "Some items are out of stock",
-          outOfStockItems,
-        },
+        { message: "Some items are out of stock", outOfStockItems },
         { status: 400 }
       )
     }
@@ -207,15 +120,12 @@ export async function POST(request: Request) {
     // ========================================================================
 
     let discount = 0
-    let discountCodeId = null
+    let discountCodeId: string | null = null
 
     if (discountCode) {
-      const { data: code } = await supabase
-        .from("discount_codes")
-        .select("*")
-        .eq("code", discountCode.toUpperCase())
-        .eq("is_active", true)
-        .single()
+      const code = await db
+        .collection("discount_codes")
+        .findOne({ code: discountCode.toUpperCase(), is_active: true })
 
       if (code) {
         const now = new Date()
@@ -223,14 +133,12 @@ export async function POST(request: Request) {
         const validUntil = code.valid_until ? new Date(code.valid_until) : null
         const minOrder = code.min_order_amount ?? 0
 
-        // Validate code eligibility
         if (
           (!validFrom || now >= validFrom) &&
           (!validUntil || now <= validUntil) &&
           subtotal >= minOrder &&
           (code.usage_limit === null || code.usage_count < code.usage_limit)
         ) {
-          // Calculate discount amount
           if (code.discount_type === "percentage") {
             discount = (subtotal * code.discount_value) / 100
             if (code.max_discount_amount) {
@@ -239,7 +147,7 @@ export async function POST(request: Request) {
           } else {
             discount = code.discount_value
           }
-          discountCodeId = code.id
+          discountCodeId = code._id.toString()
         }
       }
     }
@@ -249,8 +157,6 @@ export async function POST(request: Request) {
     // ========================================================================
 
     const shipping = shippingCost
-
-    // Wallet can only be used for prepaid orders
     const actualWalletUsed = paymentMethod === "cod"
       ? 0
       : Math.min(walletAmountUsed, Math.max(0, subtotal - discount + shipping))
@@ -266,9 +172,7 @@ export async function POST(request: Request) {
     let amountInPaise = 0
 
     if (paymentMethod === "prepaid") {
-      // Razorpay expects amount in paise (smallest currency unit)
       amountInPaise = Math.round(total * 100)
-
       const razorpay = getRazorpay()
       const razorpayOrder = await razorpay.orders.create({
         amount: amountInPaise,
@@ -282,114 +186,102 @@ export async function POST(request: Request) {
     // Database Order Creation
     // ========================================================================
 
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .insert({
-        user_id: user?.id ?? null,
-        email,
-        subtotal,
-        discount_amount: discount,
-        discount_code_id: discountCodeId,
-        shipping_amount: shipping,
-        wallet_amount_used: actualWalletUsed,
-        total,
-        shipping_address: shippingAddress,
-        razorpay_order_id: razorpayOrderId,
-        payment_method: paymentMethod,
-        status: paymentMethod === "cod" ? "confirmed" : "pending",
-      })
-      .select()
-      .single()
-
-    if (orderError) {
-      console.error("Order creation error:", orderError)
-      return NextResponse.json(
-        { message: "Failed to create order" },
-        { status: 500 }
-      )
+    const orderDoc = {
+      user_id: userId,
+      email,
+      order_number: `AL-${Date.now().toString(36).toUpperCase()}`,
+      subtotal,
+      discount_amount: discount,
+      discount_code_id: discountCodeId,
+      shipping_amount: shipping,
+      wallet_amount_used: actualWalletUsed,
+      total,
+      shipping_address: shippingAddress,
+      razorpay_order_id: razorpayOrderId,
+      payment_method: paymentMethod,
+      status: paymentMethod === "cod" ? "confirmed" : "pending",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }
+
+    const orderResult = await db.collection("orders").insertOne(orderDoc)
+    const orderId = orderResult.insertedId.toString()
+    const orderNumber = orderDoc.order_number
 
     // Create order line items
     const orderItems = items.map((item) => ({
-      order_id: order.id,
+      order_id: orderId,
       product_id: item.productId,
       variant_id: item.variantId ?? null,
       product_name: item.name,
       variant_name: item.variantName ?? null,
       price: item.price,
+      price_at_purchase: item.price,
       quantity: item.quantity,
       image_url: item.image ?? null,
+      created_at: new Date().toISOString(),
     }))
 
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .insert(orderItems)
+    await db.collection("order_items").insertMany(orderItems)
 
-    if (itemsError) {
-      console.error("Order items error:", itemsError)
-      // Rollback: delete the order if items failed
-      await supabase.from("orders").delete().eq("id", order.id)
-      return NextResponse.json(
-        { message: "Failed to create order items" },
-        { status: 500 }
+    // Increment discount code usage
+    if (discountCodeId) {
+      await db.collection("discount_codes").updateOne(
+        { _id: new ObjectId(discountCodeId) },
+        { $inc: { current_uses: 1, usage_count: 1 } }
       )
     }
 
-    // Increment discount code usage if applied
-    if (discountCodeId) {
-      await supabase.rpc("increment_discount_usage", { code_id: discountCodeId })
-    }
-
     // ========================================================================
-    // COD Order Processing (Immediate Fulfillment)
+    // COD Order Processing
     // ========================================================================
 
     if (paymentMethod === "cod") {
-      // Record order status history
-      await supabase.from("order_status_history").insert({
-        order_id: order.id,
+      await db.collection("order_status_history").insertOne({
+        order_id: orderId,
         status: "confirmed",
         note: "Cash on Delivery order placed",
+        created_at: new Date().toISOString(),
       })
 
-      // Deduct wallet balance if used (edge case for COD)
-      if (actualWalletUsed > 0 && user?.id) {
-        const { data: wallet } = await supabase
-          .from("wallets")
-          .select("id, balance")
-          .eq("user_id", user.id)
-          .single()
+      if (actualWalletUsed > 0 && userId) {
+        const wallet = await db
+          .collection("wallets")
+          .findOne({ user_id: userId })
 
         if (wallet) {
-          await supabase
-            .from("wallets")
-            .update({ balance: wallet.balance - actualWalletUsed })
-            .eq("id", wallet.id)
+          await db
+            .collection("wallets")
+            .updateOne(
+              { _id: wallet._id },
+              { $inc: { balance: -actualWalletUsed } }
+            )
 
-          await supabase.from("wallet_transactions").insert({
-            wallet_id: wallet.id,
+          await db.collection("wallet_transactions").insertOne({
+            wallet_id: wallet._id.toString(),
             type: "debit",
             amount: actualWalletUsed,
-            description: `Used for order ${order.order_number || order.id}`,
+            description: `Used for order ${orderNumber}`,
+            created_at: new Date().toISOString(),
           })
         }
       }
 
-      // Decrease product stock
+      // Decrease stock
       for (const item of items) {
         if (item.variantId) {
-          await supabase.rpc("decrease_variant_stock", {
-            p_variant_id: item.variantId,
-            p_quantity: item.quantity,
-          })
+          await db.collection("product_variants").updateOne(
+            { $expr: { $eq: [{ $toString: "$_id" }, item.variantId] } },
+            { $inc: { stock_quantity: -item.quantity } }
+          )
         }
       }
 
       // Send confirmation email (non-blocking)
       try {
         await sendOrderConfirmationEmail({
-          orderId: order.id,
-          orderNumber: order.order_number || order.id.slice(0, 8).toUpperCase(),
+          orderId,
+          orderNumber,
           customerName: shippingAddress.full_name,
           customerEmail: email,
           items: items.map((item) => ({
@@ -410,70 +302,77 @@ export async function POST(request: Request) {
         console.error("Order confirmation email failed (non-fatal):", emailError)
       }
 
-      // Create Shiprocket shipment (non-blocking)
+      // Create Blue Dart shipment (non-blocking)
       try {
-        const nameParts = shippingAddress.full_name.trim().split(" ")
-        const firstName = nameParts[0] || "Customer"
-        const lastName = nameParts.slice(1).join(" ") || ""
+        const customerName = process.env.BLUEDART_CUSTOMER_NAME || ""
+        const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ""
+        const originArea = process.env.BLUEDART_ORIGIN_AREA || ""
+        const warehousePincode = "125001"
+        const pickupDate = new Date().toISOString().split("T")[0]
+        const pickupTime = "1400"
 
-        const shiprocketItems = items.map((item) => ({
-          name: item.name + (item.variantName ? ` - ${item.variantName}` : ""),
-          sku: item.variantId || item.productId || "SKU-DEFAULT",
-          units: item.quantity,
-          selling_price: item.price,
-        }))
+        const waybillResult = await blueDartClient.generateWaybill({
+          Consignee: {
+            ConsigneeName: shippingAddress.full_name,
+            ConsigneeAddress1: shippingAddress.line1,
+            ConsigneeAddress2: shippingAddress.line2 || undefined,
+            ConsigneePincode: shippingAddress.pincode,
+            ConsigneeMobile: shippingAddress.phone,
+          },
+          Shipper: {
+            CustomerName: customerName,
+            CustomerCode: customerCode,
+            OriginArea: originArea,
+            CustomerAddress1: "",
+            CustomerPincode: warehousePincode,
+            CustomerMobile: "",
+            Sender: customerName,
+          },
+          Services: {
+            ProductCode: "A",
+            ProductType: 1,
+            SubProductCode: "C",
+            PieceCount: "1",
+            ActualWeight: "0.5",
+            CreditReferenceNo: orderNumber,
+            DeclaredValue: String(subtotal),
+            PickupDate: pickupDate,
+            PickupTime: pickupTime,
+          },
+        })
 
-        const shiprocketOrder: CreateShiprocketOrderRequest = {
-          order_id: order.order_number || order.id,
-          order_date: new Date().toISOString().split("T")[0],
-          pickup_location: "Primary",
-          billing_customer_name: firstName,
-          billing_last_name: lastName,
-          billing_address: shippingAddress.line1,
-          billing_address_2: shippingAddress.line2 || "",
-          billing_city: shippingAddress.city,
-          billing_pincode: shippingAddress.pincode,
-          billing_state: shippingAddress.state,
-          billing_country: "India",
-          billing_email: email,
-          billing_phone: shippingAddress.phone,
-          shipping_is_billing: true,
-          order_items: shiprocketItems,
-          payment_method: "COD",
-          sub_total: subtotal,
-          length: 20,
-          breadth: 15,
-          height: 10,
-          weight: 0.5,
-        }
+        const awbNo = waybillResult.GenerateWayBillResult?.AWBNo
+        if (awbNo) {
+          await db.collection("orders").updateOne(
+            { _id: orderResult.insertedId },
+            {
+              $set: {
+                awb_number: awbNo,
+                courier_name: "Blue Dart",
+              },
+            }
+          )
 
-        const shiprocketResponse = await shiprocketClient.createOrder(shiprocketOrder)
-
-        // Update order with Shiprocket tracking details
-        await supabase
-          .from("orders")
-          .update({
-            shiprocket_order_id: shiprocketResponse.order_id?.toString(),
-            shiprocket_shipment_id: shiprocketResponse.shipment_id?.toString(),
+          await blueDartClient.registerPickup({
+            PickupDate: pickupDate,
+            PickupTime: pickupTime,
+            CustomerCode: customerCode,
+            OriginArea: originArea,
+            CustomerName: customerName,
+            CustomerMobile: "",
+            CustomerAddress1: "",
+            CustomerPincode: warehousePincode,
+            PackageCount: 1,
+            ProductCode: "A",
           })
-          .eq("id", order.id)
-
-        if (shiprocketResponse.awb_code) {
-          await supabase
-            .from("orders")
-            .update({
-              awb_number: shiprocketResponse.awb_code,
-              courier_name: shiprocketResponse.courier_name,
-            })
-            .eq("id", order.id)
         }
-      } catch (shiprocketError) {
-        console.error("Shiprocket order creation error (non-fatal):", shiprocketError)
+      } catch (shippingError) {
+        console.error("Blue Dart shipment creation error (non-fatal):", shippingError)
       }
 
       return NextResponse.json({
-        orderId: order.id,
-        orderNumber: order.order_number,
+        orderId,
+        orderNumber,
         paymentMethod: "cod",
         success: true,
       })
@@ -484,7 +383,7 @@ export async function POST(request: Request) {
     // ========================================================================
 
     return NextResponse.json({
-      orderId: order.id,
+      orderId,
       razorpayOrderId,
       amount: amountInPaise,
       currency: "INR",

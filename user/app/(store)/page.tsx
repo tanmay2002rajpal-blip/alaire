@@ -6,7 +6,7 @@ import {
   NewsletterSection,
   InstagramFeed,
 } from "@/components/home"
-import { getFeaturedProducts, getCategories, getHeroSlides, getHomepageStats } from "@/lib/supabase/queries"
+import { getFeaturedProducts, getCategories, getHeroSlides, getHomepageStats } from "@/lib/db/queries"
 
 export default async function HomePage() {
   const [products, categories, heroSlides, stats] = await Promise.all([

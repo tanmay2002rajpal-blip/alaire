@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
-import { getCategoryBySlug, getProducts, getCategories } from "@/lib/supabase/queries"
+import { getCategoryBySlug, getProducts, getCategories } from "@/lib/db/queries"
 import { CategoryHero } from "@/components/categories"
 import { ProductGrid, ProductFilters } from "@/components/products"
 

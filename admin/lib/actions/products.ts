@@ -1,6 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { ObjectId } from 'mongodb'
+import { getProductsCollection, getProductVariantsCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
 
 interface ActionResult {
@@ -49,72 +51,53 @@ interface UpdateProductData extends Partial<CreateProductData> {
  */
 export async function createProductAction(data: CreateProductData): Promise<ActionResult> {
   try {
-    const supabase = await createClient()
+    const products = await getProductsCollection()
 
-    // Validate required fields
     if (!data.name || !data.slug) {
-      return {
-        success: false,
-        error: 'Product name and slug are required',
-      }
+      return { success: false, error: 'Product name and slug are required' }
     }
 
-    // Insert product
-    const { data: product, error: productError } = await supabase
-      .from('products')
-      .insert({
-        name: data.name,
-        slug: data.slug,
-        description: data.description || null,
-        category_id: data.category_id || null,
-        base_price: data.base_price || null,
-        is_active: data.is_active,
-        images: data.images || [],
-        has_variants: data.has_variants ?? false,
-      })
-      .select('id')
-      .single()
+    const now = new Date()
+    const productId = new ObjectId()
 
-    if (productError) {
-      console.error('Error creating product:', productError)
-      return {
-        success: false,
-        error: productError.message,
-      }
-    }
+    await products.insertOne({
+      _id: productId,
+      name: data.name,
+      slug: data.slug,
+      description: data.description || null,
+      category_id: data.category_id ? toObjectId(data.category_id) : null,
+      base_price: data.base_price ?? null,
+      is_active: data.is_active,
+      images: data.images || [],
+      has_variants: data.has_variants ?? false,
+      created_at: now,
+      updated_at: now,
+    })
 
     // Handle variants if provided
     if (data.variants && data.variants.length > 0) {
-      const variantInserts = data.variants.map((variant) => ({
-        product_id: product.id,
+      const variantsCol = await getProductVariantsCollection()
+      const variantDocs = data.variants.map(variant => ({
+        _id: new ObjectId(),
+        product_id: productId,
         name: variant.name,
         sku: variant.sku || null,
         price: variant.price,
-        compare_at_price: variant.compare_at_price || null,
+        compare_at_price: variant.compare_at_price ?? null,
         stock_quantity: variant.stock_quantity,
         options: variant.options || {},
         image_url: variant.image_url || null,
         is_active: variant.is_active ?? true,
+        created_at: now,
+        updated_at: now,
       }))
-
-      const { error: variantsError } = await supabase
-        .from('product_variants')
-        .insert(variantInserts)
-
-      if (variantsError) {
-        console.error('Error creating variants:', variantsError)
-        // Don't fail the whole operation, just log
-      }
+      await variantsCol.insertMany(variantDocs)
     }
 
-    // Revalidate product pages
     revalidatePath('/products')
     revalidatePath('/dashboard')
 
-    return {
-      success: true,
-      productId: product.id,
-    }
+    return { success: true, productId: productId.toString() }
   } catch (error) {
     console.error('Error in createProductAction:', error)
     return {
@@ -133,101 +116,88 @@ export async function updateProductAction(
 ): Promise<ActionResult> {
   try {
     if (!id) {
-      return {
-        success: false,
-        error: 'Product ID is required',
-      }
+      return { success: false, error: 'Product ID is required' }
     }
 
-    const supabase = await createClient()
-
-    // Validate required fields
     if (!data.name || !data.slug) {
-      return {
-        success: false,
-        error: 'Product name and slug are required',
-      }
+      return { success: false, error: 'Product name and slug are required' }
     }
 
-    // Update product
-    const { error: productError } = await supabase
-      .from('products')
-      .update({
-        name: data.name,
-        slug: data.slug,
-        description: data.description || null,
-        category_id: data.category_id || null,
-        base_price: data.base_price || null,
-        is_active: data.is_active,
-        images: data.images || [],
-        has_variants: data.has_variants ?? false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
+    const products = await getProductsCollection()
+    const productOid = toObjectId(id)
+    const now = new Date()
 
-    if (productError) {
-      console.error('Error updating product:', productError)
-      return {
-        success: false,
-        error: productError.message,
+    await products.updateOne(
+      { _id: productOid },
+      {
+        $set: {
+          name: data.name,
+          slug: data.slug,
+          description: data.description || null,
+          category_id: data.category_id ? toObjectId(data.category_id) : null,
+          base_price: data.base_price ?? null,
+          is_active: data.is_active,
+          images: data.images || [],
+          has_variants: data.has_variants ?? false,
+          updated_at: now,
+        },
       }
-    }
+    )
 
     // Handle variant updates if provided
     if (data.variants) {
-      // Get existing variants
-      const { data: existingVariants } = await supabase
-        .from('product_variants')
-        .select('id')
-        .eq('product_id', id)
+      const variantsCol = await getProductVariantsCollection()
 
-      const existingIds = new Set(existingVariants?.map((v) => v.id) || [])
-      const updateIds = new Set(
-        data.variants.filter((v) => v.id).map((v) => v.id)
-      )
+      // Get existing variants
+      const existingVariants = await variantsCol.find(
+        { product_id: productOid },
+        { projection: { _id: 1 } }
+      ).toArray()
+
+      const existingIds = new Set(existingVariants.map(v => v._id.toString()))
+      const updateIds = new Set(data.variants.filter(v => v.id).map(v => v.id))
 
       // Delete variants that are no longer in the list
-      const toDelete = Array.from(existingIds).filter((variantId) => !updateIds.has(variantId))
+      const toDelete = Array.from(existingIds).filter(variantId => !updateIds.has(variantId))
       if (toDelete.length > 0) {
-        await supabase.from('product_variants').delete().in('id', toDelete)
+        await variantsCol.deleteMany({ _id: { $in: toDelete.map(toObjectId) } })
       }
 
       // Update or insert variants
       for (const variant of data.variants) {
         const variantData = {
-          product_id: id,
+          product_id: productOid,
           name: variant.name,
           sku: variant.sku || null,
           price: variant.price,
-          compare_at_price: variant.compare_at_price || null,
+          compare_at_price: variant.compare_at_price ?? null,
           stock_quantity: variant.stock_quantity,
           options: variant.options || {},
           image_url: variant.image_url || null,
           is_active: variant.is_active ?? true,
+          updated_at: now,
         }
 
         if (variant.id) {
-          // Update existing variant
-          await supabase
-            .from('product_variants')
-            .update(variantData)
-            .eq('id', variant.id)
+          await variantsCol.updateOne(
+            { _id: toObjectId(variant.id) },
+            { $set: variantData }
+          )
         } else {
-          // Insert new variant
-          await supabase.from('product_variants').insert(variantData)
+          await variantsCol.insertOne({
+            _id: new ObjectId(),
+            ...variantData,
+            created_at: now,
+          })
         }
       }
     }
 
-    // Revalidate product pages
     revalidatePath('/products')
     revalidatePath(`/products/${id}`)
     revalidatePath('/dashboard')
 
-    return {
-      success: true,
-      productId: id,
-    }
+    return { success: true, productId: id }
   } catch (error) {
     console.error('Error in updateProductAction:', error)
     return {
@@ -243,39 +213,21 @@ export async function updateProductAction(
 export async function deleteProductAction(id: string): Promise<ActionResult> {
   try {
     if (!id) {
-      return {
-        success: false,
-        error: 'Product ID is required',
-      }
+      return { success: false, error: 'Product ID is required' }
     }
 
-    const supabase = await createClient()
+    const products = await getProductsCollection()
 
-    // Soft delete by setting is_active to false
-    const { error } = await supabase
-      .from('products')
-      .update({
-        is_active: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
+    await products.updateOne(
+      { _id: toObjectId(id) },
+      { $set: { is_active: false, updated_at: new Date() } }
+    )
 
-    if (error) {
-      console.error('Error deleting product:', error)
-      return {
-        success: false,
-        error: error.message,
-      }
-    }
-
-    // Revalidate product pages
     revalidatePath('/products')
     revalidatePath(`/products/${id}`)
     revalidatePath('/dashboard')
 
-    return {
-      success: true,
-    }
+    return { success: true }
   } catch (error) {
     console.error('Error in deleteProductAction:', error)
     return {
@@ -293,57 +245,31 @@ export async function toggleProductStatusAction(
 ): Promise<ToggleStatusResult> {
   try {
     if (!id) {
-      return {
-        success: false,
-        error: 'Product ID is required',
-      }
+      return { success: false, error: 'Product ID is required' }
     }
 
-    const supabase = await createClient()
+    const products = await getProductsCollection()
+    const product = await products.findOne(
+      { _id: toObjectId(id) },
+      { projection: { is_active: 1 } }
+    )
 
-    // Get current status
-    const { data: product, error: fetchError } = await supabase
-      .from('products')
-      .select('is_active')
-      .eq('id', id)
-      .single()
-
-    if (fetchError) {
-      console.error('Error fetching product:', fetchError)
-      return {
-        success: false,
-        error: fetchError.message,
-      }
+    if (!product) {
+      return { success: false, error: 'Product not found' }
     }
 
-    // Toggle the status
     const newStatus = !product.is_active
 
-    const { error: updateError } = await supabase
-      .from('products')
-      .update({
-        is_active: newStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
+    await products.updateOne(
+      { _id: toObjectId(id) },
+      { $set: { is_active: newStatus, updated_at: new Date() } }
+    )
 
-    if (updateError) {
-      console.error('Error toggling product status:', updateError)
-      return {
-        success: false,
-        error: updateError.message,
-      }
-    }
-
-    // Revalidate product pages
     revalidatePath('/products')
     revalidatePath(`/products/${id}`)
     revalidatePath('/dashboard')
 
-    return {
-      success: true,
-      newStatus,
-    }
+    return { success: true, newStatus }
   } catch (error) {
     console.error('Error in toggleProductStatusAction:', error)
     return {
@@ -359,39 +285,21 @@ export async function toggleProductStatusAction(
 export async function bulkDeleteProductsAction(ids: string[]): Promise<ActionResult> {
   try {
     if (!ids || ids.length === 0) {
-      return {
-        success: false,
-        error: 'No product IDs provided',
-      }
+      return { success: false, error: 'No product IDs provided' }
     }
 
-    const supabase = await createClient()
+    const products = await getProductsCollection()
 
-    // Soft delete by setting is_active to false
-    const { error } = await supabase
-      .from('products')
-      .update({
-        is_active: false,
-        updated_at: new Date().toISOString(),
-      })
-      .in('id', ids)
+    await products.updateMany(
+      { _id: { $in: ids.map(toObjectId) } },
+      { $set: { is_active: false, updated_at: new Date() } }
+    )
 
-    if (error) {
-      console.error('Error bulk deleting products:', error)
-      return {
-        success: false,
-        error: error.message,
-      }
-    }
-
-    // Revalidate product pages
     revalidatePath('/products')
     revalidatePath('/dashboard')
     revalidatePath('/inventory')
 
-    return {
-      success: true,
-    }
+    return { success: true }
   } catch (error) {
     console.error('Error in bulkDeleteProductsAction:', error)
     return {
@@ -410,38 +318,21 @@ export async function bulkUpdateProductStatusAction(
 ): Promise<ActionResult> {
   try {
     if (!ids || ids.length === 0) {
-      return {
-        success: false,
-        error: 'No product IDs provided',
-      }
+      return { success: false, error: 'No product IDs provided' }
     }
 
-    const supabase = await createClient()
+    const products = await getProductsCollection()
 
-    const { error } = await supabase
-      .from('products')
-      .update({
-        is_active: isActive,
-        updated_at: new Date().toISOString(),
-      })
-      .in('id', ids)
+    await products.updateMany(
+      { _id: { $in: ids.map(toObjectId) } },
+      { $set: { is_active: isActive, updated_at: new Date() } }
+    )
 
-    if (error) {
-      console.error('Error bulk updating product status:', error)
-      return {
-        success: false,
-        error: error.message,
-      }
-    }
-
-    // Revalidate product pages
     revalidatePath('/products')
     revalidatePath('/dashboard')
     revalidatePath('/inventory')
 
-    return {
-      success: true,
-    }
+    return { success: true }
   } catch (error) {
     console.error('Error in bulkUpdateProductStatusAction:', error)
     return {

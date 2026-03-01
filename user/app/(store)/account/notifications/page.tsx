@@ -1,5 +1,7 @@
 import { Bell, Package, Tag, Info } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
+import { serializeDocs } from "@/lib/db/helpers"
 import {
   Card,
   CardContent,
@@ -16,15 +18,19 @@ const notificationIcons = {
 }
 
 export default async function NotificationsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  const userId = session?.user?.id
 
-  const { data: notifications } = await supabase
-    .from("notifications")
-    .select("*")
-    .eq("user_id", user?.id)
-    .order("created_at", { ascending: false })
+  const db = await getDb()
+
+  const notificationDocs = await db
+    .collection("notifications")
+    .find({ user_id: userId })
+    .sort({ created_at: -1 })
     .limit(50)
+    .toArray()
+
+  const notifications = serializeDocs(notificationDocs)
 
   return (
     <div className="space-y-6">
@@ -39,7 +45,7 @@ export default async function NotificationsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!notifications || notifications.length === 0 ? (
+          {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Bell className="h-12 w-12 text-muted-foreground/50" />
               <p className="mt-4 text-lg font-medium">No notifications</p>
@@ -50,25 +56,26 @@ export default async function NotificationsPage() {
           ) : (
             <div className="space-y-2">
               {notifications.map((notification) => {
-                const Icon = notificationIcons[notification.type as keyof typeof notificationIcons] ?? Info
+                const n = notification as Record<string, unknown>
+                const Icon = notificationIcons[n.type as keyof typeof notificationIcons] ?? Info
 
                 return (
                   <div
                     key={notification.id}
                     className={`flex items-start gap-4 rounded-lg border p-4 ${
-                      !notification.read ? "bg-muted/50" : ""
+                      !n.read ? "bg-muted/50" : ""
                     }`}
                   >
                     <div className="rounded-full bg-primary/10 p-2 text-primary">
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium">{notification.title}</p>
+                      <p className="font-medium">{n.title as string}</p>
                       <p className="text-sm text-muted-foreground">
-                        {notification.message}
+                        {n.message as string}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {new Date(notification.created_at).toLocaleDateString("en-IN", {
+                        {new Date(n.created_at as string).toLocaleDateString("en-IN", {
                           day: "numeric",
                           month: "short",
                           year: "numeric",
@@ -77,7 +84,7 @@ export default async function NotificationsPage() {
                         })}
                       </p>
                     </div>
-                    {!notification.read && (
+                    {!n.read && (
                       <MarkAsReadButton notificationId={notification.id} />
                     )}
                   </div>

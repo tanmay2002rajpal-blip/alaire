@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks"
 import { CheckoutForm } from "@/components/checkout/checkout-form"
 import { OrderSummary } from "@/components/checkout/order-summary"
-import { createClient } from "@/lib/supabase/client"
+import { useSession } from "next-auth/react"
 
 // Hydration-safe mounted check
 function useIsMounted() {
@@ -35,24 +35,23 @@ export default function CheckoutPage() {
   // Shipping state (from pincode checker)
   const [shippingCost, setShippingCost] = useState(0)
 
+  const { data: session } = useSession()
+
   useEffect(() => {
-    // Fetch wallet balance
     async function fetchWallet() {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: wallet } = await supabase
-          .from("wallets")
-          .select("balance")
-          .eq("user_id", user.id)
-          .single()
-        if (wallet) {
-          setWalletBalance(wallet.balance || 0)
+      if (!session?.user?.id) return
+      try {
+        const res = await fetch("/api/account/wallet-balance")
+        if (res.ok) {
+          const data = await res.json()
+          setWalletBalance(data.balance || 0)
         }
+      } catch {
+        // Wallet fetch failed, default to 0
       }
     }
     fetchWallet()
-  }, [])
+  }, [session])
 
   if (!mounted) {
     return (

@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Loader2 } from "lucide-react"
+import { signIn } from "next-auth/react"
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,6 @@ import {
   DialogOverlay,
 } from "@/components/ui/dialog"
 import { useAuth } from "./auth-provider"
-import { createClient } from "@/lib/supabase/client"
 
 export function AuthDialog() {
   const { isAuthDialogOpen, closeAuthDialog } = useAuth()
@@ -20,19 +20,7 @@ export function AuthDialog() {
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
-    const supabase = createClient()
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-
-    if (error) {
-      console.error("Sign in error:", error)
-      setIsLoading(false)
-    }
+    await signIn("google", { callbackUrl: window.location.href })
     // Don't set loading false on success - page will redirect
   }
 

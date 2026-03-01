@@ -7,11 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
-import type { User } from "@supabase/supabase-js"
 import type { Profile, Address } from "@/types"
 
 interface ProfileFormProps {
-  user: User
+  user: { id: string; name?: string | null; email?: string | null; image?: string | null }
   profile: Profile | null
   addresses: Address[]
 }

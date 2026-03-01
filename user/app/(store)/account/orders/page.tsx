@@ -1,7 +1,8 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Package, ChevronRight } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
+import { getUserOrders } from "@/lib/db/queries/orders"
 import { formatPrice } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -12,35 +13,25 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { ORDER_STATUSES } from "@/lib/constants"
-
-interface OrderItemPreview {
-  id: string
-  product_name: string
-  variant_name: string | null
-  price: number
-  quantity: number
-  image_url: string | null
-}
+import type { OrderItem } from "@/lib/db/queries/orders"
 
 export default async function OrdersPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  const userId = session?.user?.id
 
-  const { data: orders } = await supabase
-    .from("orders")
-    .select(`
-      *,
-      items:order_items(
-        id,
-        product_name,
-        variant_name,
-        price,
-        quantity,
-        image_url
-      )
-    `)
-    .eq("user_id", user?.id)
-    .order("created_at", { ascending: false })
+  if (!userId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <Package className="h-12 w-12 text-muted-foreground/50" />
+        <p className="mt-4 text-lg font-medium">Please sign in</p>
+        <p className="text-sm text-muted-foreground">
+          Sign in to view your order history
+        </p>
+      </div>
+    )
+  }
+
+  const orders = await getUserOrders(userId)
 
   return (
     <div className="space-y-6">
@@ -52,7 +43,7 @@ export default async function OrdersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!orders || orders.length === 0 ? (
+          {orders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Package className="h-12 w-12 text-muted-foreground/50" />
               <p className="mt-4 text-lg font-medium">No orders yet</p>
@@ -105,9 +96,8 @@ export default async function OrdersPage() {
                         </div>
                       </div>
 
-                      {/* Order Items Preview */}
                       <div className="mt-4 flex gap-2">
-                        {order.items.slice(0, 4).map((item: OrderItemPreview) => (
+                        {order.items.slice(0, 4).map((item: OrderItem) => (
                           <div
                             key={item.id}
                             className="relative h-16 w-16 overflow-hidden rounded-md bg-muted"

@@ -1,4 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
+import { ObjectId } from 'mongodb'
+import { getProductsCollection, getProductVariantsCollection, getCategoriesCollection, getActivityLogCollection } from '@/lib/db/collections'
+import { toObjectId, paginate, totalPages } from '@/lib/db/helpers'
 
 // Types
 export interface ProductFilters {
@@ -139,231 +141,164 @@ export interface UpdateProductData {
  * Get paginated products with filters
  */
 export async function getProducts(filters?: ProductFilters): Promise<PaginatedProducts> {
-  const supabase = await createClient();
+  const products = await getProductsCollection()
+  const variants = await getProductVariantsCollection()
 
-  const page = filters?.page || 1;
-  const limit = filters?.limit || 20;
-  const offset = (page - 1) * limit;
+  const { skip, limit: lim, page } = paginate(filters?.page, filters?.limit || 20)
 
-  // Build base query - products table uses base_price, stock is in variants
-  let query = supabase
-    .from('products')
-    .select(`
-      id,
-      name,
-      slug,
-      description,
-      category_id,
-      base_price,
-      images,
-      has_variants,
-      is_active,
-      created_at,
-      categories (
-        id,
-        name,
-        slug
-      )
-    `, { count: 'exact' });
+  // Build filter
+  const filter: Record<string, any> = {}
 
-  // Apply category filter
   if (filters?.category_id) {
-    query = query.eq('category_id', filters.category_id);
+    filter.category_id = toObjectId(filters.category_id)
   }
 
-  // Apply status filter
   if (filters?.status && filters.status !== 'all') {
-    query = query.eq('is_active', filters.status === 'active');
+    filter.is_active = filters.status === 'active'
   }
 
-  // Note: Stock level filtering requires joining with variants
-  // For now, we'll filter after fetching if needed
-
-  // Apply search filter (name, description, SKU)
   if (filters?.search) {
-    const searchTerm = `%${filters.search}%`;
-    // Search in product name and description
-    query = query.or(`name.ilike.${searchTerm},description.ilike.${searchTerm}`);
+    filter.$or = [
+      { name: { $regex: filters.search, $options: 'i' } },
+      { description: { $regex: filters.search, $options: 'i' } },
+    ]
   }
 
-  // Apply pagination and ordering
-  query = query
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+  // Get products with count
+  const [productsData, total] = await Promise.all([
+    products.find(filter).sort({ created_at: -1 }).skip(skip).limit(lim).toArray(),
+    products.countDocuments(filter),
+  ])
 
-  const { data: productsData, error: productsError, count } = await query;
+  // Get category info and variants for returned products
+  const productIds = productsData.map(p => p._id)
 
-  if (productsError) {
-    console.error('Error fetching products:', productsError);
-    throw new Error('Failed to fetch products');
-  }
+  const [categoriesData, variantsData] = await Promise.all([
+    // Get all unique category IDs and fetch them
+    (async () => {
+      const categoryIds = [...new Set(productsData.map(p => p.category_id).filter(Boolean))] as ObjectId[]
+      if (categoryIds.length === 0) return []
+      const cats = await getCategoriesCollection()
+      return cats.find({ _id: { $in: categoryIds } }, { projection: { name: 1, slug: 1 } }).toArray()
+    })(),
+    productIds.length > 0
+      ? variants.find(
+          { product_id: { $in: productIds } },
+          { projection: { product_id: 1, stock_quantity: 1, price: 1, is_active: 1 } }
+        ).toArray()
+      : Promise.resolve([]),
+  ])
 
-  // Get variants data for each product (count, stock, min price)
-  const productIds = productsData?.map(product => product.id) || [];
+  // Build lookups
+  const categoryMap = new Map(categoriesData.map(c => [c._id.toString(), c]))
 
-  let variantsData: { product_id: string; stock_quantity: number; price: number; is_active: boolean }[] = [];
-  if (productIds.length > 0) {
-    const { data, error: variantsError } = await supabase
-      .from('product_variants')
-      .select('product_id, stock_quantity, price, is_active')
-      .in('product_id', productIds);
-
-    if (variantsError) {
-      console.error('Error fetching product variants:', variantsError);
+  const variantsMap: Record<string, { count: number; totalStock: number; minPrice: number }> = {}
+  for (const v of variantsData) {
+    const pid = v.product_id.toString()
+    if (!variantsMap[pid]) {
+      variantsMap[pid] = { count: 0, totalStock: 0, minPrice: Infinity }
     }
-    variantsData = data || [];
-  }
-
-  // Aggregate variants per product
-  const variantsMap = variantsData.reduce((acc, variant) => {
-    if (!acc[variant.product_id]) {
-      acc[variant.product_id] = { count: 0, totalStock: 0, minPrice: Infinity };
-    }
-    acc[variant.product_id].count += 1;
-    if (variant.is_active) {
-      acc[variant.product_id].totalStock += variant.stock_quantity || 0;
-      if (variant.price < acc[variant.product_id].minPrice) {
-        acc[variant.product_id].minPrice = variant.price;
+    variantsMap[pid].count += 1
+    if (v.is_active) {
+      variantsMap[pid].totalStock += v.stock_quantity || 0
+      if (v.price < variantsMap[pid].minPrice) {
+        variantsMap[pid].minPrice = v.price
       }
     }
-    return acc;
-  }, {} as Record<string, { count: number; totalStock: number; minPrice: number }>);
+  }
 
   // Transform data
-  const products: Product[] = (productsData || []).map(product => {
-    const category = Array.isArray(product.categories) ? product.categories[0] : product.categories;
-    const variantInfo = variantsMap[product.id] || { count: 0, totalStock: 0, minPrice: Infinity };
+  const result: Product[] = productsData.map(product => {
+    const cat = product.category_id ? categoryMap.get(product.category_id.toString()) : null
+    const vi = variantsMap[product._id.toString()] || { count: 0, totalStock: 0, minPrice: Infinity }
 
     return {
-      id: product.id,
+      id: product._id.toString(),
       name: product.name,
       slug: product.slug,
       description: product.description,
-      category_id: product.category_id,
+      category_id: product.category_id?.toString() || null,
       base_price: product.base_price,
       images: product.images || [],
       has_variants: product.has_variants,
       is_active: product.is_active,
-      created_at: product.created_at,
-      category_name: category?.name || null,
-      category_slug: category?.slug || null,
-      variants_count: variantInfo.count,
-      total_stock: variantInfo.totalStock,
-      min_price: variantInfo.minPrice === Infinity ? product.base_price : variantInfo.minPrice,
-    };
-  });
-
-  const total = count || 0;
-  const totalPages = Math.ceil(total / limit);
+      created_at: product.created_at.toISOString(),
+      category_name: cat?.name || null,
+      category_slug: cat?.slug || null,
+      variants_count: vi.count,
+      total_stock: vi.totalStock,
+      min_price: vi.minPrice === Infinity ? product.base_price : vi.minPrice,
+    }
+  })
 
   return {
-    products,
+    products: result,
     total,
     page,
-    totalPages,
-  };
+    totalPages: totalPages(total, lim),
+  }
 }
 
 /**
  * Get single product with full details
  */
 export async function getProductById(id: string): Promise<ProductDetail | null> {
-  const supabase = await createClient();
+  const products = await getProductsCollection()
+  const variantsCol = await getProductVariantsCollection()
 
-  // Get product with category info
-  const { data: productData, error: productError } = await supabase
-    .from('products')
-    .select(`
-      id,
-      name,
-      slug,
-      description,
-      category_id,
-      base_price,
-      images,
-      has_variants,
-      is_active,
-      created_at,
-      categories (
-        id,
-        name,
-        slug,
-        parent_id,
-        image_url
-      )
-    `)
-    .eq('id', id)
-    .single();
+  const productData = await products.findOne({ _id: toObjectId(id) })
+  if (!productData) return null
 
-  if (productError || !productData) {
-    console.error('Error fetching product:', productError);
-    return null;
-  }
+  // Get category and variants in parallel
+  const [categoryData, variantsData] = await Promise.all([
+    productData.category_id
+      ? (async () => {
+          const cats = await getCategoriesCollection()
+          return cats.findOne(
+            { _id: productData.category_id! },
+            { projection: { name: 1, slug: 1, parent_id: 1, image_url: 1 } }
+          )
+        })()
+      : Promise.resolve(null),
+    variantsCol.find({ product_id: productData._id }).sort({ name: 1 }).toArray(),
+  ])
 
-  // Get product variants
-  const { data: variantsData, error: variantsError } = await supabase
-    .from('product_variants')
-    .select(`
-      id,
-      product_id,
-      name,
-      sku,
-      price,
-      compare_at_price,
-      stock_quantity,
-      options,
-      image_url,
-      is_active
-    `)
-    .eq('product_id', id)
-    .order('name', { ascending: true });
-
-  if (variantsError) {
-    console.error('Error fetching product variants:', variantsError);
-  }
-
-  // Transform category
-  const category = productData.categories
-    ? (Array.isArray(productData.categories) ? productData.categories[0] : productData.categories)
-    : null;
-
-  // Calculate total stock from variants
-  const totalStock = (variantsData || [])
+  const totalStock = variantsData
     .filter(v => v.is_active)
-    .reduce((sum, v) => sum + (v.stock_quantity || 0), 0);
+    .reduce((sum, v) => sum + (v.stock_quantity || 0), 0)
 
   return {
-    id: productData.id,
+    id: productData._id.toString(),
     name: productData.name,
     slug: productData.slug,
     description: productData.description,
-    category_id: productData.category_id,
+    category_id: productData.category_id?.toString() || null,
     base_price: productData.base_price,
     images: productData.images || [],
     has_variants: productData.has_variants,
     is_active: productData.is_active,
-    created_at: productData.created_at,
-    category: category ? {
-      id: category.id,
-      name: category.name,
-      slug: category.slug,
-      parent_id: category.parent_id,
-      image: category.image_url,
+    created_at: productData.created_at.toISOString(),
+    category: categoryData ? {
+      id: categoryData._id.toString(),
+      name: categoryData.name,
+      slug: categoryData.slug,
+      parent_id: categoryData.parent_id?.toString() || null,
+      image: categoryData.image_url,
     } : null,
-    variants: (variantsData || []).map(variant => ({
-      id: variant.id,
-      product_id: variant.product_id,
-      name: variant.name,
-      sku: variant.sku,
-      price: variant.price,
-      compare_at_price: variant.compare_at_price,
-      stock_quantity: variant.stock_quantity,
-      options: variant.options,
-      image_url: variant.image_url,
-      is_active: variant.is_active,
+    variants: variantsData.map(v => ({
+      id: v._id.toString(),
+      product_id: v.product_id.toString(),
+      name: v.name,
+      sku: v.sku,
+      price: v.price,
+      compare_at_price: v.compare_at_price,
+      stock_quantity: v.stock_quantity,
+      options: v.options,
+      image_url: v.image_url,
+      is_active: v.is_active,
     })),
     total_stock: totalStock,
-  };
+  }
 }
 
 /**
@@ -373,74 +308,65 @@ export async function createProduct(
   data: CreateProductData,
   adminId?: string
 ): Promise<{ success: boolean; productId?: string; error?: string }> {
-  const supabase = await createClient();
+  const products = await getProductsCollection()
 
   try {
-    // Insert product
-    const { data: productData, error: productError } = await supabase
-      .from('products')
-      .insert({
-        name: data.name,
-        slug: data.slug,
-        description: data.description || null,
-        category_id: data.category_id || null,
-        base_price: data.base_price || null,
-        images: data.images || [],
-        has_variants: data.has_variants || false,
-        is_active: data.is_active !== undefined ? data.is_active : true,
-      })
-      .select('id')
-      .single();
+    const now = new Date()
+    const productId = new ObjectId()
 
-    if (productError || !productData) {
-      console.error('Error creating product:', productError);
-      return { success: false, error: 'Failed to create product' };
-    }
-
-    const productId = productData.id;
+    await products.insertOne({
+      _id: productId,
+      name: data.name,
+      slug: data.slug,
+      description: data.description || null,
+      category_id: data.category_id ? toObjectId(data.category_id) : null,
+      base_price: data.base_price ?? null,
+      images: data.images || [],
+      has_variants: data.has_variants || false,
+      is_active: data.is_active !== undefined ? data.is_active : true,
+      created_at: now,
+      updated_at: now,
+    })
 
     // Create variants if provided
     if (data.variants && data.variants.length > 0) {
-      const variantsToInsert = data.variants.map(variant => ({
+      const variantsCol = await getProductVariantsCollection()
+      const variantDocs = data.variants.map(v => ({
+        _id: new ObjectId(),
         product_id: productId,
-        name: variant.name,
-        sku: variant.sku || null,
-        price: variant.price,
-        compare_at_price: variant.compare_at_price || null,
-        stock_quantity: variant.stock_quantity,
-        options: variant.options || null,
-        image_url: variant.image_url || null,
-      }));
-
-      const { error: variantsError } = await supabase
-        .from('product_variants')
-        .insert(variantsToInsert);
-
-      if (variantsError) {
-        console.error('Error creating product variants:', variantsError);
-        // Continue anyway, product is created
-      }
+        name: v.name,
+        sku: v.sku || null,
+        price: v.price,
+        compare_at_price: v.compare_at_price ?? null,
+        stock_quantity: v.stock_quantity,
+        options: v.options || null,
+        image_url: v.image_url || null,
+        is_active: true,
+        created_at: now,
+        updated_at: now,
+      }))
+      await variantsCol.insertMany(variantDocs)
     }
 
     // Log activity
     if (adminId) {
-      await supabase
-        .from('activity_log')
-        .insert({
-          admin_id: adminId,
-          action: 'create',
-          entity_type: 'product',
-          entity_id: productId,
-          details: {
-            product_name: data.name,
-          },
-        });
+      const activityLog = await getActivityLogCollection()
+      await activityLog.insertOne({
+        _id: new ObjectId(),
+        admin_id: toObjectId(adminId),
+        admin_name: null,
+        action: 'create',
+        entity_type: 'product',
+        entity_id: productId.toString(),
+        details: { product_name: data.name },
+        created_at: now,
+      })
     }
 
-    return { success: true, productId };
+    return { success: true, productId: productId.toString() }
   } catch (error) {
-    console.error('Unexpected error creating product:', error);
-    return { success: false, error: 'An unexpected error occurred' };
+    console.error('Unexpected error creating product:', error)
+    return { success: false, error: 'An unexpected error occurred' }
   }
 }
 
@@ -452,117 +378,102 @@ export async function updateProduct(
   data: UpdateProductData,
   adminId?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
+  const products = await getProductsCollection()
+  const productOid = toObjectId(id)
 
   try {
-    // Build update object (only include fields that are provided)
-    const updateData: any = {};
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.slug !== undefined) updateData.slug = data.slug;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.category_id !== undefined) updateData.category_id = data.category_id;
-    if (data.base_price !== undefined) updateData.base_price = data.base_price;
-    if (data.images !== undefined) updateData.images = data.images;
-    if (data.has_variants !== undefined) updateData.has_variants = data.has_variants;
-    if (data.is_active !== undefined) updateData.is_active = data.is_active;
+    // Build update object
+    const updateData: Record<string, any> = {}
+    if (data.name !== undefined) updateData.name = data.name
+    if (data.slug !== undefined) updateData.slug = data.slug
+    if (data.description !== undefined) updateData.description = data.description
+    if (data.category_id !== undefined) updateData.category_id = data.category_id ? toObjectId(data.category_id) : null
+    if (data.base_price !== undefined) updateData.base_price = data.base_price
+    if (data.images !== undefined) updateData.images = data.images
+    if (data.has_variants !== undefined) updateData.has_variants = data.has_variants
+    if (data.is_active !== undefined) updateData.is_active = data.is_active
 
     // Update product if there are fields to update
     if (Object.keys(updateData).length > 0) {
-      updateData.updated_at = new Date().toISOString();
-      const { error: updateError } = await supabase
-        .from('products')
-        .update(updateData)
-        .eq('id', id);
-
-      if (updateError) {
-        console.error('Error updating product:', updateError);
-        return { success: false, error: 'Failed to update product' };
-      }
+      updateData.updated_at = new Date()
+      await products.updateOne({ _id: productOid }, { $set: updateData })
     }
 
     // Handle variants
     if (data.variants) {
+      const variantsCol = await getProductVariantsCollection()
+      const now = new Date()
+
       // Add new variants
       if (data.variants.add && data.variants.add.length > 0) {
-        const variantsToInsert = data.variants.add.map(variant => ({
-          product_id: id,
-          name: variant.name,
-          sku: variant.sku || null,
-          price: variant.price,
-          compare_at_price: variant.compare_at_price || null,
-          stock_quantity: variant.stock_quantity,
-          options: variant.options || null,
-          image_url: variant.image_url || null,
-        }));
-
-        const { error: addError } = await supabase
-          .from('product_variants')
-          .insert(variantsToInsert);
-
-        if (addError) {
-          console.error('Error adding product variants:', addError);
-        }
+        const variantDocs = data.variants.add.map(v => ({
+          _id: new ObjectId(),
+          product_id: productOid,
+          name: v.name,
+          sku: v.sku || null,
+          price: v.price,
+          compare_at_price: v.compare_at_price ?? null,
+          stock_quantity: v.stock_quantity,
+          options: v.options || null,
+          image_url: v.image_url || null,
+          is_active: true,
+          created_at: now,
+          updated_at: now,
+        }))
+        await variantsCol.insertMany(variantDocs)
       }
 
       // Update existing variants
       if (data.variants.update && data.variants.update.length > 0) {
         for (const variant of data.variants.update) {
-          const variantUpdate: any = {};
-          if (variant.name !== undefined) variantUpdate.name = variant.name;
-          if (variant.sku !== undefined) variantUpdate.sku = variant.sku;
-          if (variant.price !== undefined) variantUpdate.price = variant.price;
-          if (variant.compare_at_price !== undefined) variantUpdate.compare_at_price = variant.compare_at_price;
-          if (variant.stock_quantity !== undefined) variantUpdate.stock_quantity = variant.stock_quantity;
-          if (variant.options !== undefined) variantUpdate.options = variant.options;
-          if (variant.image_url !== undefined) variantUpdate.image_url = variant.image_url;
-          if (variant.is_active !== undefined) variantUpdate.is_active = variant.is_active;
+          const variantUpdate: Record<string, any> = {}
+          if (variant.name !== undefined) variantUpdate.name = variant.name
+          if (variant.sku !== undefined) variantUpdate.sku = variant.sku
+          if (variant.price !== undefined) variantUpdate.price = variant.price
+          if (variant.compare_at_price !== undefined) variantUpdate.compare_at_price = variant.compare_at_price
+          if (variant.stock_quantity !== undefined) variantUpdate.stock_quantity = variant.stock_quantity
+          if (variant.options !== undefined) variantUpdate.options = variant.options
+          if (variant.image_url !== undefined) variantUpdate.image_url = variant.image_url
+          if (variant.is_active !== undefined) variantUpdate.is_active = variant.is_active
 
           if (Object.keys(variantUpdate).length > 0) {
-            variantUpdate.updated_at = new Date().toISOString();
-            const { error: updateError } = await supabase
-              .from('product_variants')
-              .update(variantUpdate)
-              .eq('id', variant.id)
-              .eq('product_id', id);
-
-            if (updateError) {
-              console.error(`Error updating variant ${variant.id}:`, updateError);
-            }
+            variantUpdate.updated_at = now
+            await variantsCol.updateOne(
+              { _id: toObjectId(variant.id), product_id: productOid },
+              { $set: variantUpdate }
+            )
           }
         }
       }
 
       // Delete variants
       if (data.variants.delete && data.variants.delete.length > 0) {
-        const { error: deleteError } = await supabase
-          .from('product_variants')
-          .delete()
-          .in('id', data.variants.delete)
-          .eq('product_id', id);
-
-        if (deleteError) {
-          console.error('Error deleting product variants:', deleteError);
-        }
+        await variantsCol.deleteMany({
+          _id: { $in: data.variants.delete.map(toObjectId) },
+          product_id: productOid,
+        })
       }
     }
 
     // Log activity
     if (adminId) {
-      await supabase
-        .from('activity_log')
-        .insert({
-          admin_id: adminId,
-          action: 'update',
-          entity_type: 'product',
-          entity_id: id,
-          details: updateData,
-        });
+      const activityLog = await getActivityLogCollection()
+      await activityLog.insertOne({
+        _id: new ObjectId(),
+        admin_id: toObjectId(adminId),
+        admin_name: null,
+        action: 'update',
+        entity_type: 'product',
+        entity_id: id,
+        details: updateData,
+        created_at: new Date(),
+      })
     }
 
-    return { success: true };
+    return { success: true }
   } catch (error) {
-    console.error('Unexpected error updating product:', error);
-    return { success: false, error: 'An unexpected error occurred' };
+    console.error('Unexpected error updating product:', error)
+    return { success: false, error: 'An unexpected error occurred' }
   }
 }
 
@@ -573,39 +484,33 @@ export async function deleteProduct(
   id: string,
   adminId?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
+  const products = await getProductsCollection()
 
   try {
-    // Soft delete by setting is_active to false
-    const { error: deleteError } = await supabase
-      .from('products')
-      .update({ is_active: false })
-      .eq('id', id);
-
-    if (deleteError) {
-      console.error('Error deleting product:', deleteError);
-      return { success: false, error: 'Failed to delete product' };
-    }
+    await products.updateOne(
+      { _id: toObjectId(id) },
+      { $set: { is_active: false } }
+    )
 
     // Log activity
     if (adminId) {
-      await supabase
-        .from('activity_log')
-        .insert({
-          admin_id: adminId,
-          action: 'delete',
-          entity_type: 'product',
-          entity_id: id,
-          details: {
-            soft_delete: true,
-          },
-        });
+      const activityLog = await getActivityLogCollection()
+      await activityLog.insertOne({
+        _id: new ObjectId(),
+        admin_id: toObjectId(adminId),
+        admin_name: null,
+        action: 'delete',
+        entity_type: 'product',
+        entity_id: id,
+        details: { soft_delete: true },
+        created_at: new Date(),
+      })
     }
 
-    return { success: true };
+    return { success: true }
   } catch (error) {
-    console.error('Unexpected error deleting product:', error);
-    return { success: false, error: 'An unexpected error occurred' };
+    console.error('Unexpected error deleting product:', error)
+    return { success: false, error: 'An unexpected error occurred' }
   }
 }
 
@@ -613,107 +518,47 @@ export async function deleteProduct(
  * Get product statistics
  */
 export async function getProductStats(): Promise<ProductStats> {
-  const supabase = await createClient();
+  const products = await getProductsCollection()
+  const variantsCol = await getProductVariantsCollection()
 
-  // Get total products count
-  const { count: totalProducts, error: countError } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true });
-
-  if (countError) {
-    console.error('Error fetching total products count:', countError);
-  }
-
-  // Get active products count
-  const { count: activeProducts, error: activeError } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_active', true);
-
-  if (activeError) {
-    console.error('Error fetching active products count:', activeError);
-  }
-
-  // Get inactive products count
-  const { count: inactiveProducts, error: inactiveError } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_active', false);
-
-  if (inactiveError) {
-    console.error('Error fetching inactive products count:', inactiveError);
-  }
-
-  // Get low stock count from product_variants (stock > 0 and stock < 10)
-  const { count: lowStockCount, error: lowStockError } = await supabase
-    .from('product_variants')
-    .select('*', { count: 'exact', head: true })
-    .gt('stock_quantity', 0)
-    .lt('stock_quantity', 10)
-    .eq('is_active', true);
-
-  if (lowStockError) {
-    console.error('Error fetching low stock count:', lowStockError);
-  }
-
-  // Get out of stock count from product_variants
-  const { count: outOfStockCount, error: outOfStockError } = await supabase
-    .from('product_variants')
-    .select('*', { count: 'exact', head: true })
-    .eq('stock_quantity', 0)
-    .eq('is_active', true);
-
-  if (outOfStockError) {
-    console.error('Error fetching out of stock count:', outOfStockError);
-  }
-
-  // Calculate total inventory value (price * stock for all active variants)
-  const { data: inventoryData, error: inventoryError } = await supabase
-    .from('product_variants')
-    .select('price, stock_quantity')
-    .eq('is_active', true);
-
-  if (inventoryError) {
-    console.error('Error fetching inventory data:', inventoryError);
-  }
-
-  const totalInventoryValue = (inventoryData || []).reduce((sum, variant) => {
-    const price = variant.price || 0;
-    const stock = variant.stock_quantity || 0;
-    return sum + (price * stock);
-  }, 0);
+  const [totalProducts, activeProducts, inactiveProducts, lowStockCount, outOfStockCount, inventoryData] = await Promise.all([
+    products.countDocuments(),
+    products.countDocuments({ is_active: true }),
+    products.countDocuments({ is_active: false }),
+    variantsCol.countDocuments({ is_active: true, stock_quantity: { $gt: 0, $lt: 10 } }),
+    variantsCol.countDocuments({ is_active: true, stock_quantity: 0 }),
+    variantsCol.aggregate<{ _id: null; total: number }>([
+      { $match: { is_active: true } },
+      { $group: { _id: null, total: { $sum: { $multiply: ['$price', '$stock_quantity'] } } } },
+    ]).toArray(),
+  ])
 
   return {
-    total_products: totalProducts || 0,
-    active_products: activeProducts || 0,
-    inactive_products: inactiveProducts || 0,
-    low_stock_count: lowStockCount || 0,
-    out_of_stock_count: outOfStockCount || 0,
-    total_inventory_value: totalInventoryValue,
-  };
+    total_products: totalProducts,
+    active_products: activeProducts,
+    inactive_products: inactiveProducts,
+    low_stock_count: lowStockCount,
+    out_of_stock_count: outOfStockCount,
+    total_inventory_value: inventoryData[0]?.total || 0,
+  }
 }
 
 /**
  * Get all categories (helper function)
  */
 export async function getCategories(): Promise<Category[]> {
-  const supabase = await createClient();
+  const categories = await getCategoriesCollection()
 
-  const { data: categories, error } = await supabase
-    .from('categories')
-    .select('id, name, slug, parent_id, image_url')
-    .order('name', { ascending: true });
+  const data = await categories
+    .find({}, { projection: { name: 1, slug: 1, parent_id: 1, image_url: 1 } })
+    .sort({ name: 1 })
+    .toArray()
 
-  if (error) {
-    console.error('Error fetching categories:', error);
-    throw new Error('Failed to fetch categories');
-  }
-
-  return (categories || []).map(cat => ({
-    id: cat.id,
+  return data.map(cat => ({
+    id: cat._id.toString(),
     name: cat.name,
     slug: cat.slug,
-    parent_id: cat.parent_id,
+    parent_id: cat.parent_id?.toString() || null,
     image: cat.image_url,
-  }));
+  }))
 }

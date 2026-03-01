@@ -1,8 +1,9 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { canUserReview } from "@/lib/supabase/queries"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
+import { canUserReview } from "@/lib/db/queries"
 
 export interface SubmitReviewInput {
   productId: string
@@ -17,14 +18,11 @@ export interface SubmitReviewResult {
 }
 
 export async function submitReview(input: SubmitReviewInput): Promise<SubmitReviewResult> {
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
+  const session = await auth()
+  if (!session?.user?.id) {
     return { success: false, error: "You must be logged in to submit a review" }
   }
 
-  // Validate input
   if (input.rating < 1 || input.rating > 5) {
     return { success: false, error: "Rating must be between 1 and 5" }
   }
@@ -41,31 +39,24 @@ export async function submitReview(input: SubmitReviewInput): Promise<SubmitRevi
     return { success: false, error: "Title must be less than 100 characters" }
   }
 
-  // Check eligibility
-  const eligible = await canUserReview(user.id, input.productId)
+  const eligible = await canUserReview(session.user.id, input.productId)
   if (!eligible) {
     return { success: false, error: "You must purchase this product to leave a review" }
   }
 
-  // Insert review
-  const { error } = await supabase
-    .from("reviews")
-    .insert({
-      user_id: user.id,
-      product_id: input.productId,
-      rating: input.rating,
-      title: input.title?.trim() || null,
-      content: input.content.trim(),
-      is_verified_purchase: true,
-      is_approved: true,
-    })
+  const db = await getDb()
 
-  if (error) {
-    console.error("Review submission error:", error)
-    return { success: false, error: "Failed to submit review. Please try again." }
-  }
+  await db.collection("reviews").insertOne({
+    user_id: session.user.id,
+    product_id: input.productId,
+    rating: input.rating,
+    title: input.title?.trim() || null,
+    content: input.content.trim(),
+    is_verified_purchase: true,
+    is_approved: true,
+    created_at: new Date().toISOString(),
+  })
 
-  // Revalidate product page
   revalidatePath(`/products/[slug]`, "page")
 
   return { success: true }

@@ -1,6 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { ObjectId } from 'mongodb'
+import { getActivityLogCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
 
 interface LogActivityParams {
   adminId?: string
@@ -18,14 +20,17 @@ export async function logActivity({
   details,
 }: LogActivityParams): Promise<void> {
   try {
-    const supabase = await createClient()
+    const activityLog = await getActivityLogCollection()
 
-    await supabase.from("activity_log").insert({
-      admin_id: adminId || null,
+    await activityLog.insertOne({
+      _id: new ObjectId(),
+      admin_id: adminId ? toObjectId(adminId) : null,
+      admin_name: null,
       action,
       entity_type: entityType || null,
       entity_id: entityId || null,
       details: details || null,
+      created_at: new Date(),
     })
   } catch (error) {
     console.error("Error logging activity:", error)

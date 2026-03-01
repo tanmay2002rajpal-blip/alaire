@@ -1,6 +1,7 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getUsersCollection, getOrdersCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
 
 interface ActionResult {
@@ -19,28 +20,22 @@ export async function toggleCustomerStatusAction(
       return { success: false, error: 'Customer ID is required' }
     }
 
-    const supabase = await createClient()
+    const usersCol = await getUsersCollection()
+    const oid = toObjectId(customerId)
 
-    // Get current status
-    const { data: customer, error: fetchError } = await supabase
-      .from('users')
-      .select('is_active')
-      .eq('id', customerId)
-      .single()
+    const customer = await usersCol.findOne(
+      { _id: oid },
+      { projection: { is_active: 1 } }
+    )
 
-    if (fetchError) {
+    if (!customer) {
       return { success: false, error: 'Customer not found' }
     }
 
-    // Toggle status
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ is_active: !customer.is_active })
-      .eq('id', customerId)
-
-    if (updateError) {
-      return { success: false, error: updateError.message }
-    }
+    await usersCol.updateOne(
+      { _id: oid },
+      { $set: { is_active: !customer.is_active } }
+    )
 
     revalidatePath('/customers')
     return { success: true }
@@ -69,7 +64,7 @@ export async function updateCustomerAction(
       return { success: false, error: 'Customer ID is required' }
     }
 
-    const supabase = await createClient()
+    const usersCol = await getUsersCollection()
 
     const updateData: Record<string, any> = {}
     if (data.full_name !== undefined) updateData.full_name = data.full_name
@@ -80,14 +75,10 @@ export async function updateCustomerAction(
       return { success: false, error: 'No data to update' }
     }
 
-    const { error } = await supabase
-      .from('users')
-      .update(updateData)
-      .eq('id', customerId)
-
-    if (error) {
-      return { success: false, error: error.message }
-    }
+    await usersCol.updateOne(
+      { _id: toObjectId(customerId) },
+      { $set: updateData }
+    )
 
     revalidatePath('/customers')
     revalidatePath(`/customers/${customerId}`)
@@ -110,42 +101,45 @@ export async function exportCustomersAction(): Promise<{
   error?: string
 }> {
   try {
-    const supabase = await createClient()
+    const usersCol = await getUsersCollection()
+    const ordersCol = await getOrdersCollection()
 
-    const { data: users, error } = await supabase
-      .from('users')
-      .select(`
-        id,
-        email,
-        full_name,
-        phone,
-        created_at,
-        is_active,
-        orders (
-          id,
-          total
-        )
-      `)
-      .order('created_at', { ascending: false })
+    const users = await usersCol.find().sort({ created_at: -1 }).toArray()
 
-    if (error) {
-      return { success: false, error: error.message }
+    // Get all orders for user stats
+    const userIds = users.map(u => u._id)
+    const orders = userIds.length > 0
+      ? await ordersCol.find(
+          { user_id: { $in: userIds } },
+          { projection: { user_id: 1, total: 1 } }
+        ).toArray()
+      : []
+
+    // Aggregate order stats per user
+    const orderStats = new Map<string, { count: number; totalSpent: number }>()
+    for (const order of orders) {
+      const uid = order.user_id.toString()
+      if (!orderStats.has(uid)) {
+        orderStats.set(uid, { count: 0, totalSpent: 0 })
+      }
+      const stats = orderStats.get(uid)!
+      stats.count += 1
+      stats.totalSpent += order.total || 0
     }
 
     // Build CSV
     const headers = ['ID', 'Email', 'Name', 'Phone', 'Created At', 'Total Orders', 'Total Spent', 'Status']
-    const rows = (users || []).map(user => {
-      const orders = Array.isArray(user.orders) ? user.orders : []
-      const totalSpent = orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
+    const rows = users.map(user => {
+      const stats = orderStats.get(user._id.toString()) || { count: 0, totalSpent: 0 }
 
       return [
-        user.id,
-        user.email,
+        user._id.toString(),
+        user.email || '',
         user.full_name || '',
         user.phone || '',
-        new Date(user.created_at).toLocaleDateString(),
-        orders.length.toString(),
-        totalSpent.toFixed(2),
+        user.created_at.toLocaleDateString(),
+        stats.count.toString(),
+        stats.totalSpent.toFixed(2),
         user.is_active ? 'Active' : 'Inactive',
       ]
     })

@@ -1,6 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { ObjectId } from 'mongodb'
+import { getCouponsCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
 import type { CreateCouponData, UpdateCouponData } from '@/lib/queries/coupons'
 
@@ -15,28 +17,20 @@ interface ActionResult {
  */
 export async function createCouponAction(data: CreateCouponData): Promise<ActionResult> {
   try {
-    const supabase = await createClient()
+    const couponsCol = await getCouponsCollection()
 
-    // Validate code
     if (!data.code || data.code.length < 3) {
       return { success: false, error: 'Coupon code must be at least 3 characters' }
     }
 
-    // Normalize code to uppercase
     const normalizedCode = data.code.toUpperCase().trim()
 
     // Check if code already exists
-    const { data: existingCoupon } = await supabase
-      .from('coupons')
-      .select('id')
-      .eq('code', normalizedCode)
-      .single()
-
-    if (existingCoupon) {
+    const existing = await couponsCol.findOne({ code: normalizedCode })
+    if (existing) {
       return { success: false, error: 'A coupon with this code already exists' }
     }
 
-    // Validate discount value
     if (data.discount_value <= 0) {
       return { success: false, error: 'Discount value must be greater than 0' }
     }
@@ -45,31 +39,27 @@ export async function createCouponAction(data: CreateCouponData): Promise<Action
       return { success: false, error: 'Percentage discount cannot exceed 100%' }
     }
 
-    // Create coupon - map to database column names (type, value)
-    const { data: coupon, error } = await supabase
-      .from('coupons')
-      .insert({
-        code: normalizedCode,
-        type: data.discount_type,
-        value: data.discount_value,
-        min_order_amount: data.min_order_amount || null,
-        max_discount: data.max_discount || null,
-        usage_limit: data.usage_limit || null,
-        usage_count: 0,
-        valid_from: data.valid_from,
-        valid_until: data.valid_until || null,
-        is_active: data.is_active !== false,
-      })
-      .select('id')
-      .single()
+    const now = new Date()
+    const couponId = new ObjectId()
 
-    if (error) {
-      console.error('Error creating coupon:', error)
-      return { success: false, error: error.message }
-    }
+    await couponsCol.insertOne({
+      _id: couponId,
+      code: normalizedCode,
+      type: data.discount_type,
+      value: data.discount_value,
+      min_order_amount: data.min_order_amount || null,
+      max_discount: data.max_discount || null,
+      usage_limit: data.usage_limit || null,
+      usage_count: 0,
+      valid_from: new Date(data.valid_from),
+      valid_until: data.valid_until ? new Date(data.valid_until) : null,
+      is_active: data.is_active !== false,
+      created_at: now,
+      updated_at: now,
+    })
 
     revalidatePath('/coupons')
-    return { success: true, couponId: coupon.id }
+    return { success: true, couponId: couponId.toString() }
   } catch (error) {
     console.error('Error in createCouponAction:', error)
     return {
@@ -91,23 +81,19 @@ export async function updateCouponAction(
       return { success: false, error: 'Coupon ID is required' }
     }
 
-    const supabase = await createClient()
+    const couponsCol = await getCouponsCollection()
+    const oid = toObjectId(id)
 
-    // Build update object
     const updateData: Record<string, any> = {}
 
     if (data.code !== undefined) {
       const normalizedCode = data.code.toUpperCase().trim()
 
-      // Check if code already exists for another coupon
-      const { data: existingCoupon } = await supabase
-        .from('coupons')
-        .select('id')
-        .eq('code', normalizedCode)
-        .neq('id', id)
-        .single()
-
-      if (existingCoupon) {
+      const existing = await couponsCol.findOne({
+        code: normalizedCode,
+        _id: { $ne: oid },
+      })
+      if (existing) {
         return { success: false, error: 'A coupon with this code already exists' }
       }
 
@@ -128,21 +114,13 @@ export async function updateCouponAction(
     if (data.min_order_amount !== undefined) updateData.min_order_amount = data.min_order_amount
     if (data.max_discount !== undefined) updateData.max_discount = data.max_discount
     if (data.usage_limit !== undefined) updateData.usage_limit = data.usage_limit
-    if (data.valid_from !== undefined) updateData.valid_from = data.valid_from
-    if (data.valid_until !== undefined) updateData.valid_until = data.valid_until
+    if (data.valid_from !== undefined) updateData.valid_from = new Date(data.valid_from)
+    if (data.valid_until !== undefined) updateData.valid_until = data.valid_until ? new Date(data.valid_until) : null
     if (data.is_active !== undefined) updateData.is_active = data.is_active
 
-    updateData.updated_at = new Date().toISOString()
+    updateData.updated_at = new Date()
 
-    const { error } = await supabase
-      .from('coupons')
-      .update(updateData)
-      .eq('id', id)
-
-    if (error) {
-      console.error('Error updating coupon:', error)
-      return { success: false, error: error.message }
-    }
+    await couponsCol.updateOne({ _id: oid }, { $set: updateData })
 
     revalidatePath('/coupons')
     return { success: true, couponId: id }
@@ -164,17 +142,8 @@ export async function deleteCouponAction(id: string): Promise<ActionResult> {
       return { success: false, error: 'Coupon ID is required' }
     }
 
-    const supabase = await createClient()
-
-    const { error } = await supabase
-      .from('coupons')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      console.error('Error deleting coupon:', error)
-      return { success: false, error: error.message }
-    }
+    const couponsCol = await getCouponsCollection()
+    await couponsCol.deleteOne({ _id: toObjectId(id) })
 
     revalidatePath('/coupons')
     return { success: true }
@@ -196,32 +165,20 @@ export async function toggleCouponStatusAction(id: string): Promise<ActionResult
       return { success: false, error: 'Coupon ID is required' }
     }
 
-    const supabase = await createClient()
+    const couponsCol = await getCouponsCollection()
+    const coupon = await couponsCol.findOne(
+      { _id: toObjectId(id) },
+      { projection: { is_active: 1 } }
+    )
 
-    // Get current status
-    const { data: coupon, error: fetchError } = await supabase
-      .from('coupons')
-      .select('is_active')
-      .eq('id', id)
-      .single()
-
-    if (fetchError) {
+    if (!coupon) {
       return { success: false, error: 'Coupon not found' }
     }
 
-    // Toggle status
-    const { error } = await supabase
-      .from('coupons')
-      .update({
-        is_active: !coupon.is_active,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-
-    if (error) {
-      console.error('Error toggling coupon status:', error)
-      return { success: false, error: error.message }
-    }
+    await couponsCol.updateOne(
+      { _id: toObjectId(id) },
+      { $set: { is_active: !coupon.is_active, updated_at: new Date() } }
+    )
 
     revalidatePath('/coupons')
     return { success: true }
@@ -250,15 +207,10 @@ export async function generateCouponCodeAction(): Promise<{
   }
 
   // Check if code exists
-  const supabase = await createClient()
-  const { data: existingCoupon } = await supabase
-    .from('coupons')
-    .select('id')
-    .eq('code', code)
-    .single()
+  const couponsCol = await getCouponsCollection()
+  const existing = await couponsCol.findOne({ code })
 
-  if (existingCoupon) {
-    // Try again with a different code
+  if (existing) {
     return generateCouponCodeAction()
   }
 

@@ -1,9 +1,11 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getDb } from "@/lib/db/client"
 import { Resend } from "resend"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 export interface SubscribeResult {
   success: boolean
@@ -11,43 +13,36 @@ export interface SubscribeResult {
 }
 
 export async function subscribeToNewsletter(email: string): Promise<SubscribeResult> {
-  // Validate email format
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(email)) {
     return { success: false, error: "Invalid email address" }
   }
 
-  const supabase = await createClient()
+  const db = await getDb()
+  const col = db.collection("newsletter_subscribers")
 
-  // Check if already subscribed
-  const { data: existing } = await supabase
-    .from("newsletter_subscribers")
-    .select("id, is_active")
-    .eq("email", email.toLowerCase())
-    .single()
+  const existing = await col.findOne({ email: email.toLowerCase() })
 
   if (existing?.is_active) {
     return { success: false, error: "Email already subscribed" }
   }
 
-  // Insert or reactivate subscription
-  const { error: dbError } = await supabase
-    .from("newsletter_subscribers")
-    .upsert({
-      email: email.toLowerCase(),
-      is_active: true,
-      subscribed_at: new Date().toISOString(),
-      unsubscribed_at: null,
-    }, { onConflict: "email" })
-
-  if (dbError) {
-    console.error("Newsletter subscription error:", dbError)
-    return { success: false, error: "Failed to subscribe. Please try again." }
-  }
+  await col.updateOne(
+    { email: email.toLowerCase() },
+    {
+      $set: {
+        email: email.toLowerCase(),
+        is_active: true,
+        subscribed_at: new Date().toISOString(),
+        unsubscribed_at: null,
+      },
+    },
+    { upsert: true }
+  )
 
   // Send welcome email (don't fail subscription if email fails)
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "Alaire <noreply@alaire.com>",
       to: email.toLowerCase(),
       subject: "Welcome to Alaire",
@@ -70,7 +65,6 @@ export async function subscribeToNewsletter(email: string): Promise<SubscribeRes
     })
   } catch (emailError) {
     console.error("Welcome email failed:", emailError)
-    // Don't return error - subscription succeeded
   }
 
   return { success: true }

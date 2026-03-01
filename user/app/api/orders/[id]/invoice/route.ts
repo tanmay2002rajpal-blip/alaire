@@ -1,10 +1,6 @@
-/**
- * @fileoverview Invoice PDF generation API route.
- * Generates downloadable PDF invoices for completed orders.
- */
-
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -31,40 +27,23 @@ export async function GET(
 ) {
   try {
     const { id: orderId } = await params
-    const supabase = await createClient()
+    const session = await auth()
 
-    // Get authenticated user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Fetch order with items
-    const { data: order, error } = await supabase
-      .from("orders")
-      .select(
-        `
-        *,
-        items:order_items(
-          product_name,
-          variant_name,
-          quantity,
-          price_at_purchase
-        )
-      `
-      )
-      .eq("id", orderId)
-      .eq("user_id", user.id)
-      .single()
+    const db = await getDb()
 
-    if (error || !order) {
+    const order = await db.collection("orders").findOne({
+      $expr: { $eq: [{ $toString: "$_id" }, orderId] },
+      user_id: session.user.id,
+    })
+
+    if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    // Only allow invoice for paid/confirmed orders
     if (!["paid", "confirmed", "processing", "shipped", "delivered"].includes(order.status)) {
       return NextResponse.json(
         { error: "Invoice not available for pending orders" },
@@ -72,11 +51,32 @@ export async function GET(
       )
     }
 
-    // Generate PDF
-    const pdf = generateInvoicePDF(order)
+    const items = await db
+      .collection("order_items")
+      .find({ order_id: orderId })
+      .project({
+        product_name: 1,
+        variant_name: 1,
+        quantity: 1,
+        price_at_purchase: 1,
+      })
+      .toArray()
+
+    const pdf = generateInvoicePDF({
+      id: orderId,
+      order_number: order.order_number,
+      created_at: order.created_at,
+      subtotal: order.subtotal,
+      discount_amount: order.discount_amount ?? 0,
+      shipping_cost: order.shipping_amount ?? order.shipping_cost ?? 0,
+      wallet_amount_used: order.wallet_amount_used ?? 0,
+      total: order.total,
+      payment_method: order.payment_method,
+      shipping_address: order.shipping_address as ShippingAddress,
+      items: items as unknown as OrderItem[],
+    })
     const pdfBuffer = pdf.output("arraybuffer")
 
-    // Return PDF as download
     return new NextResponse(pdfBuffer, {
       headers: {
         "Content-Type": "application/pdf",
@@ -108,11 +108,9 @@ function generateInvoicePDF(order: {
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
 
-  // Colors
   const primaryColor = "#000000"
   const grayColor = "#666666"
 
-  // Header - Company Logo/Name
   doc.setFontSize(28)
   doc.setFont("helvetica", "bold")
   doc.text("ALAIRE", pageWidth / 2, 25, { align: "center" })
@@ -122,13 +120,11 @@ function generateInvoicePDF(order: {
   doc.setTextColor(grayColor)
   doc.text("Premium Fashion & Lifestyle", pageWidth / 2, 32, { align: "center" })
 
-  // Invoice Title
   doc.setFontSize(20)
   doc.setFont("helvetica", "bold")
   doc.setTextColor(primaryColor)
   doc.text("TAX INVOICE", pageWidth / 2, 50, { align: "center" })
 
-  // Invoice Details Box
   doc.setDrawColor(200, 200, 200)
   doc.setFillColor(250, 250, 250)
   doc.roundedRect(14, 58, pageWidth - 28, 25, 2, 2, "F")
@@ -148,7 +144,6 @@ function generateInvoicePDF(order: {
   doc.text(order.payment_method === "cod" ? "Cash on Delivery" : "Prepaid (Online)", pageWidth / 2 + 55, 67)
   doc.text("Confirmed", pageWidth / 2 + 45, 75)
 
-  // Billing & Shipping Address
   const address = order.shipping_address
   let yPos = 95
 
@@ -172,7 +167,6 @@ function generateInvoicePDF(order: {
   yPos += 5
   doc.text(`Phone: ${address.phone}`, 14, yPos)
 
-  // Company Details (right side)
   doc.setTextColor(primaryColor)
   doc.setFont("helvetica", "bold")
   doc.text("Sold By:", pageWidth - 14, 95, { align: "right" })
@@ -184,7 +178,6 @@ function generateInvoicePDF(order: {
   doc.text("Mumbai, Maharashtra - 400001", pageWidth - 14, 113, { align: "right" })
   doc.text("GSTIN: 27AABCA1234B1ZD", pageWidth - 14, 118, { align: "right" })
 
-  // Items Table
   yPos = 135
 
   const tableData = order.items.map((item, index) => [
@@ -222,11 +215,9 @@ function generateInvoicePDF(order: {
     },
   })
 
-  // Get final Y position after table
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const finalY = (doc as any).lastAutoTable.finalY + 10
 
-  // Summary Box
   const summaryX = pageWidth - 90
   let summaryY = finalY
 
@@ -237,34 +228,29 @@ function generateInvoicePDF(order: {
   doc.setFont("helvetica", "normal")
   doc.setTextColor(grayColor)
 
-  // Subtotal
   doc.text("Subtotal:", summaryX, summaryY)
   doc.text(formatPrice(order.subtotal), pageWidth - 20, summaryY, { align: "right" })
   summaryY += 8
 
-  // Discount
   if (order.discount_amount > 0) {
-    doc.setTextColor(34, 197, 94) // Green
+    doc.setTextColor(34, 197, 94)
     doc.text("Discount:", summaryX, summaryY)
     doc.text(`-${formatPrice(order.discount_amount)}`, pageWidth - 20, summaryY, { align: "right" })
     summaryY += 8
   }
 
-  // Wallet
   if (order.wallet_amount_used > 0) {
-    doc.setTextColor(34, 197, 94) // Green
+    doc.setTextColor(34, 197, 94)
     doc.text("Wallet Applied:", summaryX, summaryY)
     doc.text(`-${formatPrice(order.wallet_amount_used)}`, pageWidth - 20, summaryY, { align: "right" })
     summaryY += 8
   }
 
-  // Shipping
   doc.setTextColor(grayColor)
   doc.text("Shipping:", summaryX, summaryY)
   doc.text(order.shipping_cost > 0 ? formatPrice(order.shipping_cost) : "FREE", pageWidth - 20, summaryY, { align: "right" })
   summaryY += 10
 
-  // Total
   doc.setDrawColor(0)
   doc.line(summaryX, summaryY - 2, pageWidth - 15, summaryY - 2)
   summaryY += 5
@@ -275,7 +261,6 @@ function generateInvoicePDF(order: {
   doc.text("Total:", summaryX, summaryY)
   doc.text(formatPrice(order.total), pageWidth - 20, summaryY, { align: "right" })
 
-  // Footer
   const footerY = doc.internal.pageSize.getHeight() - 30
 
   doc.setDrawColor(200, 200, 200)
@@ -292,7 +277,7 @@ function generateInvoicePDF(order: {
 }
 
 function formatPrice(amount: number): string {
-  return `₹${amount.toLocaleString("en-IN")}`
+  return `\u20B9${amount.toLocaleString("en-IN")}`
 }
 
 function formatDate(dateString: string): string {

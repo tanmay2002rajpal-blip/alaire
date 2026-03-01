@@ -1,6 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { ObjectId } from 'mongodb'
+import { getUsersCollection, getOrdersCollection, getAddressesCollection } from '@/lib/db/collections'
+import { toObjectId, paginate, totalPages } from '@/lib/db/helpers'
 
 export interface Customer {
   id: string
@@ -68,74 +70,78 @@ export interface PaginatedCustomers {
  * Get paginated customers with filters
  */
 export async function getCustomers(filters?: CustomerFilters): Promise<PaginatedCustomers> {
-  const supabase = await createClient()
+  const usersCol = await getUsersCollection()
+  const ordersCol = await getOrdersCollection()
 
-  const page = filters?.page || 1
-  const limit = filters?.limit || 25
-  const offset = (page - 1) * limit
+  const { skip, limit: lim, page } = paginate(filters?.page, filters?.limit || 25)
   const sortBy = filters?.sort_by || 'created_at'
   const sortOrder = filters?.sort_order || 'desc'
 
-  // Get profiles with their order stats
-  let query = supabase
-    .from('profiles')
-    .select(`
-      id,
-      email,
-      full_name,
-      phone,
-      created_at,
-      is_active,
-      orders (
-        id,
-        total,
-        created_at
-      )
-    `, { count: 'exact' })
+  // Build filter
+  const filter: Record<string, any> = {}
 
-  // Apply search filter
   if (filters?.search) {
-    const searchTerm = '%' + filters.search + '%'
-    query = query.or('email.ilike.' + searchTerm + ',full_name.ilike.' + searchTerm + ',phone.ilike.' + searchTerm)
+    filter.$or = [
+      { email: { $regex: filters.search, $options: 'i' } },
+      { full_name: { $regex: filters.search, $options: 'i' } },
+      { phone: { $regex: filters.search, $options: 'i' } },
+    ]
   }
 
-  // Apply status filter
   if (filters?.status && filters.status !== 'all') {
-    query = query.eq('is_active', filters.status === 'active')
+    filter.is_active = filters.status === 'active'
   }
 
-  // Apply sorting (only for direct columns)
+  // Get profiles with sorting for created_at
+  const mongoSort: Record<string, 1 | -1> = {}
   if (sortBy === 'created_at') {
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' })
+    mongoSort.created_at = sortOrder === 'asc' ? 1 : -1
+  } else {
+    mongoSort.created_at = -1
   }
 
-  // Apply pagination
-  query = query.range(offset, offset + limit - 1)
+  const [profilesData, total] = await Promise.all([
+    usersCol.find(filter).sort(mongoSort).skip(skip).limit(lim).toArray(),
+    usersCol.countDocuments(filter),
+  ])
 
-  const { data: profilesData, error, count } = await query
+  // Get order data for these users
+  const userIds = profilesData.map(p => p._id)
+  const ordersData = userIds.length > 0
+    ? await ordersCol.find(
+        { user_id: { $in: userIds } },
+        { projection: { user_id: 1, total: 1, created_at: 1 } }
+      ).toArray()
+    : []
 
-  if (error) {
-    console.error('Error fetching customers:', error)
-    throw new Error('Failed to fetch customers')
+  // Aggregate orders per user
+  const orderStats = new Map<string, { count: number; totalSpent: number; lastOrderAt: Date | null }>()
+  for (const order of ordersData) {
+    const uid = order.user_id.toString()
+    if (!orderStats.has(uid)) {
+      orderStats.set(uid, { count: 0, totalSpent: 0, lastOrderAt: null })
+    }
+    const stats = orderStats.get(uid)!
+    stats.count += 1
+    stats.totalSpent += order.total || 0
+    if (!stats.lastOrderAt || order.created_at > stats.lastOrderAt) {
+      stats.lastOrderAt = order.created_at
+    }
   }
 
-  // Transform data to include calculated fields
-  const customers: Customer[] = (profilesData || []).map(profile => {
-    const orders = Array.isArray(profile.orders) ? profile.orders : []
-    const totalSpent = orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
-    const lastOrder = orders.length > 0
-      ? orders.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
-      : null
+  // Transform data
+  let customers: Customer[] = profilesData.map(profile => {
+    const stats = orderStats.get(profile._id.toString()) || { count: 0, totalSpent: 0, lastOrderAt: null }
 
     return {
-      id: profile.id,
+      id: profile._id.toString(),
       email: profile.email,
       full_name: profile.full_name,
       phone: profile.phone,
-      created_at: profile.created_at,
-      last_order_at: lastOrder?.created_at || null,
-      total_orders: orders.length,
-      total_spent: totalSpent,
+      created_at: profile.created_at.toISOString(),
+      last_order_at: stats.lastOrderAt?.toISOString() || null,
+      total_orders: stats.count,
+      total_spent: stats.totalSpent,
       is_active: profile.is_active ?? true,
     }
   })
@@ -160,14 +166,11 @@ export async function getCustomers(filters?: CustomerFilters): Promise<Paginated
     })
   }
 
-  const total = count || 0
-  const totalPages = Math.ceil(total / limit)
-
   return {
     customers,
     total,
     page,
-    totalPages,
+    totalPages: totalPages(total, lim),
   }
 }
 
@@ -175,47 +178,36 @@ export async function getCustomers(filters?: CustomerFilters): Promise<Paginated
  * Get customer statistics
  */
 export async function getCustomerStats(): Promise<CustomerStats> {
-  const supabase = await createClient()
+  const usersCol = await getUsersCollection()
+  const ordersCol = await getOrdersCollection()
 
   // Get total customers
-  const { count: totalCustomers } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
+  const totalCustomers = await usersCol.countDocuments()
 
   // Get new customers this month
   const startOfMonth = new Date()
   startOfMonth.setDate(1)
   startOfMonth.setHours(0, 0, 0, 0)
-
-  const { count: newThisMonth } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .gte('created_at', startOfMonth.toISOString())
+  const newThisMonth = await usersCol.countDocuments({ created_at: { $gte: startOfMonth } })
 
   // Get customers who ordered in the last 30 days
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-  const { data: activeOrders } = await supabase
-    .from('orders')
-    .select('user_id')
-    .gte('created_at', thirtyDaysAgo.toISOString())
-
-  const activeCustomerIds = new Set(activeOrders?.map(o => o.user_id) || [])
+  const activeOrders = await ordersCol.distinct('user_id', { created_at: { $gte: thirtyDaysAgo } })
+  const activeCustomers = activeOrders.length
 
   // Get total revenue
-  const { data: revenueData } = await supabase
-    .from('orders')
-    .select('total')
-    .eq('status', 'delivered')
-
-  const totalRevenue = revenueData?.reduce((sum, order) => sum + (order.total || 0), 0) || 0
+  const revenueResult = await ordersCol.aggregate<{ _id: null; total: number }>([
+    { $match: { status: 'delivered' } },
+    { $group: { _id: null, total: { $sum: '$total' } } },
+  ]).toArray()
 
   return {
-    total_customers: totalCustomers || 0,
-    new_this_month: newThisMonth || 0,
-    active_customers: activeCustomerIds.size,
-    total_revenue: totalRevenue,
+    total_customers: totalCustomers,
+    new_this_month: newThisMonth,
+    active_customers: activeCustomers,
+    total_revenue: revenueResult[0]?.total || 0,
   }
 }
 
@@ -223,59 +215,39 @@ export async function getCustomerStats(): Promise<CustomerStats> {
  * Get customer by ID with full details
  */
 export async function getCustomerById(id: string): Promise<CustomerDetail | null> {
-  const supabase = await createClient()
+  const usersCol = await getUsersCollection()
+  const ordersCol = await getOrdersCollection()
+  const addressesCol = await getAddressesCollection()
 
-  // Get profile with orders
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select(`
-      id,
-      email,
-      full_name,
-      phone,
-      created_at,
-      is_active,
-      orders (
-        id,
-        order_number,
-        status,
-        total,
-        created_at
-      )
-    `)
-    .eq('id', id)
-    .single()
+  const oid = toObjectId(id)
 
-  if (profileError || !profile) {
-    console.error('Error fetching customer:', profileError)
-    return null
-  }
+  const profile = await usersCol.findOne({ _id: oid })
+  if (!profile) return null
 
-  // Get addresses
-  const { data: addresses } = await supabase
-    .from('addresses')
-    .select('*')
-    .eq('user_id', id)
-    .order('is_default', { ascending: false })
+  // Get orders and addresses in parallel
+  const [orders, addresses] = await Promise.all([
+    ordersCol.find(
+      { user_id: oid },
+      { projection: { order_number: 1, status: 1, total: 1, created_at: 1 } }
+    ).sort({ created_at: -1 }).toArray(),
+    addressesCol.find({ user_id: oid }).sort({ is_default: -1 }).toArray(),
+  ])
 
-  const orders = Array.isArray(profile.orders) ? profile.orders : []
-  const totalSpent = orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
-  const lastOrder = orders.length > 0
-    ? orders.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
-    : null
+  const totalSpent = orders.reduce((sum, order) => sum + (order.total || 0), 0)
+  const lastOrder = orders.length > 0 ? orders[0] : null
 
   return {
-    id: profile.id,
+    id: profile._id.toString(),
     email: profile.email,
     full_name: profile.full_name,
     phone: profile.phone,
-    created_at: profile.created_at,
-    last_order_at: lastOrder?.created_at || null,
+    created_at: profile.created_at.toISOString(),
+    last_order_at: lastOrder?.created_at.toISOString() || null,
     total_orders: orders.length,
     total_spent: totalSpent,
     is_active: profile.is_active ?? true,
-    addresses: (addresses || []).map(addr => ({
-      id: addr.id,
+    addresses: addresses.map(addr => ({
+      id: addr._id.toString(),
       type: addr.type || 'shipping',
       full_name: addr.full_name || '',
       address_line_1: addr.address_line_1 || '',
@@ -287,12 +259,12 @@ export async function getCustomerById(id: string): Promise<CustomerDetail | null
       phone: addr.phone,
       is_default: addr.is_default || false,
     })),
-    recent_orders: orders.slice(0, 10).map((order: any) => ({
-      id: order.id,
+    recent_orders: orders.slice(0, 10).map(order => ({
+      id: order._id.toString(),
       order_number: order.order_number,
       status: order.status,
       total: order.total,
-      created_at: order.created_at,
+      created_at: order.created_at.toISOString(),
     })),
   }
 }

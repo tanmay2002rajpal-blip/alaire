@@ -5,7 +5,9 @@
 
 import { Resend } from "resend"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 interface OrderStatusEmailData {
   orderNumber: string
@@ -117,7 +119,7 @@ export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise
   `
 
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} Has Shipped! 📦`,
@@ -208,7 +210,7 @@ export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promi
   `
 
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} Has Been Delivered! ✓`,
@@ -292,7 +294,7 @@ export async function sendOrderRefundEmail(data: OrderStatusEmailData): Promise<
   `
 
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Refund Processed for Order ${orderNumber}`,

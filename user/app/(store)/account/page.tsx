@@ -1,4 +1,6 @@
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
+import { serializeDoc, serializeDocs } from "@/lib/db/helpers"
 import { ProfileForm } from "@/components/account/profile-form"
 import {
   Card,
@@ -9,22 +11,26 @@ import {
 } from "@/components/ui/card"
 
 export default async function AccountPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  const userId = session?.user?.id
+
+  const db = await getDb()
 
   // Get profile data
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user?.id)
-    .single()
+  const profileDoc = await db
+    .collection("users")
+    .findOne({ $expr: { $eq: [{ $toString: "$_id" }, userId] } })
+
+  const profile = profileDoc ? serializeDoc(profileDoc) : null
 
   // Get addresses
-  const { data: addresses } = await supabase
-    .from("addresses")
-    .select("*")
-    .eq("user_id", user?.id)
-    .order("is_default", { ascending: false })
+  const addressDocs = await db
+    .collection("user_addresses")
+    .find({ user_id: userId })
+    .sort({ is_default: -1 })
+    .toArray()
+
+  const addresses = serializeDocs(addressDocs)
 
   return (
     <div className="space-y-6">
@@ -37,9 +43,14 @@ export default async function AccountPage() {
         </CardHeader>
         <CardContent>
           <ProfileForm
-            user={user!}
-            profile={profile}
-            addresses={addresses ?? []}
+            user={{
+              id: session!.user!.id as string,
+              name: session!.user!.name,
+              email: session!.user!.email,
+              image: session!.user!.image,
+            }}
+            profile={profile as unknown as import("@/types").Profile | null}
+            addresses={addresses as unknown as import("@/types").Address[]}
           />
         </CardContent>
       </Card>

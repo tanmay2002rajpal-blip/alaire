@@ -51,7 +51,6 @@ const COURIER_OPTIONS = [
   { value: "dtdc", label: "DTDC" },
   { value: "ecom_express", label: "Ecom Express" },
   { value: "xpressbees", label: "XpressBees" },
-  { value: "shiprocket", label: "Shiprocket" },
   { value: "other", label: "Other" },
 ];
 

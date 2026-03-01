@@ -1,5 +1,5 @@
-import { getRecentlyViewed } from "@/lib/supabase/queries"
-import { createClient } from "@/lib/supabase/server"
+import { getRecentlyViewed } from "@/lib/db/queries"
+import { auth } from "@/lib/auth"
 import { ProductGrid } from "./product-grid"
 
 interface RecentlyViewedProps {
@@ -7,12 +7,11 @@ interface RecentlyViewedProps {
 }
 
 export async function RecentlyViewed({ excludeProductId }: RecentlyViewedProps) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
 
-  if (!user) return null
+  if (!session?.user?.id) return null
 
-  const products = await getRecentlyViewed(user.id, excludeProductId, 4)
+  const products = await getRecentlyViewed(session.user.id, excludeProductId, 4)
 
   if (products.length === 0) return null
 

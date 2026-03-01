@@ -1,6 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { ObjectId } from 'mongodb'
+import { getBlogPostsCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from "next/cache"
 
 export interface BlogPostInput {
@@ -17,29 +19,28 @@ export interface BlogPostInput {
  */
 export async function createBlogPost(data: BlogPostInput) {
   try {
-    const supabase = await createClient()
+    const postsCol = await getBlogPostsCollection()
+    const now = new Date()
+    const postId = new ObjectId()
 
-    const { data: post, error } = await supabase
-      .from("blog_posts")
-      .insert({
-        title: data.title,
-        slug: data.slug,
-        excerpt: data.excerpt || null,
-        content: data.content || null,
-        featured_image: data.featured_image || null,
-        is_published: data.is_published,
-        published_at: data.is_published ? new Date().toISOString() : null,
-      })
-      .select()
-      .single()
+    await postsCol.insertOne({
+      _id: postId,
+      title: data.title,
+      slug: data.slug,
+      excerpt: data.excerpt || null,
+      content: data.content || null,
+      featured_image: data.featured_image || null,
+      author_id: null,
+      is_published: data.is_published,
+      published_at: data.is_published ? now : null,
+      created_at: now,
+      updated_at: now,
+    })
 
-    if (error) {
-      console.error("Error creating blog post:", error)
-      return { success: false, error: error.message }
-    }
+    const post = await postsCol.findOne({ _id: postId })
 
     revalidatePath("/content/blog")
-    return { success: true, data: post }
+    return { success: true, data: post ? { ...post, id: post._id.toString() } : null }
   } catch (err) {
     console.error("Unexpected error creating blog post:", err)
     return { success: false, error: "Failed to create blog post" }
@@ -51,44 +52,32 @@ export async function createBlogPost(data: BlogPostInput) {
  */
 export async function updateBlogPost(id: string, data: Partial<BlogPostInput>) {
   try {
-    const supabase = await createClient()
+    const postsCol = await getBlogPostsCollection()
+    const oid = toObjectId(id)
 
     const updateData: Record<string, unknown> = {
       ...data,
-      updated_at: new Date().toISOString(),
+      updated_at: new Date(),
     }
 
     // Set published_at when publishing
-    if (data.is_published !== undefined) {
-      if (data.is_published) {
-        // Check if already published
-        const { data: existing } = await supabase
-          .from("blog_posts")
-          .select("published_at")
-          .eq("id", id)
-          .single()
-
-        if (!existing?.published_at) {
-          updateData.published_at = new Date().toISOString()
-        }
+    if (data.is_published !== undefined && data.is_published) {
+      const existing = await postsCol.findOne(
+        { _id: oid },
+        { projection: { published_at: 1 } }
+      )
+      if (!existing?.published_at) {
+        updateData.published_at = new Date()
       }
     }
 
-    const { data: post, error } = await supabase
-      .from("blog_posts")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single()
+    await postsCol.updateOne({ _id: oid }, { $set: updateData })
 
-    if (error) {
-      console.error("Error updating blog post:", error)
-      return { success: false, error: error.message }
-    }
+    const post = await postsCol.findOne({ _id: oid })
 
     revalidatePath("/content/blog")
     revalidatePath(`/content/blog/${id}`)
-    return { success: true, data: post }
+    return { success: true, data: post ? { ...post, id: post._id.toString() } : null }
   } catch (err) {
     console.error("Unexpected error updating blog post:", err)
     return { success: false, error: "Failed to update blog post" }
@@ -100,17 +89,8 @@ export async function updateBlogPost(id: string, data: Partial<BlogPostInput>) {
  */
 export async function deleteBlogPost(id: string) {
   try {
-    const supabase = await createClient()
-
-    const { error } = await supabase
-      .from("blog_posts")
-      .delete()
-      .eq("id", id)
-
-    if (error) {
-      console.error("Error deleting blog post:", error)
-      return { success: false, error: error.message }
-    }
+    const postsCol = await getBlogPostsCollection()
+    await postsCol.deleteOne({ _id: toObjectId(id) })
 
     revalidatePath("/content/blog")
     return { success: true }
@@ -125,20 +105,24 @@ export async function deleteBlogPost(id: string) {
  */
 export async function getBlogPostById(id: string) {
   try {
-    const supabase = await createClient()
+    const postsCol = await getBlogPostsCollection()
+    const data = await postsCol.findOne({ _id: toObjectId(id) })
 
-    const { data, error } = await supabase
-      .from("blog_posts")
-      .select("*")
-      .eq("id", id)
-      .single()
+    if (!data) return null
 
-    if (error) {
-      console.error("Error fetching blog post:", error)
-      return null
+    return {
+      id: data._id.toString(),
+      title: data.title,
+      slug: data.slug,
+      excerpt: data.excerpt,
+      content: data.content,
+      featured_image: data.featured_image,
+      author_id: data.author_id?.toString() || null,
+      is_published: data.is_published,
+      published_at: data.published_at?.toISOString() || null,
+      created_at: data.created_at.toISOString(),
+      updated_at: data.updated_at.toISOString(),
     }
-
-    return data
   } catch (err) {
     console.error("Unexpected error fetching blog post:", err)
     return null

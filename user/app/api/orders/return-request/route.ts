@@ -1,21 +1,12 @@
-/**
- * @fileoverview Return request API route.
- * Handles customer return/refund requests.
- */
-
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const session = await auth()
 
-    // Get authenticated user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -29,15 +20,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify order belongs to user and is delivered
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("id, status, order_number, created_at")
-      .eq("id", orderId)
-      .eq("user_id", user.id)
-      .single()
+    const db = await getDb()
 
-    if (orderError || !order) {
+    const order = await db.collection("orders").findOne({
+      $expr: { $eq: [{ $toString: "$_id" }, orderId] },
+      user_id: session.user.id,
+    })
+
+    if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
@@ -48,7 +38,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if order is within return window (7 days)
+    // Check return window (7 days)
     const deliveryDate = new Date(order.created_at)
     const returnWindowEnd = new Date(deliveryDate)
     returnWindowEnd.setDate(returnWindowEnd.getDate() + 7)
@@ -61,12 +51,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for existing return request
-    const { data: existingRequest } = await supabase
-      .from("return_requests")
-      .select("id")
-      .eq("order_id", orderId)
-      .eq("status", "pending")
-      .single()
+    const existingRequest = await db.collection("return_requests").findOne({
+      order_id: orderId,
+      status: "pending",
+    })
 
     if (existingRequest) {
       return NextResponse.json(
@@ -76,59 +64,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Create return request
-    const { data: returnRequest, error: insertError } = await supabase
-      .from("return_requests")
-      .insert({
-        order_id: orderId,
-        user_id: user.id,
-        reason,
-        details: details || null,
-        status: "pending",
-      })
-      .select()
-      .single()
-
-    if (insertError) {
-      // If table doesn't exist, log for admin but still accept request
-      console.error("Return request insert error:", insertError)
-
-      // Create a notification for the user
-      await supabase.from("notifications").insert({
-        user_id: user.id,
-        title: "Return Request Submitted",
-        message: `Your return request for order ${order.order_number} has been submitted. Our team will contact you within 24-48 hours.`,
-        type: "order",
-        link: `/account/orders/${orderId}`,
-      })
-
-      // Update order status to indicate return requested
-      await supabase
-        .from("order_status_history")
-        .insert({
-          order_id: orderId,
-          status: "return_requested",
-          note: `Return requested: ${reason}. ${details || ""}`,
-        })
-
-      return NextResponse.json({
-        success: true,
-        message: "Return request submitted successfully",
-      })
-    }
+    const result = await db.collection("return_requests").insertOne({
+      order_id: orderId,
+      user_id: session.user.id,
+      reason,
+      details: details || null,
+      status: "pending",
+      created_at: new Date().toISOString(),
+    })
 
     // Create notification
-    await supabase.from("notifications").insert({
-      user_id: user.id,
+    await db.collection("notifications").insertOne({
+      user_id: session.user.id,
       title: "Return Request Submitted",
       message: `Your return request for order ${order.order_number} has been submitted. Our team will contact you within 24-48 hours.`,
       type: "order",
       link: `/account/orders/${orderId}`,
+      read: false,
+      created_at: new Date().toISOString(),
+    })
+
+    // Add to order status history
+    await db.collection("order_status_history").insertOne({
+      order_id: orderId,
+      status: "return_requested",
+      note: `Return requested: ${reason}. ${details || ""}`,
+      created_at: new Date().toISOString(),
     })
 
     return NextResponse.json({
       success: true,
       message: "Return request submitted successfully",
-      requestId: returnRequest?.id,
+      requestId: result.insertedId.toString(),
     })
   } catch (error) {
     console.error("Return request error:", error)

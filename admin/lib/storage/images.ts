@@ -1,4 +1,12 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+'use server'
+
+import { v2 as cloudinary } from 'cloudinary'
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+})
 
 /**
  * Result type for upload operations
@@ -10,13 +18,13 @@ export type UploadResult = {
 }
 
 /**
- * Storage bucket names
- * Note: These buckets must be created in Supabase Dashboard with public access
+ * Cloudinary folder paths
  */
-export const BUCKETS = {
-  PRODUCT_IMAGES: 'product-images',
-  CATEGORY_IMAGES: 'category-images',
-  HERO_IMAGES: 'hero-images',
+const FOLDERS = {
+  PRODUCTS: 'alaire/products',
+  CATEGORIES: 'alaire/categories',
+  HERO_SLIDES: 'alaire/hero-slides',
+  BLOG: 'alaire/blog',
 } as const
 
 /**
@@ -37,10 +45,8 @@ const ALLOWED_IMAGE_TYPES = [
 
 /**
  * Validates that a file is an image and under the size limit
- * @param file - The file to validate
- * @returns Error message if invalid, null if valid
  */
-export function validateImage(file: File): string | null {
+export async function validateImage(file: File): Promise<string | null> {
   if (!file) {
     return 'No file provided'
   }
@@ -58,55 +64,75 @@ export function validateImage(file: File): string | null {
 
 /**
  * Generates a unique filename with timestamp
- * @param originalName - The original filename
- * @returns A unique filename with timestamp prefix
  */
-export function generateFileName(originalName: string): string {
+function generateFileName(originalName: string): string {
   const timestamp = Date.now()
   const sanitized = originalName.replace(/[^a-zA-Z0-9.-]/g, '_')
   return `${timestamp}_${sanitized}`
 }
 
 /**
- * Gets the public URL for an image in storage
- * @param bucket - The storage bucket name
- * @param path - The file path within the bucket
- * @returns The public URL
+ * Upload a file buffer to Cloudinary
  */
-export function getPublicUrl(bucket: string, path: string): string {
-  const supabase = createAdminClient()
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path)
-  return data.publicUrl
-}
-
-/**
- * Deletes an image from storage
- * @param bucket - The storage bucket name
- * @param path - The file path within the bucket
- * @returns UploadResult indicating success or failure
- */
-export async function deleteImage(
-  bucket: string,
-  path: string
+async function uploadToCloudinary(
+  file: File,
+  folder: string,
+  publicId: string
 ): Promise<UploadResult> {
   try {
-    const supabase = createAdminClient()
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
 
-    const { error } = await supabase.storage.from(bucket).remove([path])
-
-    if (error) {
-      console.error('Error deleting image:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to delete image',
-      }
-    }
+    const result = await new Promise<any>((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          public_id: publicId,
+          resource_type: 'image',
+          overwrite: false,
+        },
+        (error, result) => {
+          if (error) reject(error)
+          else resolve(result)
+        }
+      )
+      uploadStream.end(buffer)
+    })
 
     return {
       success: true,
+      url: result.secure_url,
     }
   } catch (error) {
-    console.error('Unexpected error deleting image:', error)
+    console.error('Error uploading to Cloudinary:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to upload image',
+    }
+  }
+}
+
+/**
+ * Deletes an image from Cloudinary
+ */
+export async function deleteImage(
+  _bucket: string,
+  path: string
+): Promise<UploadResult> {
+  try {
+    // Extract public_id from URL or path
+    // Cloudinary URLs look like: https://res.cloudinary.com/cloud/image/upload/v123/folder/filename.ext
+    let publicId = path
+    if (path.includes('cloudinary.com')) {
+      const match = path.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/)
+      if (match) publicId = match[1]
+    }
+
+    await cloudinary.uploader.destroy(publicId)
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting image:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -115,169 +141,49 @@ export async function deleteImage(
 }
 
 /**
- * Uploads a product image to Supabase Storage
- * @param file - The image file to upload
- * @param productId - The product ID
- * @returns UploadResult with public URL if successful
+ * Uploads a product image to Cloudinary
  */
 export async function uploadProductImage(
   file: File,
   productId: string
 ): Promise<UploadResult> {
-  try {
-    // Validate the image
-    const validationError = validateImage(file)
-    if (validationError) {
-      return {
-        success: false,
-        error: validationError,
-      }
-    }
-
-    const supabase = createAdminClient()
-    const fileName = generateFileName(file.name)
-    const filePath = `products/${productId}/${fileName}`
-
-    // Upload the file
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKETS.PRODUCT_IMAGES)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      })
-
-    if (uploadError) {
-      console.error('Error uploading product image:', uploadError)
-      return {
-        success: false,
-        error: uploadError.message || 'Failed to upload image',
-      }
-    }
-
-    // Get the public URL
-    const url = getPublicUrl(BUCKETS.PRODUCT_IMAGES, filePath)
-
-    return {
-      success: true,
-      url,
-    }
-  } catch (error) {
-    console.error('Unexpected error uploading product image:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-    }
+  const validationError = await validateImage(file)
+  if (validationError) {
+    return { success: false, error: validationError }
   }
+
+  const publicId = generateFileName(file.name).replace(/\.[^.]+$/, '')
+  return uploadToCloudinary(file, `${FOLDERS.PRODUCTS}/${productId}`, publicId)
 }
 
 /**
- * Uploads a category image to Supabase Storage
- * @param file - The image file to upload
- * @param categoryId - The category ID
- * @returns UploadResult with public URL if successful
+ * Uploads a category image to Cloudinary
  */
 export async function uploadCategoryImage(
   file: File,
   categoryId: string
 ): Promise<UploadResult> {
-  try {
-    // Validate the image
-    const validationError = validateImage(file)
-    if (validationError) {
-      return {
-        success: false,
-        error: validationError,
-      }
-    }
-
-    const supabase = createAdminClient()
-    const fileName = generateFileName(file.name)
-    const filePath = `categories/${categoryId}/${fileName}`
-
-    // Upload the file
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKETS.CATEGORY_IMAGES)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      })
-
-    if (uploadError) {
-      console.error('Error uploading category image:', uploadError)
-      return {
-        success: false,
-        error: uploadError.message || 'Failed to upload image',
-      }
-    }
-
-    // Get the public URL
-    const url = getPublicUrl(BUCKETS.CATEGORY_IMAGES, filePath)
-
-    return {
-      success: true,
-      url,
-    }
-  } catch (error) {
-    console.error('Unexpected error uploading category image:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-    }
+  const validationError = await validateImage(file)
+  if (validationError) {
+    return { success: false, error: validationError }
   }
+
+  const publicId = generateFileName(file.name).replace(/\.[^.]+$/, '')
+  return uploadToCloudinary(file, `${FOLDERS.CATEGORIES}/${categoryId}`, publicId)
 }
 
 /**
- * Uploads a hero slide image to Supabase Storage
- * @param file - The image file to upload
- * @param slideId - The hero slide ID
- * @returns UploadResult with public URL if successful
+ * Uploads a hero slide image to Cloudinary
  */
 export async function uploadHeroImage(
   file: File,
   slideId: string
 ): Promise<UploadResult> {
-  try {
-    // Validate the image
-    const validationError = validateImage(file)
-    if (validationError) {
-      return {
-        success: false,
-        error: validationError,
-      }
-    }
-
-    const supabase = createAdminClient()
-    const fileName = generateFileName(file.name)
-    const filePath = `slides/${slideId}/${fileName}`
-
-    // Upload the file
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKETS.HERO_IMAGES)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      })
-
-    if (uploadError) {
-      console.error('Error uploading hero image:', uploadError)
-      return {
-        success: false,
-        error: uploadError.message || 'Failed to upload image',
-      }
-    }
-
-    // Get the public URL
-    const url = getPublicUrl(BUCKETS.HERO_IMAGES, filePath)
-
-    return {
-      success: true,
-      url,
-    }
-  } catch (error) {
-    console.error('Unexpected error uploading hero image:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-    }
+  const validationError = await validateImage(file)
+  if (validationError) {
+    return { success: false, error: validationError }
   }
+
+  const publicId = generateFileName(file.name).replace(/\.[^.]+$/, '')
+  return uploadToCloudinary(file, `${FOLDERS.HERO_SLIDES}/${slideId}`, publicId)
 }

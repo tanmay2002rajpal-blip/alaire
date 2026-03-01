@@ -2,8 +2,8 @@ import { redirect, notFound } from "next/navigation"
 import Link from "next/link"
 import type { Metadata } from "next"
 import { ArrowLeft, HelpCircle } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
-import { getOrderById } from "@/lib/supabase/queries"
+import { auth } from "@/lib/auth"
+import { getOrderById } from "@/lib/db/queries"
 import { formatPrice, formatDate } from "@/lib/utils"
 import { ORDER_STATUSES } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -30,14 +30,13 @@ export async function generateMetadata({
 
 export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
 
-  if (!user) {
+  if (!session?.user?.id) {
     redirect("/")
   }
 
-  const order = await getOrderById(id, user.id)
+  const order = await getOrderById(id, session.user.id)
 
   if (!order) {
     notFound()

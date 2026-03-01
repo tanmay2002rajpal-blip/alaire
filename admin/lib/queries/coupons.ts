@@ -1,6 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { ObjectId } from 'mongodb'
+import { getCouponsCollection } from '@/lib/db/collections'
+import { toObjectId, paginate, totalPages } from '@/lib/db/helpers'
 
 export interface Coupon {
   id: string
@@ -67,84 +69,70 @@ export interface UpdateCouponData {
  * Get paginated coupons with filters
  */
 export async function getCoupons(filters?: CouponFilters): Promise<PaginatedCoupons> {
-  const supabase = await createClient()
+  const couponsCol = await getCouponsCollection()
 
-  const page = filters?.page || 1
-  const limit = filters?.limit || 25
-  const offset = (page - 1) * limit
+  const { skip, limit: lim, page } = paginate(filters?.page, filters?.limit || 25)
 
-  let query = supabase
-    .from('coupons')
-    .select('*', { count: 'exact' })
+  const filter: Record<string, any> = {}
 
-  // Apply search filter (only code since description doesn't exist)
+  // Apply search filter
   if (filters?.search) {
-    const searchTerm = `%${filters.search}%`
-    query = query.ilike('code', searchTerm)
+    filter.code = { $regex: filters.search, $options: 'i' }
   }
 
-  // Apply type filter - database column is 'type' not 'discount_type'
+  // Apply type filter - DB column is 'type'
   if (filters?.type && filters.type !== 'all') {
-    query = query.eq('type', filters.type)
+    filter.type = filters.type
   }
 
   // Apply status filter
   if (filters?.status && filters.status !== 'all') {
-    const now = new Date().toISOString()
+    const now = new Date()
 
     switch (filters.status) {
       case 'active':
-        query = query
-          .eq('is_active', true)
-          .lte('valid_from', now)
-          .or(`valid_until.is.null,valid_until.gte.${now}`)
+        filter.is_active = true
+        filter.valid_from = { $lte: now }
+        filter.$or = [
+          { valid_until: null },
+          { valid_until: { $gte: now } },
+        ]
         break
       case 'inactive':
-        query = query.eq('is_active', false)
+        filter.is_active = false
         break
       case 'expired':
-        query = query.lt('valid_until', now)
+        filter.valid_until = { $lt: now }
         break
     }
   }
 
-  // Order by created_at desc
-  query = query.order('created_at', { ascending: false })
+  const [data, total] = await Promise.all([
+    couponsCol.find(filter).sort({ created_at: -1 }).skip(skip).limit(lim).toArray(),
+    couponsCol.countDocuments(filter),
+  ])
 
-  // Apply pagination
-  query = query.range(offset, offset + limit - 1)
-
-  const { data, error, count } = await query
-
-  if (error) {
-    console.error('Error fetching coupons:', error)
-    throw new Error('Failed to fetch coupons')
-  }
-
-  // Map database columns to interface (type -> discount_type, value -> discount_value)
-  const coupons: Coupon[] = (data || []).map(coupon => ({
-    id: coupon.id,
+  // Map DB columns (type -> discount_type, value -> discount_value)
+  const coupons: Coupon[] = data.map(coupon => ({
+    id: coupon._id.toString(),
     code: coupon.code,
-    discount_type: coupon.type as 'percentage' | 'fixed',
+    discount_type: coupon.type,
     discount_value: coupon.value,
     min_order_amount: coupon.min_order_amount,
     max_discount: coupon.max_discount,
     usage_limit: coupon.usage_limit,
     usage_count: coupon.usage_count || 0,
-    valid_from: coupon.valid_from,
-    valid_until: coupon.valid_until,
+    valid_from: coupon.valid_from.toISOString(),
+    valid_until: coupon.valid_until?.toISOString() || null,
     is_active: coupon.is_active,
-    created_at: coupon.created_at,
+    created_at: coupon.created_at.toISOString(),
   }))
-
-  const total = count || 0
-  const totalPages = Math.ceil(total / limit)
 
   return {
     coupons,
     total,
     page,
-    totalPages,
+    totalPages: totalPages(total, lim),
   }
 }
 
@@ -152,44 +140,41 @@ export async function getCoupons(filters?: CouponFilters): Promise<PaginatedCoup
  * Get coupon statistics
  */
 export async function getCouponStats(): Promise<CouponStats> {
-  const supabase = await createClient()
+  const couponsCol = await getCouponsCollection()
 
-  const now = new Date().toISOString()
+  const now = new Date()
 
-  // Get total coupons
-  const { count: totalCoupons } = await supabase
-    .from('coupons')
-    .select('*', { count: 'exact', head: true })
-
-  // Get active coupons
-  const { count: activeCoupons } = await supabase
-    .from('coupons')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_active', true)
-    .lte('valid_from', now)
-    .or(`valid_until.is.null,valid_until.gte.${now}`)
-
-  // Get usage stats - database uses 'type' and 'value' columns
-  const { data: couponsData } = await supabase
-    .from('coupons')
-    .select('usage_count, type, value')
+  const [totalCoupons, activeCoupons, couponsData] = await Promise.all([
+    couponsCol.countDocuments(),
+    couponsCol.countDocuments({
+      is_active: true,
+      valid_from: { $lte: now },
+      $or: [
+        { valid_until: null },
+        { valid_until: { $gte: now } },
+      ],
+    }),
+    couponsCol.find(
+      {},
+      { projection: { usage_count: 1, type: 1, value: 1 } }
+    ).toArray(),
+  ])
 
   let totalUsage = 0
   let totalSavings = 0
 
-  couponsData?.forEach(coupon => {
+  for (const coupon of couponsData) {
     totalUsage += coupon.usage_count || 0
-    // Estimate savings (this is a rough estimate)
     if (coupon.type === 'percentage') {
-      totalSavings += (coupon.usage_count || 0) * (coupon.value * 10) // Rough estimate
+      totalSavings += (coupon.usage_count || 0) * (coupon.value * 10)
     } else {
       totalSavings += (coupon.usage_count || 0) * coupon.value
     }
-  })
+  }
 
   return {
-    total_coupons: totalCoupons || 0,
-    active_coupons: activeCoupons || 0,
+    total_coupons: totalCoupons,
+    active_coupons: activeCoupons,
     total_usage: totalUsage,
     total_savings: totalSavings,
   }
@@ -199,35 +184,24 @@ export async function getCouponStats(): Promise<CouponStats> {
  * Get coupon by ID
  */
 export async function getCouponById(id: string): Promise<Coupon | null> {
-  const supabase = await createClient()
+  const couponsCol = await getCouponsCollection()
 
-  const { data, error } = await supabase
-    .from('coupons')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null
-    }
-    console.error('Error fetching coupon:', error)
-    throw new Error('Failed to fetch coupon')
-  }
+  const data = await couponsCol.findOne({ _id: toObjectId(id) })
+  if (!data) return null
 
   return {
-    id: data.id,
+    id: data._id.toString(),
     code: data.code,
-    discount_type: data.type as 'percentage' | 'fixed',
+    discount_type: data.type,
     discount_value: data.value,
     min_order_amount: data.min_order_amount,
     max_discount: data.max_discount,
     usage_limit: data.usage_limit,
     usage_count: data.usage_count || 0,
-    valid_from: data.valid_from,
-    valid_until: data.valid_until,
+    valid_from: data.valid_from.toISOString(),
+    valid_until: data.valid_until?.toISOString() || null,
     is_active: data.is_active,
-    created_at: data.created_at,
+    created_at: data.created_at.toISOString(),
   }
 }
 
@@ -238,22 +212,13 @@ export async function checkCouponCodeExists(
   code: string,
   excludeId?: string
 ): Promise<boolean> {
-  const supabase = await createClient()
+  const couponsCol = await getCouponsCollection()
 
-  let query = supabase
-    .from('coupons')
-    .select('id')
-    .eq('code', code.toUpperCase())
-
+  const filter: Record<string, any> = { code: code.toUpperCase() }
   if (excludeId) {
-    query = query.neq('id', excludeId)
+    filter._id = { $ne: toObjectId(excludeId) }
   }
 
-  const { data, error } = await query.single()
-
-  if (error && error.code === 'PGRST116') {
-    return false
-  }
-
+  const data = await couponsCol.findOne(filter, { projection: { _id: 1 } })
   return !!data
 }

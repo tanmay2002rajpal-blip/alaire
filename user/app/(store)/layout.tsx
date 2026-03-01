@@ -2,18 +2,14 @@ import { Header, Footer, PromoBanner } from "@/components/layout"
 import { CartDrawer } from "@/components/cart"
 import { AuthProvider, AuthDialog } from "@/components/auth"
 import { LenisProvider } from "@/providers"
-import { createClient } from "@/lib/supabase/server"
 
 export default async function StoreLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
   return (
-    <AuthProvider initialUser={user}>
+    <AuthProvider>
       <LenisProvider>
         <div className="flex min-h-screen flex-col">
           {/* Skip to main content link for keyboard/screen reader users */}

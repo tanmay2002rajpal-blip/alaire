@@ -1,6 +1,7 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getProductVariantsCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
 
 interface StockUpdateResult {
@@ -31,19 +32,18 @@ export async function updateStockAction(
       return { success: false, error: 'Stock cannot be negative' }
     }
 
-    const supabase = await createClient()
+    const variantsCol = await getProductVariantsCollection()
 
     let finalStock = newStock
 
     // If adjustment mode, get current stock first
     if (adjustment === 'add' || adjustment === 'subtract') {
-      const { data: variant, error: fetchError } = await supabase
-        .from('product_variants')
-        .select('stock_quantity')
-        .eq('id', variantId)
-        .single()
+      const variant = await variantsCol.findOne(
+        { _id: toObjectId(variantId) },
+        { projection: { stock_quantity: 1 } }
+      )
 
-      if (fetchError) {
+      if (!variant) {
         return { success: false, error: 'Variant not found' }
       }
 
@@ -54,20 +54,11 @@ export async function updateStockAction(
       }
     }
 
-    const { error } = await supabase
-      .from('product_variants')
-      .update({
-        stock_quantity: finalStock,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', variantId)
+    await variantsCol.updateOne(
+      { _id: toObjectId(variantId) },
+      { $set: { stock_quantity: finalStock, updated_at: new Date() } }
+    )
 
-    if (error) {
-      console.error('Error updating stock:', error)
-      return { success: false, error: error.message }
-    }
-
-    // Revalidate inventory pages
     revalidatePath('/inventory')
     revalidatePath('/products')
     revalidatePath('/dashboard')
@@ -93,7 +84,7 @@ export async function bulkUpdateStockAction(
       return { success: false, error: 'No updates provided', updated: 0 }
     }
 
-    const supabase = await createClient()
+    const variantsCol = await getProductVariantsCollection()
     let updated = 0
     const errors: string[] = []
 
@@ -103,22 +94,16 @@ export async function bulkUpdateStockAction(
         continue
       }
 
-      const { error } = await supabase
-        .from('product_variants')
-        .update({
-          stock_quantity: update.stock,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', update.variantId)
+      const result = await variantsCol.updateOne(
+        { _id: toObjectId(update.variantId) },
+        { $set: { stock_quantity: update.stock, updated_at: new Date() } }
+      )
 
-      if (error) {
-        errors.push('Failed to update ' + update.variantId + ': ' + error.message)
-      } else {
+      if (result.modifiedCount > 0) {
         updated++
       }
     }
 
-    // Revalidate pages
     revalidatePath('/inventory')
     revalidatePath('/products')
     revalidatePath('/dashboard')
@@ -140,7 +125,6 @@ export async function bulkUpdateStockAction(
 
 /**
  * Server action to set low stock threshold
- * Note: This updates the product-level setting
  */
 export async function updateLowStockThresholdAction(
   productId: string,
@@ -155,10 +139,7 @@ export async function updateLowStockThresholdAction(
       return { success: false, error: 'Threshold cannot be negative' }
     }
 
-    // Note: The products table doesn't have low_stock_threshold column
-    // This would need to be added if per-product thresholds are needed
-    // For now, we use a global threshold of 10
-
+    // Note: We use a global threshold of 10 for now
     revalidatePath('/inventory')
     revalidatePath('/products')
 

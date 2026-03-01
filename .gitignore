@@ -1,4 +1,9 @@
 
+# Environment files
+.env
+.env.local
+.env*.local
+
 # Local development files
 .mcp.json
 admin/.mcp.json

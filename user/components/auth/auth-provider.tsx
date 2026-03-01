@@ -1,11 +1,10 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
-import { type User } from "@supabase/supabase-js"
-import { createClient } from "@/lib/supabase/client"
+import { createContext, useContext, useCallback, useState, useEffect, type ReactNode } from "react"
+import { SessionProvider, useSession } from "next-auth/react"
 
 interface AuthContextValue {
-  user: User | null
+  user: { id: string; name?: string | null; email?: string | null; image?: string | null } | null
   isLoading: boolean
   isAuthDialogOpen: boolean
   openAuthDialog: () => void
@@ -15,18 +14,19 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
-interface AuthProviderProps {
-  children: ReactNode
-  initialUser: User | null
-}
-
-export function AuthProvider({ children, initialUser }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(initialUser)
-  const [isLoading, setIsLoading] = useState(false)
+function AuthContextProvider({ children }: { children: ReactNode }) {
+  const { data: session, status } = useSession()
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false)
   const [pendingCallback, setPendingCallback] = useState<(() => void) | null>(null)
 
-  const supabase = createClient()
+  const user = session?.user
+    ? {
+        id: session.user.id as string,
+        name: session.user.name,
+        email: session.user.email,
+        image: session.user.image,
+      }
+    : null
 
   const openAuthDialog = useCallback(() => {
     setIsAuthDialogOpen(true)
@@ -37,45 +37,30 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     setPendingCallback(null)
   }, [])
 
-  const requireAuth = useCallback((callback: () => void) => {
-    if (user) {
-      callback()
-    } else {
-      setPendingCallback(() => callback)
-      openAuthDialog()
-    }
-  }, [user, openAuthDialog])
+  const requireAuth = useCallback(
+    (callback: () => void) => {
+      if (user) {
+        callback()
+      } else {
+        setPendingCallback(() => callback)
+        openAuthDialog()
+      }
+    },
+    [user, openAuthDialog]
+  )
 
+  // Execute pending callback when user signs in
   useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-
-      if (event === "SIGNED_IN" && currentUser) {
-        if (pendingCallback) {
-          pendingCallback()
-          setPendingCallback(null)
-        }
-        closeAuthDialog()
-      }
-
-      if (event === "SIGNED_OUT") {
-        setUser(null)
-      }
-
-      setIsLoading(false)
-    })
-
-    return () => {
-      subscription.unsubscribe()
+    if (user && pendingCallback) {
+      pendingCallback()
+      setPendingCallback(null)
+      closeAuthDialog()
     }
-  }, [supabase, pendingCallback, closeAuthDialog])
+  }, [user, pendingCallback, closeAuthDialog])
 
   const value: AuthContextValue = {
     user,
-    isLoading,
+    isLoading: status === "loading",
     isAuthDialogOpen,
     openAuthDialog,
     closeAuthDialog,
@@ -83,6 +68,18 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+interface AuthProviderProps {
+  children: ReactNode
+}
+
+export function AuthProvider({ children }: AuthProviderProps) {
+  return (
+    <SessionProvider>
+      <AuthContextProvider>{children}</AuthContextProvider>
+    </SessionProvider>
+  )
 }
 
 export function useAuth() {

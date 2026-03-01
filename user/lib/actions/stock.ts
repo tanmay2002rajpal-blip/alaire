@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getDb } from "@/lib/db/client"
 
 export interface StockCheckItem {
   productId: string
@@ -21,11 +21,8 @@ export interface StockCheckResult {
   }[]
 }
 
-/**
- * Check if all items in cart have sufficient stock
- */
 export async function checkStock(items: StockCheckItem[]): Promise<StockCheckResult> {
-  const supabase = await createClient()
+  const db = await getDb()
 
   const results: StockCheckResult = {
     available: true,
@@ -37,33 +34,26 @@ export async function checkStock(items: StockCheckItem[]): Promise<StockCheckRes
     let productName = item.name
 
     if (item.variantId) {
-      // Check variant stock
-      const { data: variant } = await supabase
-        .from("product_variants")
-        .select("stock_quantity, name")
-        .eq("id", item.variantId)
-        .single()
+      const variant = await db
+        .collection("product_variants")
+        .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.variantId] } })
 
       stockQuantity = variant?.stock_quantity ?? 0
       if (variant?.name) {
         productName = `${item.name} - ${variant.name}`
       }
     } else {
-      // Check product stock (sum of all variants or base stock)
-      const { data: variants } = await supabase
-        .from("product_variants")
-        .select("stock_quantity")
-        .eq("product_id", item.productId)
+      const variants = await db
+        .collection("product_variants")
+        .find({ product_id: item.productId })
+        .toArray()
 
-      if (variants && variants.length > 0) {
+      if (variants.length > 0) {
         stockQuantity = variants.reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0)
       } else {
-        // No variants - check product directly
-        const { data: product } = await supabase
-          .from("products")
-          .select("stock_quantity")
-          .eq("id", item.productId)
-          .single()
+        const product = await db
+          .collection("products")
+          .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.productId] } })
 
         stockQuantity = product?.stock_quantity ?? 0
       }
@@ -88,34 +78,28 @@ export async function checkStock(items: StockCheckItem[]): Promise<StockCheckRes
   return results
 }
 
-/**
- * Get stock info for a specific product/variant
- */
 export async function getStockInfo(
   productId: string,
   variantId?: string
 ): Promise<{ quantity: number; lowStock: boolean; outOfStock: boolean }> {
-  const supabase = await createClient()
+  const db = await getDb()
 
   const LOW_STOCK_THRESHOLD = 5
-
   let stockQuantity = 0
 
   if (variantId) {
-    const { data: variant } = await supabase
-      .from("product_variants")
-      .select("stock_quantity")
-      .eq("id", variantId)
-      .single()
+    const variant = await db
+      .collection("product_variants")
+      .findOne({ $expr: { $eq: [{ $toString: "$_id" }, variantId] } })
 
     stockQuantity = variant?.stock_quantity ?? 0
   } else {
-    const { data: variants } = await supabase
-      .from("product_variants")
-      .select("stock_quantity")
-      .eq("product_id", productId)
+    const variants = await db
+      .collection("product_variants")
+      .find({ product_id: productId })
+      .toArray()
 
-    if (variants && variants.length > 0) {
+    if (variants.length > 0) {
       stockQuantity = variants.reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0)
     }
   }

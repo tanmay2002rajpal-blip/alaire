@@ -1,7 +1,9 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
-import { logActivity } from "./activity"
+import { ObjectId } from 'mongodb'
+import { getCategoriesCollection, getProductsCollection, getActivityLogCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
+import { logActivity } from './activity'
 
 export interface Category {
   id: string
@@ -57,42 +59,28 @@ function generateSlug(name: string): string {
  */
 export async function getCategories(): Promise<Category[]> {
   try {
-    const supabase = await createClient()
+    const categories = await getCategoriesCollection()
+    const products = await getProductsCollection()
 
-    const { data, error } = await supabase
-      .from("categories")
-      .select(
-        `
-        id,
-        name,
-        slug,
-        description,
-        image_url,
-        parent_id,
-        position,
-        created_at,
-        products:products(count)
-      `
-      )
-      .order("name")
+    const data = await categories.find().sort({ name: 1 }).toArray()
 
-    if (error) {
-      console.error("Error fetching categories:", JSON.stringify(error, null, 2))
-      // Return empty array instead of throwing to allow page to render
-      return []
-    }
+    // Get product counts per category
+    const productCounts = await products.aggregate<{ _id: ObjectId; count: number }>([
+      { $group: { _id: '$category_id', count: { $sum: 1 } } },
+    ]).toArray()
 
-    // Transform the data to include product_count
-    return (data || []).map((category) => ({
-      id: category.id,
+    const countMap = new Map(productCounts.map(pc => [pc._id?.toString(), pc.count]))
+
+    return data.map(category => ({
+      id: category._id.toString(),
       name: category.name,
       slug: category.slug,
       description: category.description,
       image: category.image_url,
-      parent_id: category.parent_id,
+      parent_id: category.parent_id?.toString() || null,
       sort_order: category.position,
-      created_at: category.created_at,
-      product_count: category.products?.[0]?.count || 0,
+      created_at: category.created_at.toISOString(),
+      product_count: countMap.get(category._id.toString()) || 0,
     }))
   } catch (err) {
     console.error("Unexpected error fetching categories:", err)
@@ -106,52 +94,37 @@ export async function getCategories(): Promise<Category[]> {
 export async function getCategoryById(
   id: string
 ): Promise<CategoryWithParent | null> {
-  const supabase = await createClient()
+  const categories = await getCategoriesCollection()
+  const products = await getProductsCollection()
 
-  const { data, error } = await supabase
-    .from("categories")
-    .select(
-      `
-      id,
-      name,
-      slug,
-      description,
-      image_url,
-      parent_id,
-      position,
-      created_at,
-      products:products(count),
-      parent_category:parent_id(id, name, slug)
-    `
-    )
-    .eq("id", id)
-    .single()
+  const oid = toObjectId(id)
+  const data = await categories.findOne({ _id: oid })
 
-  if (error) {
-    if (error.code === "PGRST116") {
-      return null // Category not found
-    }
-    console.error("Error fetching category:", error)
-    throw new Error("Failed to fetch category")
-  }
+  if (!data) return null
 
-  // Handle parent_category which may be returned as array by Supabase
-  const parentCategory = data.parent_category
-    ? (Array.isArray(data.parent_category) ? data.parent_category[0] : data.parent_category)
-    : null
+  // Get product count and parent in parallel
+  const [productCount, parentCategory] = await Promise.all([
+    products.countDocuments({ category_id: oid }),
+    data.parent_id
+      ? categories.findOne(
+          { _id: data.parent_id },
+          { projection: { name: 1, slug: 1 } }
+        )
+      : Promise.resolve(null),
+  ])
 
   return {
-    id: data.id,
+    id: data._id.toString(),
     name: data.name,
     slug: data.slug,
     description: data.description,
     image: data.image_url,
-    parent_id: data.parent_id,
+    parent_id: data.parent_id?.toString() || null,
     sort_order: data.position,
-    created_at: data.created_at,
-    product_count: data.products?.[0]?.count || 0,
+    created_at: data.created_at.toISOString(),
+    product_count: productCount,
     parent_category: parentCategory ? {
-      id: parentCategory.id,
+      id: parentCategory._id.toString(),
       name: parentCategory.name,
       slug: parentCategory.slug,
     } : null,
@@ -164,72 +137,52 @@ export async function getCategoryById(
 export async function createCategory(
   categoryData: CreateCategoryData
 ): Promise<Category> {
-  const supabase = await createClient()
+  const categories = await getCategoriesCollection()
 
   // Generate slug from name
   const slug = generateSlug(categoryData.name)
 
   // Check if slug already exists
-  const { data: existingCategory } = await supabase
-    .from("categories")
-    .select("id")
-    .eq("slug", slug)
-    .single()
-
-  if (existingCategory) {
+  const existing = await categories.findOne({ slug })
+  if (existing) {
     throw new Error("A category with this name already exists")
   }
 
-  // Insert the category
-  const { data, error } = await supabase
-    .from("categories")
-    .insert({
-      name: categoryData.name,
-      slug,
-      description: categoryData.description || null,
-      image_url: categoryData.image || null,
-      parent_id: categoryData.parent_id || null,
-      position: categoryData.sort_order || 0,
-    })
-    .select(
-      `
-      id,
-      name,
-      slug,
-      description,
-      image_url,
-      parent_id,
-      position,
-      created_at
-    `
-    )
-    .single()
+  const now = new Date()
+  const newId = new ObjectId()
 
-  if (error) {
-    console.error("Error creating category:", error)
-    throw new Error("Failed to create category")
-  }
+  await categories.insertOne({
+    _id: newId,
+    name: categoryData.name,
+    slug,
+    description: categoryData.description || null,
+    image_url: categoryData.image || null,
+    parent_id: categoryData.parent_id ? toObjectId(categoryData.parent_id) : null,
+    position: categoryData.sort_order || 0,
+    created_at: now,
+    updated_at: now,
+  })
 
   // Log activity
   await logActivity({
     action: "create",
     entityType: "category",
-    entityId: data.id,
+    entityId: newId.toString(),
     details: {
-      name: data.name,
-      slug: data.slug,
+      name: categoryData.name,
+      slug,
     },
   })
 
   return {
-    id: data.id,
-    name: data.name,
-    slug: data.slug,
-    description: data.description,
-    image: data.image_url,
-    parent_id: data.parent_id,
-    sort_order: data.position,
-    created_at: data.created_at,
+    id: newId.toString(),
+    name: categoryData.name,
+    slug,
+    description: categoryData.description || null,
+    image: categoryData.image || null,
+    parent_id: categoryData.parent_id || null,
+    sort_order: categoryData.sort_order || 0,
+    created_at: now.toISOString(),
     product_count: 0,
   }
 }
@@ -241,7 +194,8 @@ export async function updateCategory(
   id: string,
   categoryData: UpdateCategoryData
 ): Promise<Category> {
-  const supabase = await createClient()
+  const categories = await getCategoriesCollection()
+  const oid = toObjectId(id)
 
   const updateData: Record<string, any> = {}
 
@@ -251,14 +205,11 @@ export async function updateCategory(
     updateData.slug = generateSlug(categoryData.name)
 
     // Check if new slug conflicts with another category
-    const { data: existingCategory } = await supabase
-      .from("categories")
-      .select("id")
-      .eq("slug", updateData.slug)
-      .neq("id", id)
-      .single()
-
-    if (existingCategory) {
+    const existing = await categories.findOne({
+      slug: updateData.slug,
+      _id: { $ne: oid },
+    })
+    if (existing) {
       throw new Error("A category with this name already exists")
     }
   }
@@ -272,19 +223,21 @@ export async function updateCategory(
   }
 
   if (categoryData.parent_id !== undefined) {
-    updateData.parent_id = categoryData.parent_id
-
     // Prevent circular references
     if (categoryData.parent_id === id) {
       throw new Error("A category cannot be its own parent")
     }
 
-    // Check if parent_id would create a circular reference
     if (categoryData.parent_id) {
+      updateData.parent_id = toObjectId(categoryData.parent_id)
+
+      // Check if parent_id would create a circular reference
       const parent = await getCategoryById(categoryData.parent_id)
       if (parent?.parent_id === id) {
         throw new Error("This would create a circular category hierarchy")
       }
+    } else {
+      updateData.parent_id = null
     }
   }
 
@@ -292,30 +245,10 @@ export async function updateCategory(
     updateData.position = categoryData.sort_order
   }
 
-  // Update the category
-  const { data, error } = await supabase
-    .from("categories")
-    .update(updateData)
-    .eq("id", id)
-    .select(
-      `
-      id,
-      name,
-      slug,
-      description,
-      image_url,
-      parent_id,
-      position,
-      created_at,
-      products:products(count)
-    `
-    )
-    .single()
+  updateData.updated_at = new Date()
 
-  if (error) {
-    console.error("Error updating category:", error)
-    throw new Error("Failed to update category")
-  }
+  // Update the category
+  await categories.updateOne({ _id: oid }, { $set: updateData })
 
   // Log activity
   await logActivity({
@@ -328,16 +261,21 @@ export async function updateCategory(
     },
   })
 
+  // Fetch the updated category to return
+  const products = await getProductsCollection()
+  const updated = await categories.findOne({ _id: oid })
+  const productCount = await products.countDocuments({ category_id: oid })
+
   return {
-    id: data.id,
-    name: data.name,
-    slug: data.slug,
-    description: data.description,
-    image: data.image_url,
-    parent_id: data.parent_id,
-    sort_order: data.position,
-    created_at: data.created_at,
-    product_count: data.products?.[0]?.count || 0,
+    id: updated!._id.toString(),
+    name: updated!.name,
+    slug: updated!.slug,
+    description: updated!.description,
+    image: updated!.image_url,
+    parent_id: updated!.parent_id?.toString() || null,
+    sort_order: updated!.position,
+    created_at: updated!.created_at.toISOString(),
+    product_count: productCount,
   }
 }
 
@@ -346,59 +284,41 @@ export async function updateCategory(
  * Blocks deletion if category has products
  */
 export async function deleteCategory(id: string): Promise<void> {
-  const supabase = await createClient()
+  const categories = await getCategoriesCollection()
+  const products = await getProductsCollection()
+  const oid = toObjectId(id)
 
-  // Check if category has products
-  const { data: category } = await supabase
-    .from("categories")
-    .select(
-      `
-      name,
-      products:products(count)
-    `
-    )
-    .eq("id", id)
-    .single()
+  // Check if category exists and has products
+  const [category, productCount, childCount] = await Promise.all([
+    categories.findOne({ _id: oid }, { projection: { name: 1 } }),
+    products.countDocuments({ category_id: oid }),
+    categories.countDocuments({ parent_id: oid }),
+  ])
 
   if (!category) {
     throw new Error("Category not found")
   }
 
-  const productCount = category.products?.[0]?.count || 0
   if (productCount > 0) {
     throw new Error(
       `Cannot delete category "${category.name}" because it has ${productCount} product(s). Please move or delete the products first.`
     )
   }
 
-  // Check if category has child categories
-  const { data: childCategories } = await supabase
-    .from("categories")
-    .select("id")
-    .eq("parent_id", id)
-
-  if (childCategories && childCategories.length > 0) {
+  if (childCount > 0) {
     throw new Error(
-      `Cannot delete category "${category.name}" because it has ${childCategories.length} subcategory(ies). Please move or delete the subcategories first.`
+      `Cannot delete category "${category.name}" because it has ${childCount} subcategory(ies). Please move or delete the subcategories first.`
     )
   }
 
-  // Delete the category
-  const { error } = await supabase.from("categories").delete().eq("id", id)
-
-  if (error) {
-    console.error("Error deleting category:", error)
-    throw new Error("Failed to delete category")
-  }
+  await categories.deleteOne({ _id: oid })
 
   // Log activity
   await logActivity({
     action: "delete",
     entityType: "category",
     entityId: id,
-    details: {
-      name: category.name,
-    },
+    details: { name: category.name },
   })
 }
 
@@ -408,24 +328,16 @@ export async function deleteCategory(id: string): Promise<void> {
 export async function reorderCategories(
   orderedIds: string[]
 ): Promise<void> {
-  const supabase = await createClient()
+  const categories = await getCategoriesCollection()
 
-  // Update position for each category
   const updates = orderedIds.map((id, index) =>
-    supabase
-      .from("categories")
-      .update({ position: index })
-      .eq("id", id)
+    categories.updateOne(
+      { _id: toObjectId(id) },
+      { $set: { position: index } }
+    )
   )
 
-  const results = await Promise.all(updates)
-
-  // Check if any updates failed
-  const errors = results.filter((result) => result.error)
-  if (errors.length > 0) {
-    console.error("Error reordering categories:", errors)
-    throw new Error("Failed to reorder categories")
-  }
+  await Promise.all(updates)
 
   // Log activity
   await logActivity({

@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { getOrdersCollection, getProductVariantsCollection, getUsersCollection, getActivityLogCollection } from '@/lib/db/collections'
 
 // Types for return values
 export interface DashboardStats {
@@ -38,121 +38,62 @@ export interface ActivityLogEntry {
   admin_name: string;
 }
 
-/** Shipping address structure for orders */
-interface ShippingAddress {
-  full_name?: string;
-  phone?: string;
-  line1?: string;
-  line2?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
-}
-
 /**
  * Get dashboard statistics including revenue, orders, stock, and customers
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
-    const supabase = await createClient();
+    const ordersCol = await getOrdersCollection()
+    const variantsCol = await getProductVariantsCollection()
+    const usersCol = await getUsersCollection()
 
-    // Get today's date range (start and end of day)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStart = today.toISOString();
-
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const todayEnd = tomorrow.toISOString();
+    // Get today's date range
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
 
     // Get yesterday's date range
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStart = yesterday.toISOString();
-    const yesterdayEnd = todayStart;
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
 
     // Get date 7 days ago
-    const weekAgo = new Date(today);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const weekAgoStart = weekAgo.toISOString();
+    const weekAgo = new Date(today)
+    weekAgo.setDate(weekAgo.getDate() - 7)
 
-    // Fetch today's revenue
-    const { data: todayOrders, error: todayError } = await supabase
-      .from('orders')
-      .select('total')
-      .gte('created_at', todayStart)
-      .lt('created_at', todayEnd);
+    const [todayOrders, yesterdayOrders, pendingCount, lowStockCount, newCustomersCount] = await Promise.all([
+      ordersCol.find(
+        { created_at: { $gte: today, $lt: tomorrow } },
+        { projection: { total: 1 } }
+      ).toArray(),
+      ordersCol.find(
+        { created_at: { $gte: yesterday, $lt: today } },
+        { projection: { total: 1 } }
+      ).toArray(),
+      ordersCol.countDocuments({ status: { $in: ['pending', 'processing'] } }),
+      variantsCol.countDocuments({ is_active: true, stock_quantity: { $lt: 10 } }),
+      usersCol.countDocuments({ created_at: { $gte: weekAgo } }),
+    ])
 
-    if (todayError) {
-      console.error('Error fetching today revenue:', todayError);
-    }
-
-    const todayRevenue = todayOrders?.reduce((sum, order) => sum + (order.total || 0), 0) || 0;
-
-    // Fetch yesterday's revenue
-    const { data: yesterdayOrders, error: yesterdayError } = await supabase
-      .from('orders')
-      .select('total')
-      .gte('created_at', yesterdayStart)
-      .lt('created_at', yesterdayEnd);
-
-    if (yesterdayError) {
-      console.error('Error fetching yesterday revenue:', yesterdayError);
-    }
-
-    const yesterdayRevenue = yesterdayOrders?.reduce((sum, order) => sum + (order.total || 0), 0) || 0;
-
-    // Fetch pending orders count
-    const { count: pendingCount, error: pendingError } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['pending', 'processing']);
-
-    if (pendingError) {
-      console.error('Error fetching pending orders:', pendingError);
-    }
-
-    const pendingOrdersCount = pendingCount || 0;
-
-    // Fetch low stock count from product_variants (stock_quantity < 10)
-    const { count: lowStockCount, error: lowStockError } = await supabase
-      .from('product_variants')
-      .select('*', { count: 'exact', head: true })
-      .lt('stock_quantity', 10)
-      .eq('is_active', true);
-
-    if (lowStockError) {
-      console.error('Error fetching low stock:', lowStockError);
-    }
-
-    // Fetch new customers this week from profiles table
-    const { count: newCustomersCount, error: customersError } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', weekAgoStart);
-
-    if (customersError) {
-      console.error('Error fetching new customers:', customersError);
-    }
-
-    const newCustomersThisWeek = newCustomersCount || 0;
+    const todayRevenue = todayOrders.reduce((sum, o) => sum + (o.total || 0), 0)
+    const yesterdayRevenue = yesterdayOrders.reduce((sum, o) => sum + (o.total || 0), 0)
 
     return {
       todayRevenue,
       yesterdayRevenue,
-      pendingOrdersCount,
-      lowStockCount: lowStockCount || 0,
-      newCustomersThisWeek,
-    };
+      pendingOrdersCount: pendingCount,
+      lowStockCount,
+      newCustomersThisWeek: newCustomersCount,
+    }
   } catch (error) {
-    console.error('Error in getDashboardStats:', error);
+    console.error('Error in getDashboardStats:', error)
     return {
       todayRevenue: 0,
       yesterdayRevenue: 0,
       pendingOrdersCount: 0,
       lowStockCount: 0,
       newCustomersThisWeek: 0,
-    };
+    }
   }
 }
 
@@ -161,49 +102,43 @@ export async function getDashboardStats(): Promise<DashboardStats> {
  */
 export async function getRecentOrders(limit = 5): Promise<RecentOrder[]> {
   try {
-    const supabase = await createClient();
+    const ordersCol = await getOrdersCollection()
+    const usersCol = await getUsersCollection()
 
-    const { data: orders, error } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        order_number,
-        total,
-        status,
-        created_at,
-        user_id,
-        shipping_address,
-        profiles (
-          full_name
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    const orders = await ordersCol.find(
+      {},
+      { projection: { order_number: 1, total: 1, status: 1, created_at: 1, user_id: 1, shipping_address: 1 } }
+    ).sort({ created_at: -1 }).limit(limit).toArray()
 
-    if (error) {
-      console.error('Error fetching recent orders:', error);
-      return [];
-    }
+    if (orders.length === 0) return []
 
-    // Transform the data to match our interface
-    return (orders || []).map(order => {
-      const profile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
-      const shippingAddr = (order.shipping_address as ShippingAddress) || {};
+    // Get user profiles
+    const userIds = [...new Set(orders.map(o => o.user_id))]
+    const profiles = await usersCol.find(
+      { _id: { $in: userIds } },
+      { projection: { full_name: 1 } }
+    ).toArray()
+
+    const profileMap = new Map(profiles.map(p => [p._id.toString(), p]))
+
+    return orders.map(order => {
+      const profile = profileMap.get(order.user_id.toString())
+      const shippingAddr = order.shipping_address || {}
 
       return {
-        id: order.id,
+        id: order._id.toString(),
         order_number: order.order_number,
         total: order.total || 0,
         status: order.status,
-        created_at: order.created_at,
+        created_at: order.created_at.toISOString(),
         customer: {
           name: profile?.full_name || shippingAddr.full_name || 'Unknown',
         },
-      };
-    });
+      }
+    })
   } catch (error) {
-    console.error('Error in getRecentOrders:', error);
-    return [];
+    console.error('Error in getRecentOrders:', error)
+    return []
   }
 }
 
@@ -212,61 +147,52 @@ export async function getRecentOrders(limit = 5): Promise<RecentOrder[]> {
  */
 export async function getRevenueChart(days = 7): Promise<RevenueChartData[]> {
   try {
-    const supabase = await createClient();
+    const ordersCol = await getOrdersCollection()
 
     // Calculate date range
-    const endDate = new Date();
-    endDate.setHours(23, 59, 59, 999);
+    const endDate = new Date()
+    endDate.setHours(23, 59, 59, 999)
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - (days - 1));
-    startDate.setHours(0, 0, 0, 0);
+    const startDate = new Date()
+    startDate.setDate(startDate.getDate() - (days - 1))
+    startDate.setHours(0, 0, 0, 0)
 
-    // Fetch orders within date range
-    const { data: orders, error } = await supabase
-      .from('orders')
-      .select('total, created_at')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching revenue chart data:', error);
-      return [];
-    }
+    const orders = await ordersCol.find(
+      { created_at: { $gte: startDate, $lte: endDate } },
+      { projection: { total: 1, created_at: 1 } }
+    ).sort({ created_at: 1 }).toArray()
 
     // Group orders by date
-    const revenueByDate = new Map<string, { revenue: number; orders: number }>();
+    const revenueByDate = new Map<string, { revenue: number; orders: number }>()
 
     // Initialize all dates in range
     for (let i = 0; i < days; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      const dateKey = date.toISOString().split('T')[0];
-      revenueByDate.set(dateKey, { revenue: 0, orders: 0 });
+      const date = new Date(startDate)
+      date.setDate(date.getDate() + i)
+      const dateKey = date.toISOString().split('T')[0]
+      revenueByDate.set(dateKey, { revenue: 0, orders: 0 })
     }
 
     // Aggregate order data
-    (orders || []).forEach(order => {
-      const dateKey = order.created_at.split('T')[0];
-      const current = revenueByDate.get(dateKey);
+    for (const order of orders) {
+      const dateKey = order.created_at.toISOString().split('T')[0]
+      const current = revenueByDate.get(dateKey)
       if (current) {
-        current.revenue += order.total || 0;
-        current.orders += 1;
+        current.revenue += order.total || 0
+        current.orders += 1
       }
-    });
+    }
 
-    // Convert to array and format dates - sort by original date key first, then format
     return Array.from(revenueByDate.entries())
-      .sort((a, b) => a[0].localeCompare(b[0])) // Sort by ISO date string (YYYY-MM-DD)
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([dateKey, data]) => ({
         date: formatDate(dateKey),
         revenue: Math.round(data.revenue * 100) / 100,
         orders: data.orders,
-      }));
+      }))
   } catch (error) {
-    console.error('Error in getRevenueChart:', error);
-    return [];
+    console.error('Error in getRevenueChart:', error)
+    return []
   }
 }
 
@@ -275,31 +201,25 @@ export async function getRevenueChart(days = 7): Promise<RevenueChartData[]> {
  */
 export async function getRecentActivity(limit = 10): Promise<ActivityLogEntry[]> {
   try {
-    const supabase = await createClient();
+    const activityCol = await getActivityLogCollection()
 
-    const { data: activities, error } = await supabase
-      .from('activity_log')
-      .select('id, action, entity_type, entity_id, details, created_at, admin_name')
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    const activities = await activityCol.find()
+      .sort({ created_at: -1 })
+      .limit(limit)
+      .toArray()
 
-    if (error) {
-      console.error('Error fetching activity log:', error);
-      return [];
-    }
-
-    return (activities || []).map(activity => ({
-      id: activity.id,
+    return activities.map(activity => ({
+      id: activity._id.toString(),
       action: activity.action,
       entity_type: activity.entity_type || '',
       entity_id: activity.entity_id || '',
       details: activity.details,
-      created_at: activity.created_at,
+      created_at: activity.created_at.toISOString(),
       admin_name: activity.admin_name || 'System',
-    }));
+    }))
   } catch (error) {
-    console.error('Error in getRecentActivity:', error);
-    return [];
+    console.error('Error in getRecentActivity:', error)
+    return []
   }
 }
 
@@ -307,8 +227,8 @@ export async function getRecentActivity(limit = 10): Promise<ActivityLogEntry[]>
  * Helper function to format date strings
  */
 function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  const month = date.toLocaleString('default', { month: 'short' });
-  const day = date.getDate();
-  return `${month} ${day}`;
+  const date = new Date(dateString)
+  const month = date.toLocaleString('default', { month: 'short' })
+  const day = date.getDate()
+  return `${month} ${day}`
 }

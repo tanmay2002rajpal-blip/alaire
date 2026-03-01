@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getDb } from "@/lib/db/client"
 
 export interface CouponValidationResult {
   success: boolean
@@ -17,16 +17,13 @@ export async function validateCoupon(
     return { success: false, message: "Please enter a coupon code" }
   }
 
-  const supabase = await createClient()
+  const db = await getDb()
 
-  const { data: coupon, error } = await supabase
-    .from("discount_codes")
-    .select("*")
-    .eq("code", code.toUpperCase().trim())
-    .eq("is_active", true)
-    .single()
+  const coupon = await db
+    .collection("discount_codes")
+    .findOne({ code: code.toUpperCase().trim(), is_active: true })
 
-  if (error || !coupon) {
+  if (!coupon) {
     return { success: false, message: "Invalid coupon code" }
   }
 
@@ -35,7 +32,6 @@ export async function validateCoupon(
   const validUntil = coupon.valid_until ? new Date(coupon.valid_until) : null
   const minOrder = Number(coupon.min_order_amount) || 0
 
-  // Check date validity
   if (validFrom && now < validFrom) {
     return { success: false, message: "This coupon is not yet active" }
   }
@@ -44,20 +40,17 @@ export async function validateCoupon(
     return { success: false, message: "This coupon has expired" }
   }
 
-  // Check minimum order
   if (subtotal < minOrder) {
     return {
       success: false,
-      message: `Minimum order of ₹${minOrder} required for this coupon`,
+      message: `Minimum order of \u20B9${minOrder} required for this coupon`,
     }
   }
 
-  // Check usage limit (using correct column names: max_uses, current_uses)
   if (coupon.max_uses !== null && coupon.current_uses >= coupon.max_uses) {
     return { success: false, message: "This coupon has reached its usage limit" }
   }
 
-  // Calculate discount (using correct column names: type, value)
   const discountValue = Number(coupon.value) || 0
   const maxDiscountAmount = Number(coupon.max_discount_amount) || null
   let discount = 0
@@ -68,7 +61,6 @@ export async function validateCoupon(
       discount = Math.min(discount, maxDiscountAmount)
     }
   } else {
-    // Fixed discount
     discount = Math.min(discountValue, subtotal)
   }
 
@@ -76,6 +68,6 @@ export async function validateCoupon(
     success: true,
     discount: Math.round(discount * 100) / 100,
     code: coupon.code,
-    message: `Coupon applied! You save ₹${discount.toFixed(0)}`,
+    message: `Coupon applied! You save \u20B9${discount.toFixed(0)}`,
   }
 }

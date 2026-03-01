@@ -1,6 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { ObjectId } from 'mongodb'
+import { getOrdersCollection, getOrderStatusHistoryCollection, getUsersCollection, getActivityLogCollection } from '@/lib/db/collections'
+import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
 
 interface UpdateStatusResult {
@@ -25,12 +27,14 @@ export async function updateOrderStatusAction(
   shippingDetails?: ShippingDetails
 ): Promise<UpdateStatusResult> {
   try {
-    const supabase = await createClient()
+    const ordersCol = await getOrdersCollection()
+    const historyCol = await getOrderStatusHistoryCollection()
+    const oid = toObjectId(orderId)
 
     // Build update object
     const updateData: Record<string, unknown> = {
       status,
-      updated_at: new Date().toISOString(),
+      updated_at: new Date(),
     }
 
     // Add shipping details if provided (for shipped status)
@@ -44,51 +48,30 @@ export async function updateOrderStatusAction(
     }
 
     // Update order status
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update(updateData)
-      .eq('id', orderId)
-
-    if (updateError) {
-      console.error('Error updating order status:', updateError)
-      return { success: false, error: updateError.message }
-    }
+    await ordersCol.updateOne({ _id: oid }, { $set: updateData })
 
     // Insert status history
-    const { error: historyError } = await supabase
-      .from('order_status_history')
-      .insert({
-        order_id: orderId,
-        status,
-        note: note || null,
-        created_by: adminId || null,
-      })
-
-    if (historyError) {
-      console.error('Error inserting status history:', historyError)
-      // Don't fail the whole operation, just log
-    }
+    await historyCol.insertOne({
+      _id: new ObjectId(),
+      order_id: oid,
+      status,
+      note: note || null,
+      created_by: adminId ? toObjectId(adminId) : null,
+      created_at: new Date(),
+    })
 
     // Fetch order details for email notification
-    const { data: order } = await supabase
-      .from('orders')
-      .select(`
-        order_number,
-        user_id,
-        total,
-        awb_number,
-        courier_name
-      `)
-      .eq('id', orderId)
-      .single()
+    const order = await ordersCol.findOne(
+      { _id: oid },
+      { projection: { order_number: 1, user_id: 1, total: 1, awb_number: 1, courier_name: 1 } }
+    )
 
-    // Fetch customer details for email
     if (order) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, email')
-        .eq('id', order.user_id)
-        .single()
+      const usersCol = await getUsersCollection()
+      const profile = await usersCol.findOne(
+        { _id: order.user_id },
+        { projection: { full_name: 1, email: 1 } }
+      )
 
       // Send email notification based on status
       if (profile?.email) {
@@ -96,35 +79,29 @@ export async function updateOrderStatusAction(
           orderNumber: order.order_number,
           customerName: profile.full_name || 'Customer',
           customerEmail: profile.email,
-          trackingNumber: order.awb_number || shippingDetails?.trackingNumber,
-          courierName: order.courier_name || shippingDetails?.courierName,
+          trackingNumber: (order as any).awb_number || shippingDetails?.trackingNumber,
+          courierName: (order as any).courier_name || shippingDetails?.courierName,
           estimatedDelivery: shippingDetails?.estimatedDelivery,
           refundAmount: order.total,
         })
       }
-
-      // Create notification for user
-      await supabase.from('notifications').insert({
-        user_id: order.user_id,
-        title: getNotificationTitle(status),
-        message: getNotificationMessage(status, order.order_number),
-        type: 'order',
-        link: `/account/orders/${orderId}`,
-      })
     }
 
     // Log activity
     if (adminId) {
-      await supabase.from('activity_log').insert({
-        admin_id: adminId,
+      const activityLog = await getActivityLogCollection()
+      await activityLog.insertOne({
+        _id: new ObjectId(),
+        admin_id: toObjectId(adminId),
+        admin_name: null,
         action: 'update_order_status',
         entity_type: 'order',
         entity_id: orderId,
         details: { status, note, shippingDetails },
+        created_at: new Date(),
       })
     }
 
-    // Revalidate the orders pages
     revalidatePath('/orders')
     revalidatePath(`/orders/${orderId}`)
 
@@ -154,14 +131,12 @@ async function sendStatusNotification(
   }
 ) {
   try {
-    // Verify ADMIN_API_SECRET is configured
     const adminSecret = process.env.ADMIN_API_SECRET
     if (!adminSecret) {
       console.error('ADMIN_API_SECRET environment variable is not configured - skipping email notification')
       return
     }
 
-    // Call the user app's email API
     const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3001'
 
     await fetch(`${userAppUrl}/api/notifications/order-status`, {
@@ -174,7 +149,6 @@ async function sendStatusNotification(
     })
   } catch (error) {
     console.error('Failed to send status notification:', error)
-    // Don't fail the operation
   }
 }
 

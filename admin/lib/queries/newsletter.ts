@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getNewsletterSubscribersCollection } from '@/lib/db/collections'
 
 export interface NewsletterSubscriber {
   id: string
@@ -15,22 +15,17 @@ export interface NewsletterSubscriber {
  */
 export async function getNewsletterStats() {
   try {
-    const supabase = await createClient()
+    const subscribersCol = await getNewsletterSubscribersCollection()
 
-    const { data, error } = await supabase
-      .from("newsletter_subscribers")
-      .select("is_active")
+    const data = await subscribersCol.find(
+      {},
+      { projection: { is_active: 1 } }
+    ).toArray()
 
-    if (error) {
-      console.error("Error fetching newsletter stats:", error)
-      return { total: 0, active: 0, unsubscribed: 0 }
-    }
-
-    const subscribers = data || []
     return {
-      total: subscribers.length,
-      active: subscribers.filter(s => s.is_active).length,
-      unsubscribed: subscribers.filter(s => !s.is_active).length,
+      total: data.length,
+      active: data.filter(s => s.is_active).length,
+      unsubscribed: data.filter(s => !s.is_active).length,
     }
   } catch (err) {
     console.error("Unexpected error fetching newsletter stats:", err)
@@ -43,19 +38,17 @@ export async function getNewsletterStats() {
  */
 export async function getNewsletterSubscribers(): Promise<NewsletterSubscriber[]> {
   try {
-    const supabase = await createClient()
+    const subscribersCol = await getNewsletterSubscribersCollection()
 
-    const { data, error } = await supabase
-      .from("newsletter_subscribers")
-      .select("*")
-      .order("subscribed_at", { ascending: false })
+    const data = await subscribersCol.find().sort({ subscribed_at: -1 }).toArray()
 
-    if (error) {
-      console.error("Error fetching newsletter subscribers:", error)
-      return []
-    }
-
-    return data || []
+    return data.map(sub => ({
+      id: sub._id.toString(),
+      email: sub.email,
+      is_active: sub.is_active,
+      subscribed_at: sub.subscribed_at.toISOString(),
+      unsubscribed_at: sub.unsubscribed_at?.toISOString() || null,
+    }))
   } catch (err) {
     console.error("Unexpected error fetching newsletter subscribers:", err)
     return []

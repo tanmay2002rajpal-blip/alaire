@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getHeroSlidesCollection } from '@/lib/db/collections'
 
 export interface HeroSlide {
   id: string
@@ -21,19 +21,23 @@ export interface HeroSlide {
  */
 export async function getHeroSlides(): Promise<HeroSlide[]> {
   try {
-    const supabase = await createClient()
+    const slidesCol = await getHeroSlidesCollection()
 
-    const { data, error } = await supabase
-      .from("hero_slides")
-      .select("*")
-      .order("position")
+    const data = await slidesCol.find().sort({ position: 1 }).toArray()
 
-    if (error) {
-      console.error("Error fetching hero slides:", error)
-      return []
-    }
-
-    return data || []
+    return data.map(slide => ({
+      id: slide._id.toString(),
+      title: slide.title,
+      subtitle: slide.subtitle,
+      description: slide.description,
+      image_url: slide.image_url,
+      button_text: slide.button_text,
+      button_link: slide.button_link,
+      position: slide.position,
+      is_active: slide.is_active,
+      created_at: slide.created_at.toISOString(),
+      updated_at: slide.updated_at.toISOString(),
+    }))
   } catch (err) {
     console.error("Unexpected error fetching hero slides:", err)
     return []
@@ -45,22 +49,17 @@ export async function getHeroSlides(): Promise<HeroSlide[]> {
  */
 export async function getHeroSlideStats() {
   try {
-    const supabase = await createClient()
+    const slidesCol = await getHeroSlidesCollection()
 
-    const { data, error } = await supabase
-      .from("hero_slides")
-      .select("is_active")
+    const data = await slidesCol.find(
+      {},
+      { projection: { is_active: 1 } }
+    ).toArray()
 
-    if (error) {
-      console.error("Error fetching hero slide stats:", error)
-      return { total: 0, active: 0, draft: 0 }
-    }
-
-    const slides = data || []
     return {
-      total: slides.length,
-      active: slides.filter(s => s.is_active).length,
-      draft: slides.filter(s => !s.is_active).length,
+      total: data.length,
+      active: data.filter(s => s.is_active).length,
+      draft: data.filter(s => !s.is_active).length,
     }
   } catch (err) {
     console.error("Unexpected error fetching hero slide stats:", err)

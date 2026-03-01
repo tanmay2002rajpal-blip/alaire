@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react"
 import { Loader2, Package, Truck, CheckCircle2, Clock, MapPin } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getOrderTracking } from "@/lib/shiprocket/actions"
-import type { TrackingActivity } from "@/lib/shiprocket/types"
+import { getOrderTracking } from "@/lib/bluedart/actions"
+import type { TrackingActivity } from "@/lib/bluedart/types"
 
 interface OrderTrackingProps {
   awbNumber: string

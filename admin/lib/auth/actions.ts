@@ -2,9 +2,10 @@
 
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
+import { ObjectId } from 'mongodb'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { getAdminUsersCollection, getAdminSessionsCollection, getActivityLogCollection } from '@/lib/db/collections'
 import { signToken, setSessionCookie, clearSessionCookie, getSession } from './jwt'
 import { checkRateLimit, recordLoginAttempt, clearRateLimit } from './rate-limit'
 import { validateCsrfToken, generateCsrfToken, clearCsrfToken } from './csrf'
@@ -56,7 +57,7 @@ export async function login(
   // Check rate limiting
   const clientIp = await getClientIp()
   const rateLimit = checkRateLimit(clientIp)
-  
+
   if (!rateLimit.allowed) {
     const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
     return {
@@ -70,16 +71,13 @@ export async function login(
   // Record this attempt
   recordLoginAttempt(clientIp)
 
-  const supabase = createAdminClient()
+  const adminUsers = await getAdminUsersCollection()
+  const activityLog = await getActivityLogCollection()
 
   // Get admin user
-  const { data: admin, error } = await supabase
-    .from('admin_users')
-    .select('*')
-    .eq('email', email.toLowerCase())
-    .single()
+  const admin = await adminUsers.findOne({ email: email.toLowerCase() })
 
-  if (error || !admin) {
+  if (!admin) {
     return { success: false, error: 'Invalid email or password' }
   }
 
@@ -91,9 +89,15 @@ export async function login(
   const validPassword = await bcrypt.compare(password, admin.password_hash)
   if (!validPassword) {
     // Log failed attempt
-    await supabase.from('activity_log').insert({
+    await activityLog.insertOne({
+      _id: new ObjectId(),
+      admin_id: null,
+      admin_name: null,
       action: 'login_failed',
+      entity_type: null,
+      entity_id: null,
       details: { email, reason: 'invalid_password' },
+      created_at: new Date(),
     })
     return { success: false, error: 'Invalid email or password' }
   }
@@ -103,16 +107,18 @@ export async function login(
   const tokenHash = crypto.createHash('sha256').update(sessionId).digest('hex')
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
-  await supabase.from('admin_sessions').insert({
-    id: sessionId,
-    admin_id: admin.id,
+  const sessions = await getAdminSessionsCollection()
+  await sessions.insertOne({
+    _id: new ObjectId(),
+    admin_id: admin._id,
     token_hash: tokenHash,
-    expires_at: expiresAt.toISOString(),
+    expires_at: expiresAt,
+    created_at: new Date(),
   })
 
   // Create JWT
   const token = signToken({
-    sub: admin.id,
+    sub: admin._id.toString(),
     email: admin.email,
     name: admin.name,
     role: admin.role,
@@ -128,11 +134,15 @@ export async function login(
   await clearCsrfToken()
 
   // Log successful login
-  await supabase.from('activity_log').insert({
-    admin_id: admin.id,
+  await activityLog.insertOne({
+    _id: new ObjectId(),
+    admin_id: admin._id,
     admin_name: admin.name,
     action: 'login',
+    entity_type: null,
+    entity_id: null,
     details: { email },
+    created_at: new Date(),
   })
 
   return { success: true }
@@ -142,19 +152,22 @@ export async function logout(): Promise<void> {
   const session = await getSession()
 
   if (session) {
-    const supabase = createAdminClient()
+    const sessions = await getAdminSessionsCollection()
+    const activityLog = await getActivityLogCollection()
 
     // Delete session from database
-    await supabase
-      .from('admin_sessions')
-      .delete()
-      .eq('id', session.session_id)
+    await sessions.deleteOne({ _id: new ObjectId(session.session_id) })
 
     // Log logout
-    await supabase.from('activity_log').insert({
-      admin_id: session.sub,
+    await activityLog.insertOne({
+      _id: new ObjectId(),
+      admin_id: new ObjectId(session.sub),
       admin_name: session.name,
       action: 'logout',
+      entity_type: null,
+      entity_id: null,
+      details: null,
+      created_at: new Date(),
     })
   }
 
@@ -166,12 +179,22 @@ export async function getCurrentAdmin(): Promise<AdminUser | null> {
   const session = await getSession()
   if (!session) return null
 
-  const supabase = createAdminClient()
-  const { data } = await supabase
-    .from('admin_users')
-    .select('id, email, name, role, is_active, two_factor_enabled, created_at, updated_at')
-    .eq('id', session.sub)
-    .single()
+  const adminUsers = await getAdminUsersCollection()
+  const admin = await adminUsers.findOne(
+    { _id: new ObjectId(session.sub) },
+    { projection: { password_hash: 0 } }
+  )
 
-  return data
+  if (!admin) return null
+
+  return {
+    id: admin._id.toString(),
+    email: admin.email,
+    name: admin.name,
+    role: admin.role,
+    is_active: admin.is_active,
+    two_factor_enabled: admin.two_factor_enabled,
+    created_at: admin.created_at.toISOString(),
+    updated_at: admin.updated_at.toISOString(),
+  }
 }

@@ -1,28 +1,3 @@
-/**
- * @fileoverview Supabase queries module exports.
- * Re-exports all domain-specific query functions and types.
- *
- * This module has been refactored for better maintainability:
- * - products.ts: Product listings, search, and details
- * - categories.ts: Category navigation and filtering
- * - orders.ts: Order history and details
- * - reviews.ts: Product reviews and ratings
- * - homepage.ts: Homepage content (hero slides, etc.)
- *
- * @module lib/supabase/queries
- *
- * @example
- * ```ts
- * import {
- *   getProducts,
- *   getCategories,
- *   getOrderById,
- *   getProductReviews,
- *   getHeroSlides,
- * } from '@/lib/supabase/queries'
- * ```
- */
-
 // ============================================================================
 // Product Queries
 // ============================================================================

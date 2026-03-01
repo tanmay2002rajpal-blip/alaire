@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { getCategoriesWithCounts } from "@/lib/supabase/queries"
+import { getCategoriesWithCounts } from "@/lib/db/queries"
 import { CategoryCard } from "@/components/categories"
 import { FadeIn, StaggerReveal } from "@/components/animated"
 

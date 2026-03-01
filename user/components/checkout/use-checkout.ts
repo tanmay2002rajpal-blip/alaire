@@ -9,9 +9,9 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
-import { createClient } from "@/lib/supabase/client"
+import { useSession } from "next-auth/react"
 import type { Address } from "@/lib/actions/addresses"
-import type { PincodeData } from "@/lib/shiprocket/types"
+import type { PincodeData } from "@/lib/bluedart/types"
 import type {
   CheckoutFormData,
   CheckoutFormProps,
@@ -60,37 +60,6 @@ const REQUIRED_FIELDS: Array<keyof CheckoutFormData> = [
   "pincode",
 ]
 
-/**
- * useCheckout Hook
- *
- * Custom hook that manages the complete checkout form state and logic.
- * Handles:
- * - Form state management
- * - User authentication check
- * - Address selection (saved/new)
- * - Form validation
- * - Order creation API calls
- * - Razorpay payment integration
- * - COD order processing
- *
- * @param props - Checkout form configuration
- * @returns Checkout state and handlers
- *
- * @example
- * ```tsx
- * const {
- *   formData,
- *   isLoading,
- *   handleInputChange,
- *   handleSubmit,
- *   // ... other state and handlers
- * } = useCheckout({
- *   items,
- *   subtotal,
- *   onSuccess: () => router.push('/order-confirmation'),
- * })
- * ```
- */
 export function useCheckout({
   items,
   subtotal,
@@ -106,76 +75,42 @@ export function useCheckout({
   // State Management
   // ============================================================================
 
-  /** Loading state during form submission */
   const [isLoading, setIsLoading] = useState(false)
-
-  /** User authentication status */
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-
-  /** Address mode for logged-in users */
   const [addressMode, setAddressMode] = useState<AddressMode>("saved")
-
-  /** Currently selected saved address */
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null)
-
-  /** Selected payment method */
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("prepaid")
-
-  /** Form data for contact and address fields */
   const [formData, setFormData] = useState<CheckoutFormData>(INITIAL_FORM_DATA)
-
-  /** Pincode serviceability data from Shiprocket */
   const [serviceabilityData, setServiceabilityData] = useState<PincodeData | null>(null)
+
+  const { data: session } = useSession()
 
   // ============================================================================
   // Effects
   // ============================================================================
 
-  /**
-   * Check user authentication status on mount.
-   * Pre-fills email for logged-in users.
-   */
   useEffect(() => {
-    const checkUser = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (user) {
-        setIsLoggedIn(true)
-        setFormData((prev) => ({ ...prev, email: user.email || "" }))
-      } else {
-        // Guest users can only enter new addresses
-        setAddressMode("new")
-      }
+    if (session?.user) {
+      setIsLoggedIn(true)
+      setFormData((prev) => ({ ...prev, email: session.user?.email || "" }))
+    } else {
+      setAddressMode("new")
     }
-
-    checkUser()
-  }, [])
+  }, [session])
 
   // ============================================================================
   // Event Handlers
   // ============================================================================
 
-  /**
-   * Handles input field changes.
-   * Updates the corresponding field in formData.
-   */
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }, [])
 
-  /**
-   * Handles state dropdown selection.
-   */
   const handleStateChange = useCallback((state: string) => {
     setFormData((prev) => ({ ...prev, state }))
   }, [])
 
-  /**
-   * Handles saved address selection.
-   * Populates form data with the selected address details.
-   */
   const handleAddressSelect = useCallback((address: Address) => {
     setSelectedAddress(address)
     setFormData((prev) => ({
@@ -194,14 +129,7 @@ export function useCheckout({
   // Validation
   // ============================================================================
 
-  /**
-   * Validates the checkout form.
-   * Checks required fields and format validation for phone, email, and pincode.
-   *
-   * @returns True if form is valid, false otherwise
-   */
   const validateForm = useCallback((): boolean => {
-    // Check required fields
     for (const field of REQUIRED_FIELDS) {
       if (!formData[field]) {
         const fieldName = field.replace(/([A-Z])/g, " $1").toLowerCase()
@@ -210,19 +138,16 @@ export function useCheckout({
       }
     }
 
-    // Validate phone number format
     if (!VALIDATION_PATTERNS.phone.test(formData.phone)) {
       toast.error("Please enter a valid 10-digit phone number")
       return false
     }
 
-    // Validate pincode format
     if (!VALIDATION_PATTERNS.pincode.test(formData.pincode)) {
       toast.error("Please enter a valid 6-digit pincode")
       return false
     }
 
-    // Validate email format
     if (!VALIDATION_PATTERNS.email.test(formData.email)) {
       toast.error("Please enter a valid email address")
       return false
@@ -235,15 +160,6 @@ export function useCheckout({
   // API Interactions
   // ============================================================================
 
-  /**
-   * Initializes Razorpay payment and opens the checkout modal.
-   *
-   * @param orderId - Internal order ID
-   * @param razorpayOrderId - Razorpay order ID
-   * @param amount - Amount in paise
-   * @param currency - Currency code
-   * @param key - Razorpay API key
-   */
   const initializeRazorpay = useCallback(
     async (
       orderId: string,
@@ -260,7 +176,6 @@ export function useCheckout({
         description: `Order #${orderId}`,
         order_id: razorpayOrderId,
         handler: async (response) => {
-          // Verify payment with backend
           const verifyResponse = await fetch("/api/checkout/verify-payment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -291,7 +206,6 @@ export function useCheckout({
         },
       }
 
-      // Create Razorpay instance and open modal
       const razorpay = new window.Razorpay(options)
       razorpay.on("payment.failed", (response) => {
         toast.error("Payment failed", {
@@ -303,21 +217,15 @@ export function useCheckout({
     [formData, onSuccess]
   )
 
-  /**
-   * Handles form submission.
-   * Creates order and processes payment (Razorpay or COD).
-   */
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
 
-      // Validate form before submission
       if (!validateForm()) return
 
       setIsLoading(true)
 
       try {
-        // Create order via API
         const response = await fetch("/api/checkout/create-order", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -344,7 +252,6 @@ export function useCheckout({
         if (!response.ok) {
           const error = await response.json()
 
-          // Handle out of stock items
           if (error.outOfStockItems) {
             error.outOfStockItems.forEach((item: string) => {
               toast.error("Out of Stock", { description: item })
@@ -357,7 +264,6 @@ export function useCheckout({
 
         const data = await response.json()
 
-        // Handle COD orders - immediately successful
         if (data.paymentMethod === "cod") {
           toast.success("Order placed successfully!", {
             description: "You will pay on delivery",
@@ -366,7 +272,6 @@ export function useCheckout({
           return
         }
 
-        // Handle prepaid orders - initialize Razorpay
         const { orderId, razorpayOrderId, amount, currency, key } = data
         await initializeRazorpay(orderId, razorpayOrderId, amount, currency, key)
       } catch (error) {

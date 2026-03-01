@@ -1,6 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { ObjectId } from 'mongodb'
+import { getProductVariantsCollection, getProductsCollection, getCategoriesCollection } from '@/lib/db/collections'
+import { toObjectId, paginate, totalPages } from '@/lib/db/helpers'
 
 export interface InventoryItem {
   id: string
@@ -26,15 +28,6 @@ export interface InventoryFilters {
   limit?: number
 }
 
-/** Product data from Supabase join */
-interface ProductData {
-  id: string
-  name: string
-  slug: string
-  images?: string[]
-  categories?: { name: string } | { name: string }[]
-}
-
 export interface InventoryStats {
   total_items: number
   total_stock_value: number
@@ -57,87 +50,76 @@ const LOW_STOCK_THRESHOLD = 10
  * Inventory is tracked at the variant level
  */
 export async function getInventory(filters?: InventoryFilters): Promise<PaginatedInventory> {
-  const supabase = await createClient()
+  const variantsCol = await getProductVariantsCollection()
+  const productsCol = await getProductsCollection()
 
-  const page = filters?.page || 1
-  const limit = filters?.limit || 25
-  const offset = (page - 1) * limit
+  const { skip, limit: lim, page } = paginate(filters?.page, filters?.limit || 25)
 
-  // Query product_variants with product and category info
-  let query = supabase
-    .from('product_variants')
-    .select(`
-      id,
-      name,
-      sku,
-      price,
-      stock_quantity,
-      is_active,
-      updated_at,
-      products!inner (
-        id,
-        name,
-        slug,
-        images,
-        is_active,
-        category_id,
-        categories (
-          id,
-          name
-        )
-      )
-    `, { count: 'exact' })
-    .eq('is_active', true)
+  // Build variant filter
+  const variantFilter: Record<string, any> = { is_active: true }
 
-  // Apply search filter on product name
   if (filters?.search) {
-    const searchTerm = '%' + filters.search + '%'
-    query = query.or('name.ilike.' + searchTerm + ',sku.ilike.' + searchTerm)
+    variantFilter.$or = [
+      { name: { $regex: filters.search, $options: 'i' } },
+      { sku: { $regex: filters.search, $options: 'i' } },
+    ]
   }
 
-  // Apply category filter
-  if (filters?.category_id) {
-    query = query.eq('products.category_id', filters.category_id)
-  }
-
-  // Apply stock status filter
   if (filters?.stock_status && filters.stock_status !== 'all') {
     switch (filters.stock_status) {
       case 'out_of_stock':
-        query = query.eq('stock_quantity', 0)
+        variantFilter.stock_quantity = 0
         break
       case 'low_stock':
-        query = query.gt('stock_quantity', 0).lt('stock_quantity', LOW_STOCK_THRESHOLD)
+        variantFilter.stock_quantity = { $gt: 0, $lt: LOW_STOCK_THRESHOLD }
         break
       case 'in_stock':
-        query = query.gte('stock_quantity', LOW_STOCK_THRESHOLD)
+        variantFilter.stock_quantity = { $gte: LOW_STOCK_THRESHOLD }
         break
     }
   }
 
-  // Apply pagination and ordering (low stock first)
-  query = query
-    .order('stock_quantity', { ascending: true })
-    .range(offset, offset + limit - 1)
-
-  const { data: variantsData, error: variantsError, count } = await query
-
-  if (variantsError) {
-    console.error('Error fetching inventory:', variantsError)
-    throw new Error('Failed to fetch inventory')
+  // If filtering by category, get product IDs first
+  if (filters?.category_id) {
+    const categoryProducts = await productsCol.find(
+      { category_id: toObjectId(filters.category_id) },
+      { projection: { _id: 1 } }
+    ).toArray()
+    variantFilter.product_id = { $in: categoryProducts.map(p => p._id) }
   }
 
-  // Transform data
-  const items: InventoryItem[] = (variantsData || []).map(variant => {
-    const productArray = variant.products as unknown as ProductData[] | ProductData | null
-    const product = Array.isArray(productArray) ? productArray[0] : productArray
-    const category = Array.isArray(product?.categories)
-      ? product.categories[0]
-      : product?.categories
+  const [variantsData, total] = await Promise.all([
+    variantsCol.find(variantFilter).sort({ stock_quantity: 1 }).skip(skip).limit(lim).toArray(),
+    variantsCol.countDocuments(variantFilter),
+  ])
+
+  // Get products and categories for these variants
+  const productIds = [...new Set(variantsData.map(v => v.product_id))]
+  const products = productIds.length > 0
+    ? await productsCol.find(
+        { _id: { $in: productIds } },
+        { projection: { name: 1, slug: 1, images: 1, category_id: 1 } }
+      ).toArray()
+    : []
+
+  const categoryIds = [...new Set(products.map(p => p.category_id).filter(Boolean))] as ObjectId[]
+  const categories = categoryIds.length > 0
+    ? await (async () => {
+        const catsCol = await getCategoriesCollection()
+        return catsCol.find({ _id: { $in: categoryIds } }, { projection: { name: 1 } }).toArray()
+      })()
+    : []
+
+  const productMap = new Map(products.map(p => [p._id.toString(), p]))
+  const categoryMap = new Map(categories.map(c => [c._id.toString(), c]))
+
+  const items: InventoryItem[] = variantsData.map(variant => {
+    const product = productMap.get(variant.product_id.toString())
+    const category = product?.category_id ? categoryMap.get(product.category_id.toString()) : null
 
     return {
-      id: variant.id,
-      product_id: product?.id || '',
+      id: variant._id.toString(),
+      product_id: product?._id.toString() || '',
       product_name: product?.name || 'Unknown',
       product_slug: product?.slug || '',
       product_image: product?.images?.[0] || null,
@@ -148,18 +130,15 @@ export async function getInventory(filters?: InventoryFilters): Promise<Paginate
       low_stock_threshold: LOW_STOCK_THRESHOLD,
       price: variant.price || 0,
       is_active: variant.is_active,
-      last_updated: variant.updated_at,
+      last_updated: variant.updated_at.toISOString(),
     }
   })
-
-  const total = count || 0
-  const totalPages = Math.ceil(total / limit)
 
   return {
     items,
     total,
     page,
-    totalPages,
+    totalPages: totalPages(total, lim),
   }
 }
 
@@ -167,28 +146,22 @@ export async function getInventory(filters?: InventoryFilters): Promise<Paginate
  * Get inventory statistics from product_variants
  */
 export async function getInventoryStats(): Promise<InventoryStats> {
-  const supabase = await createClient()
+  const variantsCol = await getProductVariantsCollection()
 
-  // Get all active variants
-  const { data: variants, error } = await supabase
-    .from('product_variants')
-    .select('stock_quantity, price')
-    .eq('is_active', true)
-
-  if (error) {
-    console.error('Error fetching inventory stats:', error)
-    throw new Error('Failed to fetch inventory stats')
-  }
+  const variants = await variantsCol.find(
+    { is_active: true },
+    { projection: { stock_quantity: 1, price: 1 } }
+  ).toArray()
 
   const stats: InventoryStats = {
-    total_items: variants?.length || 0,
+    total_items: variants.length,
     total_stock_value: 0,
     low_stock_items: 0,
     out_of_stock_items: 0,
     in_stock_items: 0,
   }
 
-  variants?.forEach(variant => {
+  for (const variant of variants) {
     const stock = variant.stock_quantity || 0
     const price = variant.price || 0
 
@@ -201,7 +174,7 @@ export async function getInventoryStats(): Promise<InventoryStats> {
     } else {
       stats.in_stock_items++
     }
-  })
+  }
 
   return stats
 }
@@ -227,21 +200,13 @@ export async function updateStock(
   newStock: number,
   reason?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient()
+  const variantsCol = await getProductVariantsCollection()
 
   try {
-    const { error } = await supabase
-      .from('product_variants')
-      .update({
-        stock_quantity: newStock,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', variantId)
-
-    if (error) {
-      console.error('Error updating stock:', error)
-      return { success: false, error: error.message }
-    }
+    await variantsCol.updateOne(
+      { _id: toObjectId(variantId) },
+      { $set: { stock_quantity: newStock, updated_at: new Date() } }
+    )
 
     return { success: true }
   } catch (error) {
@@ -259,21 +224,18 @@ export async function updateStock(
 export async function bulkUpdateStock(
   updates: { variantId: string; stock: number }[]
 ): Promise<{ success: boolean; error?: string; updated: number }> {
-  const supabase = await createClient()
+  const variantsCol = await getProductVariantsCollection()
 
   try {
     let updated = 0
 
     for (const update of updates) {
-      const { error } = await supabase
-        .from('product_variants')
-        .update({
-          stock_quantity: update.stock,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', update.variantId)
+      const result = await variantsCol.updateOne(
+        { _id: toObjectId(update.variantId) },
+        { $set: { stock_quantity: update.stock, updated_at: new Date() } }
+      )
 
-      if (!error) {
+      if (result.modifiedCount > 0) {
         updated++
       }
     }

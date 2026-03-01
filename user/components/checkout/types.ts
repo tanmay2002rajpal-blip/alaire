@@ -7,7 +7,7 @@
 
 import type { CartItem } from "@/hooks/use-cart"
 import type { Address } from "@/lib/actions/addresses"
-import type { PincodeData } from "@/lib/shiprocket/types"
+import type { PincodeData } from "@/lib/bluedart/types"
 
 /**
  * Supported payment methods for checkout.
@@ -55,7 +55,7 @@ export interface CheckoutFormProps {
   subtotal: number
   /** Discount amount applied (from coupon) */
   discount?: number
-  /** Shipping cost calculated from Shiprocket */
+  /** Shipping cost calculated from Blue Dart */
   shippingCost?: number
   /** Wallet balance amount used for this order */
   walletAmountUsed?: number

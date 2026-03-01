@@ -1,7 +1,9 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Heart } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
+import { getDb } from "@/lib/db/client"
+import { serializeDoc, serializeDocs } from "@/lib/db/helpers"
 import { formatPrice } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,24 +25,43 @@ interface WishlistProduct {
 }
 
 export default async function WishlistPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  const userId = session?.user?.id
 
-  const { data: wishlistItems } = await supabase
-    .from("wishlists")
-    .select(`
-      *,
-      product:products(
-        id,
-        name,
-        slug,
-        base_price,
-        images,
-        variants:product_variants(price, compare_at_price)
-      )
-    `)
-    .eq("user_id", user?.id)
-    .order("created_at", { ascending: false })
+  const db = await getDb()
+
+  const wishlistDocs = await db
+    .collection("wishlists")
+    .find({ user_id: userId })
+    .sort({ created_at: -1 })
+    .toArray()
+
+  const wishlistItems = await Promise.all(
+    wishlistDocs.map(async (wDoc) => {
+      const item = serializeDoc(wDoc)
+      const productDoc = await db
+        .collection("products")
+        .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.product_id] } })
+
+      if (!productDoc) return { ...item, product: null }
+
+      const product = serializeDoc(productDoc)
+      const variantDocs = await db
+        .collection("product_variants")
+        .find({ product_id: product.id })
+        .project({ price: 1, compare_at_price: 1 })
+        .limit(1)
+        .toArray()
+
+      return {
+        ...item,
+        product: {
+          ...product,
+          variants: serializeDocs(variantDocs),
+        },
+      }
+    })
+  )
 
   return (
     <div className="space-y-6">
@@ -52,7 +73,7 @@ export default async function WishlistPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!wishlistItems || wishlistItems.length === 0 ? (
+          {wishlistItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Heart className="h-12 w-12 text-muted-foreground/50" />
               <p className="mt-4 text-lg font-medium">Your wishlist is empty</p>

@@ -33,7 +33,7 @@ import type { ShippingAddressCardProps, AddressMode } from "./types"
  * - **Guest users**: Must enter a new address manually
  *
  * Both flows include:
- * - Pincode serviceability check via Shiprocket
+ * - Pincode serviceability check via Blue Dart
  * - Address form fields with validation
  * - City/state auto-population from pincode
  *

@@ -1,6 +1,6 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getBlogPostsCollection } from '@/lib/db/collections'
 
 export interface BlogPost {
   id: string
@@ -21,19 +21,23 @@ export interface BlogPost {
  */
 export async function getBlogPosts(): Promise<BlogPost[]> {
   try {
-    const supabase = await createClient()
+    const postsCol = await getBlogPostsCollection()
 
-    const { data, error } = await supabase
-      .from("blog_posts")
-      .select("*")
-      .order("created_at", { ascending: false })
+    const data = await postsCol.find().sort({ created_at: -1 }).toArray()
 
-    if (error) {
-      console.error("Error fetching blog posts:", error)
-      return []
-    }
-
-    return data || []
+    return data.map(post => ({
+      id: post._id.toString(),
+      title: post.title,
+      slug: post.slug,
+      excerpt: post.excerpt,
+      content: post.content,
+      featured_image: post.featured_image,
+      author_id: post.author_id?.toString() || null,
+      is_published: post.is_published,
+      published_at: post.published_at?.toISOString() || null,
+      created_at: post.created_at.toISOString(),
+      updated_at: post.updated_at.toISOString(),
+    }))
   } catch (err) {
     console.error("Unexpected error fetching blog posts:", err)
     return []
@@ -45,22 +49,17 @@ export async function getBlogPosts(): Promise<BlogPost[]> {
  */
 export async function getBlogPostStats() {
   try {
-    const supabase = await createClient()
+    const postsCol = await getBlogPostsCollection()
 
-    const { data, error } = await supabase
-      .from("blog_posts")
-      .select("is_published")
+    const data = await postsCol.find(
+      {},
+      { projection: { is_published: 1 } }
+    ).toArray()
 
-    if (error) {
-      console.error("Error fetching blog post stats:", error)
-      return { total: 0, published: 0, drafts: 0 }
-    }
-
-    const posts = data || []
     return {
-      total: posts.length,
-      published: posts.filter(p => p.is_published).length,
-      drafts: posts.filter(p => !p.is_published).length,
+      total: data.length,
+      published: data.filter(p => p.is_published).length,
+      drafts: data.filter(p => !p.is_published).length,
     }
   } catch (err) {
     console.error("Unexpected error fetching blog post stats:", err)

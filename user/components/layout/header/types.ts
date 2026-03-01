@@ -5,7 +5,16 @@
  * @module components/layout/header/types
  */
 
-import type { User } from "@supabase/supabase-js"
+// ============================================================================
+// User Type (replaces Supabase User import)
+// ============================================================================
+
+export interface User {
+  id: string
+  name?: string | null
+  email?: string | null
+  image?: string | null
+}
 
 // ============================================================================
 // Navigation Types

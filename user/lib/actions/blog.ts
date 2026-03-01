@@ -1,6 +1,7 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
+import { getDb } from "@/lib/db/client"
+import { serializeDoc, serializeDocs } from "@/lib/db/helpers"
 
 export interface BlogPost {
   id: string
@@ -14,121 +15,85 @@ export interface BlogPost {
   created_at: string
 }
 
-interface RawBlogPost {
-  id: string
-  title: string
-  slug: string
-  excerpt: string | null
-  content?: string | null
-  featured_image: string | null
-  published_at: string
-  created_at: string
-  author?: { full_name: string | null } | { full_name: string | null }[] | null
-}
-
 export async function getBlogPosts(): Promise<BlogPost[]> {
-  const supabase = await createClient()
+  const db = await getDb()
 
-  const { data, error } = await supabase
-    .from("blog_posts")
-    .select(`
-      id,
-      title,
-      slug,
-      excerpt,
-      featured_image,
-      published_at,
-      created_at
-    `)
-    .eq("is_published", true)
-    .order("published_at", { ascending: false })
+  const docs = await db
+    .collection("blog_posts")
+    .find({ is_published: true })
+    .sort({ published_at: -1 })
+    .project({
+      title: 1,
+      slug: 1,
+      excerpt: 1,
+      featured_image: 1,
+      published_at: 1,
+      created_at: 1,
+    })
+    .toArray()
 
-  if (error) {
-    console.error("Error fetching blog posts:", error)
-    return []
-  }
-
-  return (data || []).map((post) => ({
+  return serializeDocs(docs).map((post) => ({
     id: post.id,
-    title: post.title,
-    slug: post.slug,
-    excerpt: post.excerpt,
+    title: (post as Record<string, unknown>).title as string,
+    slug: (post as Record<string, unknown>).slug as string,
+    excerpt: (post as Record<string, unknown>).excerpt as string | null,
     content: null,
-    featured_image: post.featured_image,
-    published_at: post.published_at,
-    created_at: post.created_at,
+    featured_image: (post as Record<string, unknown>).featured_image as string | null,
+    published_at: (post as Record<string, unknown>).published_at as string,
+    created_at: (post as Record<string, unknown>).created_at as string,
     author_name: "Alaire Team",
   }))
 }
 
 export async function getBlogPostBySlug(slug: string): Promise<BlogPost | null> {
-  const supabase = await createClient()
+  const db = await getDb()
 
-  const { data, error } = await supabase
-    .from("blog_posts")
-    .select(`
-      id,
-      title,
-      slug,
-      excerpt,
-      content,
-      featured_image,
-      published_at,
-      created_at
-    `)
-    .eq("slug", slug)
-    .eq("is_published", true)
-    .single()
+  const doc = await db
+    .collection("blog_posts")
+    .findOne({ slug, is_published: true })
 
-  if (error || !data) {
-    console.error("Error fetching blog post:", error)
-    return null
-  }
+  if (!doc) return null
 
+  const s = serializeDoc(doc)
   return {
-    id: data.id,
-    title: data.title,
-    slug: data.slug,
-    excerpt: data.excerpt,
-    content: data.content,
-    featured_image: data.featured_image,
-    published_at: data.published_at,
-    created_at: data.created_at,
+    id: s.id,
+    title: (s as Record<string, unknown>).title as string,
+    slug: (s as Record<string, unknown>).slug as string,
+    excerpt: (s as Record<string, unknown>).excerpt as string | null,
+    content: (s as Record<string, unknown>).content as string | null,
+    featured_image: (s as Record<string, unknown>).featured_image as string | null,
+    published_at: (s as Record<string, unknown>).published_at as string,
+    created_at: (s as Record<string, unknown>).created_at as string,
     author_name: "Alaire Team",
   }
 }
 
 export async function getRecentBlogPosts(limit: number = 3): Promise<BlogPost[]> {
-  const supabase = await createClient()
+  const db = await getDb()
 
-  const { data, error } = await supabase
-    .from("blog_posts")
-    .select(`
-      id,
-      title,
-      slug,
-      excerpt,
-      featured_image,
-      published_at,
-      created_at
-    `)
-    .eq("is_published", true)
-    .order("published_at", { ascending: false })
+  const docs = await db
+    .collection("blog_posts")
+    .find({ is_published: true })
+    .sort({ published_at: -1 })
     .limit(limit)
+    .project({
+      title: 1,
+      slug: 1,
+      excerpt: 1,
+      featured_image: 1,
+      published_at: 1,
+      created_at: 1,
+    })
+    .toArray()
 
-  if (error) {
-    console.error("Error fetching recent blog posts:", error)
-    return []
-  }
-
-  return (data || []).map((post: RawBlogPost) => ({
+  return serializeDocs(docs).map((post) => ({
     id: post.id,
-    title: post.title,
-    slug: post.slug,
-    excerpt: post.excerpt,
+    title: (post as Record<string, unknown>).title as string,
+    slug: (post as Record<string, unknown>).slug as string,
+    excerpt: (post as Record<string, unknown>).excerpt as string | null,
     content: null,
-    featured_image: post.featured_image,
-    published_at: post.published_at,
-    created_at: post.created_at,
+    featured_image: (post as Record<string, unknown>).featured_image as string | null,
+    published_at: (post as Record<string, unknown>).published_at as string,
+    created_at: (post as Record<string, unknown>).created_at as string,
   }))
 }

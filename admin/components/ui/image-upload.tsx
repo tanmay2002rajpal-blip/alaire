@@ -10,7 +10,6 @@ import {
   uploadCategoryImage,
   uploadHeroImage,
   deleteImage,
-  BUCKETS,
   type UploadResult,
 } from '@/lib/storage/images'
 import { cn } from '@/lib/utils'
@@ -179,21 +178,14 @@ export function ImageUpload({
       const newUrls = urls.filter((_, i) => i !== index)
       onChange(multiple ? newUrls : '')
 
-      const bucketName = bucket === 'product-images'
-        ? BUCKETS.PRODUCT_IMAGES
-        : bucket === 'category-images'
-        ? BUCKETS.CATEGORY_IMAGES
-        : BUCKETS.HERO_IMAGES
-
-      const pathMatch = url.match(new RegExp(`/storage/v1/object/public/${bucketName}/(.+)$`))
-      if (pathMatch && pathMatch[1]) {
-        const path = pathMatch[1]
-        await deleteImage(bucketName, path)
+      // Delete from Cloudinary using the full URL
+      if (url.includes('cloudinary.com')) {
+        await deleteImage('', url)
       }
 
       toast.success('Image removed')
     },
-    [urls, onChange, multiple, bucket]
+    [urls, onChange, multiple]
   )
 
   const handleDragStart = useCallback((index: number) => {

@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import type { Metadata } from "next"
 import { ProductGrid, ProductFilters } from "@/components/products"
-import { getProducts, getCategories } from "@/lib/supabase/queries"
+import { getProducts, getCategories } from "@/lib/db/queries"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export const metadata: Metadata = {

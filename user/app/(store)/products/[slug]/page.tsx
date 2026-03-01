@@ -9,11 +9,11 @@ import {
   ProductGrid,
 } from "@/components/products"
 import { RecentlyViewed } from "@/components/products/recently-viewed"
-import { getProductBySlug, getRelatedProducts, getProductReviews, getReviewSummary, canUserReview } from "@/lib/supabase/queries"
+import { getProductBySlug, getRelatedProducts, getProductReviews, getReviewSummary, canUserReview } from "@/lib/db/queries"
 import { trackProductView } from "@/lib/actions/recently-viewed"
 import { Separator } from "@/components/ui/separator"
 import { ProductReviews } from "./product-reviews"
-import { createClient } from "@/lib/supabase/server"
+import { auth } from "@/lib/auth"
 import type { ProductOption, ProductDetail } from "@/types"
 
 interface ProductPageProps {
@@ -66,9 +66,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
   ])
 
   // Check if current user can review
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const userCanReview = user ? await canUserReview(user.id, product.id) : false
+  const session = await auth()
+  const userCanReview = session?.user?.id ? await canUserReview(session.user.id, product.id) : false
 
   return (
     <div className="container py-8">

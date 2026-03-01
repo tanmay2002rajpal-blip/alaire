@@ -37,8 +37,10 @@ import { Resend } from "resend"
 // Configuration
 // ============================================================================
 
-/** Resend email client instance */
-const resend = new Resend(process.env.RESEND_API_KEY)
+/** Lazily create Resend email client to avoid build-time errors */
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 // ============================================================================
 // Types
@@ -298,7 +300,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
   `
 
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Order Confirmed - ${orderNumber}`,
