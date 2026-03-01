@@ -272,7 +272,11 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Payment Method</p>
                   <p className="text-base">
-                    {order.razorpay_order_id ? 'Razorpay' : 'Online Payment'}
+                    {order.payment_method === 'cod'
+                      ? 'Cash on Delivery'
+                      : order.razorpay_order_id
+                        ? 'Razorpay'
+                        : 'Online Payment'}
                   </p>
                 </div>
 

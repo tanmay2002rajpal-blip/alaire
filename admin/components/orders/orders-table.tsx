@@ -269,7 +269,7 @@ export function OrdersTable({
                 </TableCell>
                 <TableCell className="font-medium">
                   <Link
-                    href={`/admin/orders/${order.id}`}
+                    href={`/orders/${order.id}`}
                     className="flex items-center gap-1 hover:text-primary transition-colors"
                   >
                     {order.order_number}
@@ -315,7 +315,7 @@ export function OrdersTable({
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem asChild>
                         <Link
-                          href={`/admin/orders/${order.id}`}
+                          href={`/orders/${order.id}`}
                           className="cursor-pointer"
                         >
                           <Eye className="mr-2 h-4 w-4" />

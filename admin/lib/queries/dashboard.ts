@@ -113,24 +113,30 @@ export async function getRecentOrders(limit = 5): Promise<RecentOrder[]> {
     if (orders.length === 0) return []
 
     // Get user profiles
-    const userIds = [...new Set(orders.map(o => o.user_id))]
-    const profiles = await usersCol.find(
-      { _id: { $in: userIds } },
-      { projection: { full_name: 1 } }
-    ).toArray()
+    const userIds = [...new Set(orders.filter(o => o.user_id != null).map(o => o.user_id))]
+    const profiles = userIds.length > 0
+      ? await usersCol.find(
+          { _id: { $in: userIds } },
+          { projection: { full_name: 1 } }
+        ).toArray()
+      : []
 
     const profileMap = new Map(profiles.map(p => [p._id.toString(), p]))
 
     return orders.map(order => {
-      const profile = profileMap.get(order.user_id.toString())
+      const userId = order.user_id?.toString() || null
+      const profile = userId ? profileMap.get(userId) : null
       const shippingAddr = order.shipping_address || {}
+      const createdAt = order.created_at instanceof Date
+        ? order.created_at.toISOString()
+        : String(order.created_at)
 
       return {
         id: order._id.toString(),
         order_number: order.order_number,
         total: order.total || 0,
         status: order.status,
-        created_at: order.created_at.toISOString(),
+        created_at: createdAt,
         customer: {
           name: profile?.full_name || shippingAddr.full_name || 'Unknown',
         },
@@ -175,7 +181,9 @@ export async function getRevenueChart(days = 7): Promise<RevenueChartData[]> {
 
     // Aggregate order data
     for (const order of orders) {
-      const dateKey = order.created_at.toISOString().split('T')[0]
+      const dateKey = (order.created_at instanceof Date
+        ? order.created_at.toISOString()
+        : String(order.created_at)).split('T')[0]
       const current = revenueByDate.get(dateKey)
       if (current) {
         current.revenue += order.total || 0
@@ -214,7 +222,7 @@ export async function getRecentActivity(limit = 10): Promise<ActivityLogEntry[]>
       entity_type: activity.entity_type || '',
       entity_id: activity.entity_id || '',
       details: activity.details,
-      created_at: activity.created_at.toISOString(),
+      created_at: activity.created_at instanceof Date ? activity.created_at.toISOString() : String(activity.created_at),
       admin_name: activity.admin_name || 'System',
     }))
   } catch (error) {

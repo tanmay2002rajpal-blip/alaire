@@ -40,7 +40,22 @@ export async function createBlogPost(data: BlogPostInput) {
     const post = await postsCol.findOne({ _id: postId })
 
     revalidatePath("/content/blog")
-    return { success: true, data: post ? { ...post, id: post._id.toString() } : null }
+    return {
+      success: true,
+      data: post ? {
+        id: post._id.toString(),
+        title: post.title,
+        slug: post.slug,
+        excerpt: post.excerpt,
+        content: post.content,
+        featured_image: post.featured_image,
+        author_id: post.author_id?.toString() || null,
+        is_published: post.is_published,
+        published_at: post.published_at?.toISOString() || null,
+        created_at: post.created_at.toISOString(),
+        updated_at: post.updated_at.toISOString(),
+      } : null,
+    }
   } catch (err) {
     console.error("Unexpected error creating blog post:", err)
     return { success: false, error: "Failed to create blog post" }
@@ -77,7 +92,22 @@ export async function updateBlogPost(id: string, data: Partial<BlogPostInput>) {
 
     revalidatePath("/content/blog")
     revalidatePath(`/content/blog/${id}`)
-    return { success: true, data: post ? { ...post, id: post._id.toString() } : null }
+    return {
+      success: true,
+      data: post ? {
+        id: post._id.toString(),
+        title: post.title,
+        slug: post.slug,
+        excerpt: post.excerpt,
+        content: post.content,
+        featured_image: post.featured_image,
+        author_id: post.author_id?.toString() || null,
+        is_published: post.is_published,
+        published_at: post.published_at?.toISOString() || null,
+        created_at: post.created_at.toISOString(),
+        updated_at: post.updated_at.toISOString(),
+      } : null,
+    }
   } catch (err) {
     console.error("Unexpected error updating blog post:", err)
     return { success: false, error: "Failed to update blog post" }

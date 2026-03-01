@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       } else {
         const variants = await db
           .collection("product_variants")
-          .find({ product_id: item.productId })
+          .find({ product_id: new ObjectId(item.productId) })
           .toArray()
         if (variants.length > 0) {
           stockQuantity = variants.reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0)
@@ -302,8 +302,9 @@ export async function POST(request: Request) {
         console.error("Order confirmation email failed (non-fatal):", emailError)
       }
 
-      // Create Blue Dart shipment (non-blocking)
-      try {
+      // Create Blue Dart shipment (non-blocking, only if configured)
+      const isBlueDartConfigured = !!(process.env.BLUEDART_LOGIN_ID && process.env.BLUEDART_LICENSE_KEY)
+      if (isBlueDartConfigured) try {
         const customerName = process.env.BLUEDART_CUSTOMER_NAME || ""
         const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ""
         const originArea = process.env.BLUEDART_ORIGIN_AREA || ""

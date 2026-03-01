@@ -12,9 +12,9 @@ import { z } from "zod"
 // ============================================================================
 
 /**
- * UUID validation pattern
+ * ID validation pattern (MongoDB ObjectId: 24-character hex string)
  */
-const uuidSchema = z.string().uuid("Invalid ID format")
+const objectIdSchema = z.string().regex(/^[a-f0-9]{24}$/, "Invalid ID format")
 
 /**
  * Email validation with sanitization
@@ -84,8 +84,8 @@ export type ShippingAddressInput = z.infer<typeof shippingAddressSchema>
 // ============================================================================
 
 export const cartItemSchema = z.object({
-  productId: uuidSchema,
-  variantId: uuidSchema.optional(),
+  productId: objectIdSchema,
+  variantId: objectIdSchema.optional(),
   name: z.string().min(1).max(200),
   variantName: z.string().max(100).optional(),
   price: z.number().positive("Price must be positive").max(1000000, "Price too high"),
@@ -121,7 +121,7 @@ export type CreateOrderInput = z.infer<typeof createOrderSchema>
 // ============================================================================
 
 export const verifyPaymentSchema = z.object({
-  orderId: uuidSchema,
+  orderId: objectIdSchema,
   razorpay_payment_id: z
     .string()
     .min(1, "Payment ID required")
@@ -161,11 +161,11 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
 // ============================================================================
 
 export const wishlistToggleSchema = z.object({
-  productId: uuidSchema,
+  productId: objectIdSchema,
 })
 
 export const wishlistRemoveSchema = z.object({
-  itemId: uuidSchema,
+  itemId: objectIdSchema,
 })
 
 // ============================================================================
@@ -173,7 +173,7 @@ export const wishlistRemoveSchema = z.object({
 // ============================================================================
 
 export const markNotificationReadSchema = z.object({
-  notificationId: uuidSchema,
+  notificationId: objectIdSchema,
 })
 
 // ============================================================================

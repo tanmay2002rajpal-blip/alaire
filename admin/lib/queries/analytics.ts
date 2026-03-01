@@ -138,7 +138,9 @@ export async function getDailySales(days: number = 30): Promise<DailySales[]> {
 
   // Aggregate orders
   for (const order of orders) {
-    const dateStr = order.created_at.toISOString().split("T")[0]
+    const dateStr = (order.created_at instanceof Date
+      ? order.created_at.toISOString()
+      : String(order.created_at)).split("T")[0]
     if (salesByDate[dateStr]) {
       salesByDate[dateStr].revenue += order.total || 0
       salesByDate[dateStr].orders += 1
@@ -265,23 +267,29 @@ export async function getRecentOrders(limit: number = 10): Promise<RecentOrder[]
   if (orders.length === 0) return []
 
   // Get customer profiles
-  const userIds = [...new Set(orders.map(o => o.user_id))]
-  const profiles = await usersCol.find(
-    { _id: { $in: userIds } },
-    { projection: { full_name: 1, email: 1 } }
-  ).toArray()
+  const userIds = [...new Set(orders.filter(o => o.user_id != null).map(o => o.user_id))]
+  const profiles = userIds.length > 0
+    ? await usersCol.find(
+        { _id: { $in: userIds } },
+        { projection: { full_name: 1, email: 1 } }
+      ).toArray()
+    : []
 
   const profileMap = new Map(profiles.map(p => [p._id.toString(), p]))
 
   return orders.map(order => {
-    const profile = profileMap.get(order.user_id.toString())
+    const userId = order.user_id?.toString() || null
+    const profile = userId ? profileMap.get(userId) : null
+    const createdAt = order.created_at instanceof Date
+      ? order.created_at.toISOString()
+      : String(order.created_at)
     return {
       id: order._id.toString(),
       orderNumber: order.order_number,
-      customerName: profile?.full_name || profile?.email || "Guest",
+      customerName: profile?.full_name || profile?.email || order.shipping_address?.full_name || "Guest",
       total: order.total,
       status: order.status,
-      createdAt: order.created_at.toISOString(),
+      createdAt: createdAt,
     }
   })
 }

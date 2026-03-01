@@ -62,6 +62,7 @@ export interface OrderDetail {
   discount_amount: number;
   shipping_cost: number;
   status: string;
+  payment_method: string | null;
   shipping_address: any;
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
@@ -129,7 +130,7 @@ export async function getOrders(filters?: OrderFilters): Promise<PaginatedOrders
 
   // Get user profiles and item counts
   const orderIds = ordersData.map(o => o._id)
-  const userIds = [...new Set(ordersData.map(o => o.user_id))]
+  const userIds = [...new Set(ordersData.filter(o => o.user_id != null).map(o => o.user_id))]
 
   const [profiles, itemsDocs] = await Promise.all([
     (async () => {
@@ -138,7 +139,13 @@ export async function getOrders(filters?: OrderFilters): Promise<PaginatedOrders
       return users.find({ _id: { $in: userIds } }, { projection: { full_name: 1, phone: 1 } }).toArray()
     })(),
     orderIds.length > 0
-      ? orderItemsCol.find({ order_id: { $in: orderIds } }, { projection: { order_id: 1 } }).toArray()
+      ? orderItemsCol.find(
+          { $or: [
+            { order_id: { $in: orderIds } },
+            { order_id: { $in: orderIds.map(id => id.toString()) } },
+          ]},
+          { projection: { order_id: 1 } }
+        ).toArray()
       : Promise.resolve([]),
   ])
 
@@ -151,24 +158,28 @@ export async function getOrders(filters?: OrderFilters): Promise<PaginatedOrders
 
   // Transform data
   const orders: Order[] = ordersData.map(order => {
-    const profile = profileMap.get(order.user_id.toString())
+    const userId = order.user_id?.toString() || null
+    const profile = userId ? profileMap.get(userId) : null
     const shippingAddr = order.shipping_address || {}
+    const createdAt = order.created_at instanceof Date
+      ? order.created_at.toISOString()
+      : String(order.created_at)
 
     return {
       id: order._id.toString(),
       order_number: order.order_number,
-      user_id: order.user_id.toString(),
+      user_id: userId || '',
       total: order.total || 0,
       subtotal: order.subtotal || 0,
       discount_amount: order.discount_amount || 0,
       shipping_cost: order.shipping_cost || 0,
       status: order.status,
       shipping_address: order.shipping_address,
-      razorpay_order_id: order.razorpay_order_id,
-      razorpay_payment_id: order.razorpay_payment_id,
-      created_at: order.created_at.toISOString(),
+      razorpay_order_id: order.razorpay_order_id || null,
+      razorpay_payment_id: order.razorpay_payment_id || null,
+      created_at: createdAt,
       customer_name: profile?.full_name || shippingAddr.full_name || 'Unknown',
-      customer_email: shippingAddr.email || '',
+      customer_email: order.email || shippingAddr.email || '',
       customer_phone: profile?.phone || shippingAddr.phone || null,
       items_count: itemsCountMap[order._id.toString()] || 0,
     }
@@ -195,10 +206,12 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
   if (!orderData) return null
 
   // Get items, history, and profile in parallel
+  const orderIdStr = oid.toString()
   const [itemsData, historyData, profile] = await Promise.all([
-    orderItemsCol.find({ order_id: oid }).toArray(),
-    historyCol.find({ order_id: oid }).sort({ created_at: -1 }).toArray(),
+    orderItemsCol.find({ $or: [{ order_id: oid }, { order_id: orderIdStr }] }).toArray(),
+    historyCol.find({ $or: [{ order_id: oid }, { order_id: orderIdStr }] }).sort({ created_at: -1 }).toArray(),
     (async () => {
+      if (!orderData.user_id) return null
       const users = await getUsersCollection()
       return users.findOne(
         { _id: orderData.user_id },
@@ -208,46 +221,52 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
   ])
 
   const shippingAddr = orderData.shipping_address || {}
+  const userId = orderData.user_id?.toString() || null
 
   const items: OrderItem[] = itemsData.map(item => ({
     id: item._id.toString(),
-    order_id: item.order_id.toString(),
+    order_id: item.order_id?.toString() || '',
     product_id: item.product_id?.toString() || null,
     variant_id: item.variant_id?.toString() || null,
     quantity: item.quantity,
-    price_at_purchase: item.price_at_purchase,
+    price_at_purchase: item.price_at_purchase ?? item.price ?? 0,
     product_name: item.product_name || 'Unknown Product',
-    variant_name: item.variant_name,
-    image_url: item.image_url,
+    variant_name: item.variant_name || null,
+    image_url: item.image_url || null,
   }))
 
   const status_history: OrderStatusHistory[] = historyData.map(h => ({
     id: h._id.toString(),
-    order_id: h.order_id.toString(),
+    order_id: h.order_id?.toString() || '',
     status: h.status,
-    note: h.note,
+    note: h.note || null,
     created_by: h.created_by?.toString() || null,
-    created_at: h.created_at.toISOString(),
+    created_at: h.created_at instanceof Date ? h.created_at.toISOString() : String(h.created_at),
     admin_name: null,
   }))
+
+  const createdAt = orderData.created_at instanceof Date
+    ? orderData.created_at.toISOString()
+    : String(orderData.created_at)
 
   return {
     id: orderData._id.toString(),
     order_number: orderData.order_number,
-    user_id: orderData.user_id.toString(),
+    user_id: userId || '',
     total: orderData.total || 0,
     subtotal: orderData.subtotal || 0,
     discount_amount: orderData.discount_amount || 0,
     shipping_cost: orderData.shipping_cost || 0,
     status: orderData.status,
-    shipping_address: orderData.shipping_address,
-    razorpay_order_id: orderData.razorpay_order_id,
-    razorpay_payment_id: orderData.razorpay_payment_id,
-    created_at: orderData.created_at.toISOString(),
+    payment_method: orderData.payment_method || null,
+    shipping_address: orderData.shipping_address || {},
+    razorpay_order_id: orderData.razorpay_order_id || null,
+    razorpay_payment_id: orderData.razorpay_payment_id || null,
+    created_at: createdAt,
     customer: {
-      id: profile?._id.toString() || orderData.user_id.toString(),
+      id: profile?._id.toString() || userId || '',
       name: profile?.full_name || shippingAddr.full_name || 'Unknown',
-      email: shippingAddr.email || '',
+      email: orderData.email || shippingAddr.email || '',
       phone: profile?.phone || shippingAddr.phone || null,
     },
     items,

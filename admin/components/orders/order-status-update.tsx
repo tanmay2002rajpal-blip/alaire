@@ -26,7 +26,8 @@ interface OrderStatusUpdateProps {
 
 // Status workflow mapping
 const STATUS_WORKFLOW: Record<string, string[]> = {
-  pending: ["processing", "cancelled"],
+  pending: ["confirmed", "processing", "cancelled"],
+  confirmed: ["processing", "cancelled"],
   processing: ["shipped", "cancelled"],
   shipped: ["delivered"],
   delivered: ["refunded"],
@@ -37,6 +38,7 @@ const STATUS_WORKFLOW: Record<string, string[]> = {
 // Status display configuration
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "Pending", variant: "outline" },
+  confirmed: { label: "Confirmed", variant: "secondary" },
   processing: { label: "Processing", variant: "secondary" },
   shipped: { label: "Shipped", variant: "default" },
   delivered: { label: "Delivered", variant: "default" },

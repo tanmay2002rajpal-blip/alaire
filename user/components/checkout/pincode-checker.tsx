@@ -69,7 +69,8 @@ export function PincodeChecker({
     if (pincode.length === 6 && /^\d{6}$/.test(pincode)) {
       handleCheck()
     }
-  }, [pincode, handleCheck])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pincode])
 
   const handlePincodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, "").slice(0, 6)
