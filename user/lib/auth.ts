@@ -7,7 +7,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: MongoDBAdapter(clientPromise, {
     databaseName: process.env.MONGODB_DB || "alaire",
   }),
-  session: { strategy: "jwt" },
   ...authConfig,
   callbacks: {
     async jwt({ token, user }) {

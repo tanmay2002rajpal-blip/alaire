@@ -50,6 +50,7 @@ export async function createCategoryAction(formData: FormData) {
       parent_id: parentId ? toObjectId(parentId) : null,
       image_url: image || null,
       position: 0,
+      is_active: true,
       created_at: now,
       updated_at: now,
     })

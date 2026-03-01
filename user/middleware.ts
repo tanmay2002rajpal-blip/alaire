@@ -1,7 +1,22 @@
+import { NextRequest, NextResponse } from "next/server"
 import NextAuth from "next-auth"
 import authConfig from "@/lib/auth.config"
 
-export const { auth: middleware } = NextAuth(authConfig)
+const { auth } = NextAuth(authConfig)
+
+export default async function middleware(request: NextRequest) {
+  const session = await auth()
+
+  // Protected routes that require authentication
+  const protectedPaths = ["/account/orders", "/account/wishlist", "/account/wallet"]
+  const isProtected = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
+
+  if (isProtected && !session) {
+    return NextResponse.redirect(new URL("/", request.url))
+  }
+
+  return NextResponse.next()
+}
 
 export const config = {
   matcher: [

@@ -71,6 +71,7 @@ export interface CategoryDoc {
   image_url: string | null
   parent_id: ObjectId | null
   position: number
+  is_active: boolean
   created_at: Date
   updated_at: Date
 }
@@ -84,6 +85,7 @@ export interface OrderDoc {
   subtotal: number
   discount_amount: number
   shipping_cost: number
+  shipping_amount?: number
   status: string
   payment_method: string | null
   shipping_address: any

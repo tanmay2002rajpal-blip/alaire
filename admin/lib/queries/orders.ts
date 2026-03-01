@@ -142,7 +142,7 @@ export async function getOrders(filters?: OrderFilters): Promise<PaginatedOrders
       ? orderItemsCol.find(
           { $or: [
             { order_id: { $in: orderIds } },
-            { order_id: { $in: orderIds.map(id => id.toString()) } },
+            { order_id: { $in: orderIds.map(id => id.toString()) } as any },
           ]},
           { projection: { order_id: 1 } }
         ).toArray()
@@ -179,7 +179,7 @@ export async function getOrders(filters?: OrderFilters): Promise<PaginatedOrders
       razorpay_payment_id: order.razorpay_payment_id || null,
       created_at: createdAt,
       customer_name: profile?.full_name || shippingAddr.full_name || 'Unknown',
-      customer_email: order.email || shippingAddr.email || '',
+      customer_email: (order as any).email || shippingAddr.email || '',
       customer_phone: profile?.phone || shippingAddr.phone || null,
       items_count: itemsCountMap[order._id.toString()] || 0,
     }
@@ -208,8 +208,8 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
   // Get items, history, and profile in parallel
   const orderIdStr = oid.toString()
   const [itemsData, historyData, profile] = await Promise.all([
-    orderItemsCol.find({ $or: [{ order_id: oid }, { order_id: orderIdStr }] }).toArray(),
-    historyCol.find({ $or: [{ order_id: oid }, { order_id: orderIdStr }] }).sort({ created_at: -1 }).toArray(),
+    orderItemsCol.find({ $or: [{ order_id: oid }, { order_id: orderIdStr as any }] }).toArray(),
+    historyCol.find({ $or: [{ order_id: oid }, { order_id: orderIdStr as any }] }).sort({ created_at: -1 }).toArray(),
     (async () => {
       if (!orderData.user_id) return null
       const users = await getUsersCollection()
@@ -229,7 +229,7 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
     product_id: item.product_id?.toString() || null,
     variant_id: item.variant_id?.toString() || null,
     quantity: item.quantity,
-    price_at_purchase: item.price_at_purchase ?? item.price ?? 0,
+    price_at_purchase: item.price_at_purchase ?? (item as any).price ?? 0,
     product_name: item.product_name || 'Unknown Product',
     variant_name: item.variant_name || null,
     image_url: item.image_url || null,
@@ -266,7 +266,7 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
     customer: {
       id: profile?._id.toString() || userId || '',
       name: profile?.full_name || shippingAddr.full_name || 'Unknown',
-      email: orderData.email || shippingAddr.email || '',
+      email: (orderData as any).email || shippingAddr.email || '',
       phone: profile?.phone || shippingAddr.phone || null,
     },
     items,
