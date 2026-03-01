@@ -3,6 +3,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { format } from "date-fns"
+import { marked } from "marked"
 import { ArrowLeft, CalendarDays, User, Clock } from "lucide-react"
 import { getBlogPostBySlug, getRecentBlogPosts } from "@/lib/actions/blog"
 import { Button } from "@/components/ui/button"
@@ -19,12 +20,12 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
 
   if (!post) {
     return {
-      title: "Post Not Found | Alaire",
+      title: "Post Not Found",
     }
   }
 
   return {
-    title: `${post.title} | Alaire Blog`,
+    title: post.title,
     description: post.excerpt || `Read ${post.title} on the Alaire blog.`,
     openGraph: {
       title: post.title,
@@ -51,6 +52,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const recentPosts = await getRecentBlogPosts(3)
   const relatedPosts = recentPosts.filter((p) => p.slug !== post.slug).slice(0, 2)
   const readingTime = post.content ? estimateReadingTime(post.content) : 3
+  const htmlContent = post.content ? await marked.parse(post.content) : ""
 
   return (
     <article className="min-h-screen bg-background">
@@ -119,7 +121,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
             prose-blockquote:border-l-primary prose-blockquote:italic
             prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
             prose-pre:bg-muted prose-pre:border"
-          dangerouslySetInnerHTML={{ __html: post.content || "" }}
+          dangerouslySetInnerHTML={{ __html: htmlContent }}
         />
 
         {/* Related Posts */}

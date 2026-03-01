@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 
 export const metadata: Metadata = {
-  title: "Shipping Information | Alaire",
+  title: "Shipping Information",
   description: "Learn about Alaire's shipping policies, delivery times, and shipping costs across India.",
 }
 

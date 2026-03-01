@@ -56,9 +56,9 @@ export async function searchProducts(query: string): Promise<SearchResult> {
         {
           $lookup: {
             from: "product_variants",
-            let: { pid: { $toString: "$_id" } },
+            localField: "_id",
+            foreignField: "product_id",
             pipeline: [
-              { $match: { $expr: { $eq: ["$product_id", "$$pid"] } } },
               { $limit: 1 },
               { $project: { price: 1 } },
             ],

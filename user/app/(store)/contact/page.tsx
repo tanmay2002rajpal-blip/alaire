@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export const metadata: Metadata = {
-  title: "Contact Us | Alaire",
+  title: "Contact Us",
   description: "Get in touch with Alaire. We're here to help with any questions about your orders, products, or shopping experience.",
 }
 

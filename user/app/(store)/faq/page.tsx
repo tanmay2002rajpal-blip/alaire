@@ -11,7 +11,7 @@ import { MessageCircle } from "lucide-react"
 import Link from "next/link"
 
 export const metadata: Metadata = {
-  title: "FAQ | Alaire",
+  title: "FAQ",
   description: "Find answers to frequently asked questions about Alaire orders, shipping, returns, and more.",
 }
 

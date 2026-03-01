@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
 export const metadata: Metadata = {
-  title: "Blog | Alaire",
+  title: "Blog",
   description: "Discover the latest fashion trends, styling tips, and behind-the-scenes stories from Alaire.",
 }
 
