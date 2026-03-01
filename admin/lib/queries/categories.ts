@@ -159,6 +159,7 @@ export async function createCategory(
     image_url: categoryData.image || null,
     parent_id: categoryData.parent_id ? toObjectId(categoryData.parent_id) : null,
     position: categoryData.sort_order || 0,
+    is_active: true,
     created_at: now,
     updated_at: now,
   })

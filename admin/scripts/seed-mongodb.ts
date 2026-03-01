@@ -69,6 +69,7 @@ async function seed() {
         image_url: null,
         parent_id: null,
         position: cat.position,
+        is_active: true,
         created_at: now,
         updated_at: now,
       })

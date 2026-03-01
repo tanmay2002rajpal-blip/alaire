@@ -21,17 +21,36 @@ const BASE_URL = 'https://apigateway.bluedart.com/in/transportation'
  * Static mapping of common Indian pincodes to city/state.
  * Used for quick lookups without API calls.
  */
-const PINCODE_MAP: Record<string, { city: string; state: string }> = {
-  '400001': { city: 'Mumbai', state: 'Maharashtra' },
-  '110001': { city: 'New Delhi', state: 'Delhi' },
-  '560001': { city: 'Bangalore', state: 'Karnataka' },
-  '600001': { city: 'Chennai', state: 'Tamil Nadu' },
-  '700001': { city: 'Kolkata', state: 'West Bengal' },
-  '500001': { city: 'Hyderabad', state: 'Telangana' },
-  '411001': { city: 'Pune', state: 'Maharashtra' },
-  '380001': { city: 'Ahmedabad', state: 'Gujarat' },
-  '695001': { city: 'Thiruvananthapuram', state: 'Kerala' },
-  '302001': { city: 'Jaipur', state: 'Rajasthan' },
+// Map pincode prefixes (first 3 digits) to city/state for fallback lookup
+const PINCODE_PREFIX_MAP: Record<string, { city: string; state: string }> = {
+  '110': { city: 'New Delhi', state: 'Delhi' },
+  '120': { city: 'Ghaziabad', state: 'Uttar Pradesh' },
+  '121': { city: 'Faridabad', state: 'Haryana' },
+  '122': { city: 'Gurugram', state: 'Haryana' },
+  '125': { city: 'Hisar', state: 'Haryana' },
+  '201': { city: 'Noida', state: 'Uttar Pradesh' },
+  '226': { city: 'Lucknow', state: 'Uttar Pradesh' },
+  '302': { city: 'Jaipur', state: 'Rajasthan' },
+  '380': { city: 'Ahmedabad', state: 'Gujarat' },
+  '395': { city: 'Surat', state: 'Gujarat' },
+  '400': { city: 'Mumbai', state: 'Maharashtra' },
+  '411': { city: 'Pune', state: 'Maharashtra' },
+  '440': { city: 'Nagpur', state: 'Maharashtra' },
+  '452': { city: 'Indore', state: 'Madhya Pradesh' },
+  '462': { city: 'Bhopal', state: 'Madhya Pradesh' },
+  '500': { city: 'Hyderabad', state: 'Telangana' },
+  '560': { city: 'Bangalore', state: 'Karnataka' },
+  '570': { city: 'Mysore', state: 'Karnataka' },
+  '600': { city: 'Chennai', state: 'Tamil Nadu' },
+  '641': { city: 'Coimbatore', state: 'Tamil Nadu' },
+  '682': { city: 'Kochi', state: 'Kerala' },
+  '695': { city: 'Thiruvananthapuram', state: 'Kerala' },
+  '700': { city: 'Kolkata', state: 'West Bengal' },
+  '751': { city: 'Bhubaneswar', state: 'Odisha' },
+  '781': { city: 'Guwahati', state: 'Assam' },
+  '800': { city: 'Patna', state: 'Bihar' },
+  '160': { city: 'Chandigarh', state: 'Chandigarh' },
+  '180': { city: 'Jammu', state: 'Jammu & Kashmir' },
 }
 
 // ============================================================================
@@ -293,7 +312,8 @@ class BlueDartClient {
    * Returns null if pincode is not in the local database.
    */
   getPincodeDetails(pincode: string): PincodeData | null {
-    const details = PINCODE_MAP[pincode]
+    const prefix = pincode.slice(0, 3)
+    const details = PINCODE_PREFIX_MAP[prefix]
     if (!details) {
       return null
     }

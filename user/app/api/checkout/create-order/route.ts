@@ -274,6 +274,12 @@ export async function POST(request: Request) {
             { $expr: { $eq: [{ $toString: "$_id" }, item.variantId] } },
             { $inc: { stock_quantity: -item.quantity } }
           )
+        } else if (item.productId) {
+          // No specific variant selected - decrement first available variant
+          await db.collection("product_variants").updateOne(
+            { product_id: new ObjectId(item.productId), stock_quantity: { $gt: 0 } },
+            { $inc: { stock_quantity: -item.quantity } }
+          )
         }
       }
 
