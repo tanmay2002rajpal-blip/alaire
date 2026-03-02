@@ -63,8 +63,8 @@ export interface CheckoutFormProps {
   couponCode?: string
   /** Callback when shipping cost changes based on pincode */
   onShippingChange?: (cost: number) => void
-  /** Callback when checkout is successful */
-  onSuccess: () => void
+  /** Callback when checkout is successful, receives the order ID */
+  onSuccess: (orderId: string) => void
 }
 
 /**

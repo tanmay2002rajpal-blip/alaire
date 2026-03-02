@@ -32,7 +32,7 @@ export type { CategoryWithCount } from "./categories"
 // Order Queries
 // ============================================================================
 
-export { getOrderById, getUserOrders } from "./orders"
+export { getOrderById, getOrderConfirmation, getUserOrders } from "./orders"
 
 export type {
   OrderWithDetails,

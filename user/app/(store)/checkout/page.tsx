@@ -137,9 +137,9 @@ export default function CheckoutPage() {
             walletAmountUsed={walletAmountUsed}
             couponCode={couponCode}
             onShippingChange={handleShippingChange}
-            onSuccess={() => {
+            onSuccess={(orderId) => {
               clearCart()
-              router.push("/account/orders")
+              router.push(`/order-confirmation/${orderId}`)
             }}
           />
         </div>

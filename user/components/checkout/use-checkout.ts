@@ -69,8 +69,8 @@ export function useCheckout({
   onSuccess,
 }: Pick<
   CheckoutFormProps,
-  "items" | "subtotal" | "shippingCost" | "walletAmountUsed" | "couponCode" | "onSuccess"
->) {
+  "items" | "subtotal" | "shippingCost" | "walletAmountUsed" | "couponCode"
+> & { onSuccess: (orderId: string) => void }) {
   // ============================================================================
   // State Management
   // ============================================================================
@@ -191,7 +191,7 @@ export function useCheckout({
             toast.success("Payment successful!", {
               description: "Your order has been placed",
             })
-            onSuccess()
+            onSuccess(orderId)
           } else {
             toast.error("Payment verification failed")
           }
@@ -268,7 +268,7 @@ export function useCheckout({
           toast.success("Order placed successfully!", {
             description: "You will pay on delivery",
           })
-          onSuccess()
+          onSuccess(data.orderId)
           return
         }
 

@@ -119,6 +119,82 @@ export async function getOrderById(
   } as unknown as OrderWithDetails
 }
 
+/**
+ * Get order confirmation data (no auth required, limited fields for security).
+ * Used by the order confirmation page shown right after placing an order.
+ */
+export async function getOrderConfirmation(
+  orderId: string
+): Promise<{
+  id: string
+  order_number: string
+  status: string
+  subtotal: number
+  discount_amount: number
+  shipping_cost: number
+  total: number
+  payment_method: string
+  created_at: string
+  items: OrderItem[]
+  shipping_address: ShippingAddress
+} | null> {
+  const db = await getDb()
+
+  const pipeline = [
+    {
+      $match: {
+        $expr: { $eq: [{ $toString: "$_id" }, orderId] },
+      },
+    },
+    {
+      $lookup: {
+        from: "order_items",
+        let: { oid: { $toString: "$_id" } },
+        pipeline: [
+          { $match: { $expr: { $eq: ["$order_id", "$$oid"] } } },
+          {
+            $project: {
+              product_id: 1,
+              variant_id: 1,
+              product_name: 1,
+              variant_name: 1,
+              quantity: 1,
+              price_at_purchase: 1,
+              image_url: 1,
+            },
+          },
+        ],
+        as: "items",
+      },
+    },
+    {
+      $project: {
+        order_number: 1,
+        status: 1,
+        subtotal: 1,
+        discount_amount: 1,
+        shipping_cost: { $ifNull: ["$shipping_cost", { $ifNull: ["$shipping_amount", 0] }] },
+        total: 1,
+        payment_method: 1,
+        created_at: 1,
+        shipping_address: 1,
+        items: 1,
+      },
+    },
+  ]
+
+  const docs = await db.collection("orders").aggregate(pipeline).toArray()
+
+  if (docs.length === 0) return null
+
+  const doc = docs[0]
+  const s = serializeDoc(doc)
+  return {
+    ...s,
+    items: serializeDocs(s.items || []),
+  } as any
+}
+
 export async function getUserOrders(
   userId: string,
   limit = 50

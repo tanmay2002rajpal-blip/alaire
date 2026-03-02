@@ -58,6 +58,8 @@ type SortDirection = "asc" | "desc";
 
 const STATUS_CONFIG = {
   pending: { label: "Pending", color: "bg-yellow-100 text-yellow-800" },
+  confirmed: { label: "Confirmed", color: "bg-emerald-100 text-emerald-800" },
+  paid: { label: "Paid", color: "bg-emerald-100 text-emerald-800" },
   processing: { label: "Processing", color: "bg-blue-100 text-blue-800" },
   shipped: { label: "Shipped", color: "bg-purple-100 text-purple-800" },
   delivered: { label: "Delivered", color: "bg-green-100 text-green-800" },

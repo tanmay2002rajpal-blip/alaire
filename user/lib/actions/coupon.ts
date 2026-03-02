@@ -20,7 +20,7 @@ export async function validateCoupon(
   const db = await getDb()
 
   const coupon = await db
-    .collection("discount_codes")
+    .collection("coupons")
     .findOne({ code: code.toUpperCase().trim(), is_active: true })
 
   if (!coupon) {
@@ -47,12 +47,14 @@ export async function validateCoupon(
     }
   }
 
-  if (coupon.max_uses !== null && coupon.current_uses >= coupon.max_uses) {
+  const usageLimit = coupon.usage_limit ?? coupon.max_uses ?? null
+  const usageCount = coupon.usage_count ?? coupon.current_uses ?? 0
+  if (usageLimit !== null && usageCount >= usageLimit) {
     return { success: false, message: "This coupon has reached its usage limit" }
   }
 
   const discountValue = Number(coupon.value) || 0
-  const maxDiscountAmount = Number(coupon.max_discount_amount) || null
+  const maxDiscountAmount = Number(coupon.max_discount) || Number(coupon.max_discount_amount) || null
   let discount = 0
 
   if (coupon.type === "percentage") {

@@ -124,7 +124,7 @@ export async function POST(request: Request) {
 
     if (discountCode) {
       const code = await db
-        .collection("discount_codes")
+        .collection("coupons")
         .findOne({ code: discountCode.toUpperCase(), is_active: true })
 
       if (code) {
@@ -132,20 +132,25 @@ export async function POST(request: Request) {
         const validFrom = code.valid_from ? new Date(code.valid_from) : null
         const validUntil = code.valid_until ? new Date(code.valid_until) : null
         const minOrder = code.min_order_amount ?? 0
+        const usageLimit = code.usage_limit ?? code.max_uses ?? null
+        const usageCount = code.usage_count ?? code.current_uses ?? 0
 
         if (
           (!validFrom || now >= validFrom) &&
           (!validUntil || now <= validUntil) &&
           subtotal >= minOrder &&
-          (code.usage_limit === null || code.usage_count < code.usage_limit)
+          (usageLimit === null || usageCount < usageLimit)
         ) {
-          if (code.discount_type === "percentage") {
-            discount = (subtotal * code.discount_value) / 100
-            if (code.max_discount_amount) {
-              discount = Math.min(discount, code.max_discount_amount)
+          const discountValue = Number(code.value) || Number(code.discount_value) || 0
+          const discountType = code.type || code.discount_type
+          if (discountType === "percentage") {
+            discount = (subtotal * discountValue) / 100
+            const maxDiscount = Number(code.max_discount) || Number(code.max_discount_amount) || 0
+            if (maxDiscount) {
+              discount = Math.min(discount, maxDiscount)
             }
           } else {
-            discount = code.discount_value
+            discount = discountValue
           }
           discountCodeId = code._id.toString()
         }
@@ -226,9 +231,9 @@ export async function POST(request: Request) {
 
     // Increment discount code usage
     if (discountCodeId) {
-      await db.collection("discount_codes").updateOne(
+      await db.collection("coupons").updateOne(
         { _id: new ObjectId(discountCodeId) },
-        { $inc: { current_uses: 1, usage_count: 1 } }
+        { $inc: { usage_count: 1 } }
       )
     }
 
