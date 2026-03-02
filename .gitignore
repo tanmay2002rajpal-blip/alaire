@@ -15,3 +15,4 @@ admin/.playwright-mcp/
 *.db-shm
 *.db-wal
 .playwright-mcp/
+test-results/
