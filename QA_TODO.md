@@ -41,9 +41,9 @@ _Last updated: 2026-03-03_
   - [x] `/account/wallet`
 
 ### Dynamic pages (require valid IDs/slugs/session)
-- [ ] Product detail (`/products/[slug]`) — pending targeted product-by-product click-through
+- [x] Product detail (`/products/[slug]`) — verified with existing + newly created admin product
 - [ ] Category detail (`/categories/[slug]`) — pending targeted category click-through
-- [ ] Blog detail (`/blog/[slug]`) — pending targeted blog click-through
+- [ ] Blog detail (`/blog/[slug]`) — existing published posts load; new admin draft-publish flow needs fix
 - [ ] Order confirmation (`/order-confirmation/[id]`) — pending order placement flow
 - [ ] Order detail (`/account/orders/[id]`) — pending authenticated account order history
 
@@ -92,12 +92,18 @@ _Last updated: 2026-03-03_
 - [ ] CRUD-level action tests (create/update/delete) across modules
 - [ ] End-to-end order lifecycle status update verification
 
+### CMS → Storefront visibility checks
+- [x] Create product in admin CMS and verify it appears on user `/products`
+- [x] Open new product detail on user storefront and verify content is visible
+- [ ] Create/publish blog post in admin CMS and verify it appears on user `/blog` (currently failing)
+
 ---
 
 ## Errors / Fixes Log
 
 - [x] **Seed script initial failure** (`MONGODB_URI` not injected in shell run) — fixed by running seed with explicit env vars in command.
 - [x] **Admin login verification** — confirmed successful via Playwright flow (`/login` -> `/dashboard`).
+- [ ] **Blog publish flow issue** — new post created in admin (`Save Draft`) but does not appear on user `/blog` even after setting publish checkbox in edit form; likely server action/field mapping bug for published state.
 
 ---
 
