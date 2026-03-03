@@ -40,6 +40,8 @@ export async function createBlogPost(data: BlogPostInput) {
     const post = await postsCol.findOne({ _id: postId })
 
     revalidatePath("/content/blog")
+    revalidatePath("/blog")
+    if (data.slug) revalidatePath(`/blog/${data.slug}`)
     return {
       success: true,
       data: post ? {
@@ -92,6 +94,8 @@ export async function updateBlogPost(id: string, data: Partial<BlogPostInput>) {
 
     revalidatePath("/content/blog")
     revalidatePath(`/content/blog/${id}`)
+    revalidatePath("/blog")
+    if (post?.slug) revalidatePath(`/blog/${post.slug}`)
     return {
       success: true,
       data: post ? {

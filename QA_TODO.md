@@ -43,8 +43,8 @@ _Last updated: 2026-03-03_
 ### Dynamic pages (require valid IDs/slugs/session)
 - [x] Product detail (`/products/[slug]`) — verified with existing + newly created admin product
 - [ ] Category detail (`/categories/[slug]`) — pending targeted category click-through
-- [ ] Blog detail (`/blog/[slug]`) — existing published posts load; new admin draft-publish flow needs fix
-- [ ] Order confirmation (`/order-confirmation/[id]`) — pending order placement flow
+- [x] Blog detail (`/blog/[slug]`) — verified with newly published admin post
+- [x] Order confirmation (`/order-confirmation/[id]`) — verified via successful COD checkout
 - [ ] Order detail (`/account/orders/[id]`) — pending authenticated account order history
 
 ---
@@ -95,7 +95,7 @@ _Last updated: 2026-03-03_
 ### CMS → Storefront visibility checks
 - [x] Create product in admin CMS and verify it appears on user `/products`
 - [x] Open new product detail on user storefront and verify content is visible
-- [ ] Create/publish blog post in admin CMS and verify it appears on user `/blog` (currently failing)
+- [x] Create/publish blog post in admin CMS and verify it appears on user `/blog`
 
 ---
 
@@ -103,13 +103,14 @@ _Last updated: 2026-03-03_
 
 - [x] **Seed script initial failure** (`MONGODB_URI` not injected in shell run) — fixed by running seed with explicit env vars in command.
 - [x] **Admin login verification** — confirmed successful via Playwright flow (`/login` -> `/dashboard`).
-- [ ] **Blog publish flow issue** — new post created in admin (`Save Draft`) but does not appear on user `/blog` even after setting publish checkbox in edit form; likely server action/field mapping bug for published state.
+- [x] **Blog publish visibility hardening** — added dynamic rendering on user blog routes and additional blog revalidation hooks in admin actions; published admin posts now visible on user blog/detail.
+- [x] **Checkout flow verified** — completed COD order from storefront and confirmed order creation in admin (Total Orders incremented 6 -> 7).
 
 ---
 
 ## Next actions (immediate)
 
-1. Run full user purchase flow: product detail -> cart -> checkout -> order confirmation.
-2. Validate user authenticated account journey with real user login/session.
-3. Execute CRUD-level admin tests (create/edit/delete entities) and verify persistence.
-4. Fix issues found, retest, and update this checklist until fully green.
+1. Validate user authenticated account journey with real user login/session.
+2. Execute CRUD-level admin tests (create/edit/delete entities) and verify persistence.
+3. Complete category slug/detail deep checks.
+4. Continue fix/retest loop until checklist is fully green.

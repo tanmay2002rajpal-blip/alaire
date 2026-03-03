@@ -12,6 +12,8 @@ export const metadata: Metadata = {
   description: "Discover the latest fashion trends, styling tips, and behind-the-scenes stories from Alaire.",
 }
 
+export const dynamic = "force-dynamic"
+
 export default async function BlogPage() {
   const posts = await getBlogPosts()
 

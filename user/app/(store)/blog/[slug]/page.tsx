@@ -41,6 +41,8 @@ function estimateReadingTime(content: string): number {
   return Math.max(1, Math.ceil(words / wordsPerMinute))
 }
 
+export const dynamic = "force-dynamic"
+
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const { slug } = await params
   const post = await getBlogPostBySlug(slug)
