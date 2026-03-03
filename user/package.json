@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "bluedart:health": "tsx ../scripts/bluedart-health.ts",
+    "bluedart:test-config": "tsx ../scripts/test-bluedart-config.ts",
+    "bluedart:test-diagnostics": "tsx ../scripts/test-bluedart-diagnostics.ts"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.1",

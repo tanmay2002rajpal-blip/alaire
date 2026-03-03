@@ -2,6 +2,8 @@
 
 import { blueDartClient } from './client'
 import type { PincodeData, TrackingActivity } from './types'
+import { mapBlueDartError, getBlueDartHealthStatus } from './config'
+import { createDiagnostic, saveDiagnostic, type ShipmentDiagnostic } from './diagnostics'
 
 // Default warehouse pincode (Hissar / origin area)
 const DEFAULT_WAREHOUSE_PINCODE = '125001'
@@ -165,6 +167,7 @@ export async function checkPincodeServiceability(
 
 /**
  * Creates a shipment by generating a waybill and registering a pickup.
+ * Enhanced with diagnostics persistence and detailed error tracking.
  */
 export async function createShipment(orderData: {
   orderId: string
@@ -181,8 +184,24 @@ export async function createShipment(orderData: {
   pickupDate: string
   pickupTime: string
 }) {
+  // Determine mode
+  const health = getBlueDartHealthStatus()
+  const mode = health.mode === 'live' ? 'live' : 'fallback'
+
+  // Create diagnostic record
+  const diagnostic = createDiagnostic(orderData.orderId, orderData, mode)
+
   try {
     if (!isBlueDartConfigured()) {
+      const error = new Error('Blue Dart is not configured.')
+      const errorMapping = mapBlueDartError(error)
+      diagnostic.error = errorMapping
+      diagnostic.response = {
+        success: false,
+        error: errorMapping.userMessage,
+      }
+      await saveDiagnostic(diagnostic)
+
       return {
         success: false,
         error: 'Blue Dart is not configured.',
@@ -193,62 +212,135 @@ export async function createShipment(orderData: {
     const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ''
     const originArea = process.env.BLUEDART_ORIGIN_AREA || ''
 
-    // Generate waybill
-    const waybillResponse = await blueDartClient.generateWaybill({
-      Consignee: {
-        ConsigneeName: orderData.consigneeName,
-        ConsigneeAddress1: orderData.consigneeAddress1,
-        ConsigneeAddress2: orderData.consigneeAddress2,
-        ConsigneePincode: orderData.consigneePincode,
-        ConsigneeMobile: orderData.consigneeMobile,
-      },
-      Shipper: {
-        CustomerName: customerName,
-        CustomerCode: customerCode,
-        OriginArea: originArea,
-        CustomerAddress1: '',
-        CustomerPincode: DEFAULT_WAREHOUSE_PINCODE,
-        CustomerMobile: '',
-        Sender: customerName,
-      },
-      Services: {
-        ProductCode: orderData.productCode || 'A',
-        ProductType: 1,
-        SubProductCode: orderData.subProductCode || 'P',
-        PieceCount: String(orderData.pieceCount || 1),
-        ActualWeight: String(orderData.weight),
-        CreditReferenceNo: orderData.orderId,
-        DeclaredValue: String(orderData.declaredValue),
-        PickupDate: orderData.pickupDate,
-        PickupTime: orderData.pickupTime,
-      },
-    })
+    // Generate waybill with timing
+    const waybillStartTime = Date.now()
+    diagnostic.apiCalls.waybill = {
+      requestedAt: new Date().toISOString(),
+      success: false,
+    }
+
+    let waybillResponse
+    try {
+      waybillResponse = await blueDartClient.generateWaybill({
+        Consignee: {
+          ConsigneeName: orderData.consigneeName,
+          ConsigneeAddress1: orderData.consigneeAddress1,
+          ConsigneeAddress2: orderData.consigneeAddress2,
+          ConsigneePincode: orderData.consigneePincode,
+          ConsigneeMobile: orderData.consigneeMobile,
+        },
+        Shipper: {
+          CustomerName: customerName,
+          CustomerCode: customerCode,
+          OriginArea: originArea,
+          CustomerAddress1: '',
+          CustomerPincode: DEFAULT_WAREHOUSE_PINCODE,
+          CustomerMobile: '',
+          Sender: customerName,
+        },
+        Services: {
+          ProductCode: orderData.productCode || 'A',
+          ProductType: 1,
+          SubProductCode: orderData.subProductCode || 'P',
+          PieceCount: String(orderData.pieceCount || 1),
+          ActualWeight: String(orderData.weight),
+          CreditReferenceNo: orderData.orderId,
+          DeclaredValue: String(orderData.declaredValue),
+          PickupDate: orderData.pickupDate,
+          PickupTime: orderData.pickupTime,
+        },
+      })
+
+      diagnostic.apiCalls.waybill.completedAt = new Date().toISOString()
+      diagnostic.apiCalls.waybill.durationMs = Date.now() - waybillStartTime
+      diagnostic.apiCalls.waybill.success = true
+    } catch (waybillError) {
+      diagnostic.apiCalls.waybill.completedAt = new Date().toISOString()
+      diagnostic.apiCalls.waybill.durationMs = Date.now() - waybillStartTime
+      diagnostic.apiCalls.waybill.error =
+        waybillError instanceof Error ? waybillError.message : 'Unknown error'
+
+      const errorMapping = mapBlueDartError(waybillError)
+      diagnostic.error = errorMapping
+      diagnostic.response = {
+        success: false,
+        error: errorMapping.userMessage,
+      }
+      await saveDiagnostic(diagnostic)
+
+      throw waybillError
+    }
 
     const waybillResult = waybillResponse.GenerateWayBillResult
 
     if (!waybillResult || waybillResult.IsError) {
-      const errorMessages = waybillResult?.ErrorMessage?.join(', ') || 'Unknown error'
+      const errorMessages =
+        waybillResult?.ErrorMessage?.join(', ') || 'Unknown error'
+      const error = new Error(`Waybill generation failed: ${errorMessages}`)
+
+      diagnostic.apiCalls.waybill.success = false
+      diagnostic.apiCalls.waybill.error = errorMessages
+
+      const errorMapping = mapBlueDartError(error)
+      diagnostic.error = errorMapping
+      diagnostic.response = {
+        success: false,
+        error: errorMapping.userMessage,
+      }
+      await saveDiagnostic(diagnostic)
+
       return {
         success: false,
         error: `Waybill generation failed: ${errorMessages}`,
       }
     }
 
-    // Register pickup
-    const pickupResponse = await blueDartClient.registerPickup({
-      PickupDate: orderData.pickupDate,
-      PickupTime: orderData.pickupTime,
-      CustomerCode: customerCode,
-      OriginArea: originArea,
-      CustomerName: customerName,
-      CustomerMobile: '',
-      CustomerAddress1: '',
-      CustomerPincode: DEFAULT_WAREHOUSE_PINCODE,
-      PackageCount: orderData.pieceCount || 1,
-      ProductCode: orderData.productCode || 'A',
-    })
+    // Register pickup with timing
+    const pickupStartTime = Date.now()
+    diagnostic.apiCalls.pickup = {
+      requestedAt: new Date().toISOString(),
+      success: false,
+    }
 
-    const pickupResult = pickupResponse.RegisterPickupResult
+    let pickupResponse
+    try {
+      pickupResponse = await blueDartClient.registerPickup({
+        PickupDate: orderData.pickupDate,
+        PickupTime: orderData.pickupTime,
+        CustomerCode: customerCode,
+        OriginArea: originArea,
+        CustomerName: customerName,
+        CustomerMobile: '',
+        CustomerAddress1: '',
+        CustomerPincode: DEFAULT_WAREHOUSE_PINCODE,
+        PackageCount: orderData.pieceCount || 1,
+        ProductCode: orderData.productCode || 'A',
+      })
+
+      diagnostic.apiCalls.pickup.completedAt = new Date().toISOString()
+      diagnostic.apiCalls.pickup.durationMs = Date.now() - pickupStartTime
+      diagnostic.apiCalls.pickup.success = true
+    } catch (pickupError) {
+      diagnostic.apiCalls.pickup.completedAt = new Date().toISOString()
+      diagnostic.apiCalls.pickup.durationMs = Date.now() - pickupStartTime
+      diagnostic.apiCalls.pickup.error =
+        pickupError instanceof Error ? pickupError.message : 'Unknown error'
+
+      // Pickup failure is not critical - we still have the waybill
+      console.warn('Pickup registration failed:', pickupError)
+    }
+
+    const pickupResult = pickupResponse?.RegisterPickupResult
+
+    // Success
+    diagnostic.response = {
+      success: true,
+      awbNumber: waybillResult.AWBNo,
+      destinationArea: waybillResult.DestinationArea,
+      destinationLocation: waybillResult.DestinationLocation,
+      pickupToken: pickupResult?.TokenNumber || null,
+    }
+    await saveDiagnostic(diagnostic)
 
     return {
       success: true,
@@ -259,6 +351,18 @@ export async function createShipment(orderData: {
     }
   } catch (error) {
     console.error('Blue Dart shipment creation error:', error)
+
+    // Map error if not already done
+    if (!diagnostic.error) {
+      const errorMapping = mapBlueDartError(error)
+      diagnostic.error = errorMapping
+      diagnostic.response = {
+        success: false,
+        error: errorMapping.userMessage,
+      }
+      await saveDiagnostic(diagnostic)
+    }
+
     return {
       success: false,
       error:
