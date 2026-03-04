@@ -61,7 +61,6 @@ const PAYMENT_OPTIONS: Array<{
  * @param props - Component props
  * @param props.paymentMethod - Currently selected payment method
  * @param props.onPaymentMethodChange - Handler for payment method changes
- * @param props.walletAmountUsed - Wallet amount being used (for COD warning)
  *
  * @example
  * ```tsx
@@ -75,7 +74,6 @@ const PAYMENT_OPTIONS: Array<{
 export function PaymentMethodCard({
   paymentMethod,
   onPaymentMethodChange,
-  walletAmountUsed,
 }: PaymentMethodCardProps) {
   return (
     <Card>
@@ -151,18 +149,6 @@ export function PaymentMethodCard({
           })}
         </RadioGroup>
 
-        {/* COD + Wallet Warning Message */}
-        {paymentMethod === "cod" && walletAmountUsed > 0 && (
-          <div
-            className="mt-3 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30"
-            role="alert"
-          >
-            <p className="text-sm text-amber-600 dark:text-amber-500">
-              <strong>Note:</strong> Wallet balance cannot be used with Cash on Delivery.
-              Your wallet balance will not be deducted for this order.
-            </p>
-          </div>
-        )}
       </CardContent>
     </Card>
   )

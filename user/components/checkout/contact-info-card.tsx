@@ -93,25 +93,6 @@ export function ContactInfoCard({
           </div>
         </div>
 
-        {/* Email Field - Full width */}
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            value={formData.email}
-            onChange={onInputChange}
-            placeholder="john@example.com"
-            required
-            autoComplete="email"
-            aria-required="true"
-            aria-describedby="email-hint"
-          />
-          <span id="email-hint" className="sr-only">
-            Order confirmation and tracking updates will be sent to this email
-          </span>
-        </div>
       </CardContent>
     </Card>
   )

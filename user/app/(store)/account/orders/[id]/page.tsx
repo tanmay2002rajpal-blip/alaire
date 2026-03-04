@@ -1,9 +1,10 @@
-import { redirect, notFound } from "next/navigation"
+"use client"
+
+import { useEffect, useState, use } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
-import type { Metadata } from "next"
 import { ArrowLeft, HelpCircle } from "lucide-react"
-import { auth } from "@/lib/auth"
-import { getOrderById } from "@/lib/db/queries"
+import { useAuth } from "@/components/auth/auth-provider"
 import { formatPrice, formatDate } from "@/lib/utils"
 import { ORDER_STATUSES } from "@/lib/constants"
 import { Badge } from "@/components/ui/badge"
@@ -19,27 +20,62 @@ interface OrderDetailPageProps {
   params: Promise<{ id: string }>
 }
 
-export async function generateMetadata({
-  params,
-}: OrderDetailPageProps): Promise<Metadata> {
-  const { id } = await params
-  return {
-    title: `Order #${id.slice(0, 8).toUpperCase()}`,
+export default function OrderDetailPage({ params }: OrderDetailPageProps) {
+  const router = useRouter()
+  const { user, isLoading: authLoading } = useAuth()
+  const [order, setOrder] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const { id } = use(params)
+
+  useEffect(() => {
+    async function fetchOrder() {
+      if (authLoading) return
+      
+      if (!user) {
+        router.push("/")
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/account/orders/${id}?userId=${user.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setOrder(data.order)
+        } else if (res.status === 404) {
+          setError("Order not found")
+        } else {
+          setError("Failed to load order")
+        }
+      } catch (err) {
+        setError("An error occurred")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchOrder()
+  }, [id, user, authLoading, router])
+
+  if (authLoading || isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-10 w-48 bg-muted rounded"></div>
+        <div className="h-40 bg-muted rounded"></div>
+        <div className="h-64 bg-muted rounded"></div>
+      </div>
+    )
   }
-}
 
-export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
-  const { id } = await params
-  const session = await auth()
-
-  if (!session?.user?.id) {
-    redirect("/")
-  }
-
-  const order = await getOrderById(id, session.user.id)
-
-  if (!order) {
-    notFound()
+  if (error || !order) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+        <p className="text-lg font-medium">{error || "Order not found"}</p>
+        <Button onClick={() => router.push("/account/orders")}>
+          Back to Orders
+        </Button>
+      </div>
+    )
   }
 
   const statusConfig = ORDER_STATUSES[order.status as keyof typeof ORDER_STATUSES] ?? {

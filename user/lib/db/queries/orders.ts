@@ -55,15 +55,19 @@ export interface OrderWithDetails {
 
 export async function getOrderById(
   orderId: string,
-  userId: string
+  userId: string | string[]
 ): Promise<OrderWithDetails | null> {
   const db = await getDb()
+
+  const matchCondition = Array.isArray(userId)
+    ? { user_id: { $in: userId } }
+    : { user_id: userId }
 
   const pipeline = [
     {
       $match: {
         $expr: { $eq: [{ $toString: "$_id" }, orderId] },
-        user_id: userId,
+        ...matchCondition,
       },
     },
     {
@@ -196,13 +200,17 @@ export async function getOrderConfirmation(
 }
 
 export async function getUserOrders(
-  userId: string,
+  userId: string | string[],
   limit = 50
 ): Promise<OrderWithDetails[]> {
   const db = await getDb()
 
+  const matchCondition = Array.isArray(userId)
+    ? { user_id: { $in: userId } }
+    : { user_id: userId }
+
   const pipeline = [
-    { $match: { user_id: userId } },
+    { $match: matchCondition },
     { $sort: { created_at: -1 } },
     { $limit: limit },
     {

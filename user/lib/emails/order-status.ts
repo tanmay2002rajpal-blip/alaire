@@ -13,7 +13,7 @@ interface OrderStatusEmailData {
   orderNumber: string
   customerName: string
   customerEmail: string
-  status: "shipped" | "delivered" | "cancelled" | "refunded"
+  status: "processing" | "shipped" | "delivered" | "cancelled" | "refunded"
   trackingNumber?: string
   courierName?: string
   estimatedDelivery?: string
@@ -27,6 +27,144 @@ function formatPrice(amount: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
+}
+
+/**
+ * Sends order processing notification email.
+ */
+export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Promise<boolean> {
+  const { orderNumber, customerName, customerEmail } = data
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9f9f9;">
+      <div style="background-color: #ffffff; padding: 40px 30px;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 40px;">
+          <h1 style="font-size: 32px; font-weight: normal; letter-spacing: 4px; margin: 0;">ALAIRE</h1>
+        </div>
+
+        <!-- Processing Icon -->
+        <div style="text-align: center; margin-bottom: 40px;">
+          <div style="width: 60px; height: 60px; background-color: #eab308; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
+            <span style="color: white; font-size: 30px;">⚙️</span>
+          </div>
+          <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Order is Processing</h2>
+          <p style="color: #666; margin: 0;">Hi ${customerName}, your order is now being processed.</p>
+        </div>
+
+        <!-- Order Details -->
+        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
+          <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
+          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
+        </div>
+
+        <!-- CTA -->
+        <div style="text-align: center; margin-bottom: 30px;">
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL}/account/orders" style="display: inline-block; background-color: #000; color: #fff; padding: 15px 40px; text-decoration: none; font-size: 14px; letter-spacing: 1px;">
+            VIEW ORDER
+          </a>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+          <p style="color: #666; font-size: 14px;">Questions? Contact us at <a href="mailto:support@alaire.in" style="color: #000;">support@alaire.in</a></p>
+          <p style="color: #999; font-size: 12px;">© ${new Date().getFullYear()} Alaire.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  try {
+    await getResend().emails.send({
+      from: "Alaire <orders@alaire.in>",
+      to: customerEmail,
+      subject: `Your Order ${orderNumber} is Processing ⚙️`,
+      html,
+    })
+    return true
+  } catch (error) {
+    console.error("Failed to send processing email:", error)
+    return false
+  }
+}
+
+/**
+ * Sends order cancelled notification email.
+ */
+export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promise<boolean> {
+  const { orderNumber, customerName, customerEmail } = data
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9f9f9;">
+      <div style="background-color: #ffffff; padding: 40px 30px;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 40px;">
+          <h1 style="font-size: 32px; font-weight: normal; letter-spacing: 4px; margin: 0;">ALAIRE</h1>
+        </div>
+
+        <!-- Cancelled Icon -->
+        <div style="text-align: center; margin-bottom: 40px;">
+          <div style="width: 60px; height: 60px; background-color: #ef4444; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
+            <span style="color: white; font-size: 30px;">❌</span>
+          </div>
+          <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Order Cancelled</h2>
+          <p style="color: #666; margin: 0;">Hello ${customerName}, your order has been cancelled.</p>
+        </div>
+
+        <!-- Order Details -->
+        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
+          <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
+          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
+        </div>
+
+        <!-- Body text -->
+        <div style="margin-bottom: 30px; text-align: center; color: #444; font-size: 16px; line-height: 1.6;">
+          <p>If you have already paid for this order, your refund will be automatically processed and credited back to your original payment method or wallet.</p>
+          <p>If you have any questions, please feel free to reach out to us.</p>
+        </div>
+
+        <!-- CTA -->
+        <div style="text-align: center; margin-bottom: 30px;">
+          <a href="${process.env.NEXT_PUBLIC_SITE_URL}/products" style="display: inline-block; background-color: #000; color: #fff; padding: 15px 40px; text-decoration: none; font-size: 14px; letter-spacing: 1px;">
+            Shop Again
+          </a>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+          <p style="color: #666; font-size: 14px;">Questions? Contact us at <a href="mailto:support@alaire.in" style="color: #000;">support@alaire.in</a></p>
+          <p style="color: #999; font-size: 12px;">© ${new Date().getFullYear()} Alaire.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+
+  try {
+    await getResend().emails.send({
+      from: "Alaire <orders@alaire.in>",
+      to: customerEmail,
+      subject: `Order Cancelled - ${orderNumber}`,
+      html,
+    })
+    return true
+  } catch (error) {
+    console.error("Failed to send cancelled email:", error)
+    return false
+  }
 }
 
 /**

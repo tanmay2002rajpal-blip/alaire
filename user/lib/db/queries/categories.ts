@@ -39,7 +39,7 @@ export async function getCategoriesWithCounts(): Promise<CategoryWithCount[]> {
         pipeline: [
           {
             $match: {
-              $expr: { $eq: ["$category_id", "$$catId"] },
+              $expr: { $eq: [{ $toString: "$category_id" }, "$$catId"] },
               is_active: true,
             },
           },

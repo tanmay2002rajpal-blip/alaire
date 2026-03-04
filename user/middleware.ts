@@ -7,13 +7,8 @@ const { auth } = NextAuth(authConfig)
 export default async function middleware(request: NextRequest) {
   const session = await auth()
 
-  // Protected routes that require authentication
-  const protectedPaths = ["/account/orders", "/account/wishlist", "/account/wallet"]
-  const isProtected = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
-
-  if (isProtected && !session) {
-    return NextResponse.redirect(new URL("/", request.url))
-  }
+  // Protected routes are now handled by client-side useAuth() in account/layout.tsx
+  // to support localStorage fallback for authentication.
 
   return NextResponse.next()
 }

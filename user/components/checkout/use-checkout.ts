@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/components/auth/auth-provider"
 import type { Address } from "@/lib/actions/addresses"
 import type { PincodeData } from "@/lib/bluedart/types"
 import type {
@@ -64,12 +64,11 @@ export function useCheckout({
   items,
   subtotal,
   shippingCost = 0,
-  walletAmountUsed = 0,
   couponCode,
   onSuccess,
 }: Pick<
   CheckoutFormProps,
-  "items" | "subtotal" | "shippingCost" | "walletAmountUsed" | "couponCode"
+  "items" | "subtotal" | "shippingCost" | "couponCode"
 > & { onSuccess: (orderId: string) => void }) {
   // ============================================================================
   // State Management
@@ -83,20 +82,40 @@ export function useCheckout({
   const [formData, setFormData] = useState<CheckoutFormData>(INITIAL_FORM_DATA)
   const [serviceabilityData, setServiceabilityData] = useState<PincodeData | null>(null)
 
-  const { data: session } = useSession()
+  const { user } = useAuth()
 
   // ============================================================================
   // Effects
   // ============================================================================
 
   useEffect(() => {
-    if (session?.user) {
+    if (user) {
       setIsLoggedIn(true)
-      setFormData((prev) => ({ ...prev, email: session.user?.email || "" }))
+      setFormData((prev) => ({ ...prev, email: user.email || "" }))
+
+      // Fetch user profile to pre-fill name and phone
+      const fetchProfile = async () => {
+        try {
+          const res = await fetch(`/api/account/profile?userId=${user.id}`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.profile) {
+              setFormData((prev) => ({
+                ...prev,
+                fullName: prev.fullName || data.profile.full_name || user.name || "",
+                phone: prev.phone || data.profile.phone || "",
+              }))
+            }
+          }
+        } catch {
+          // non-fatal
+        }
+      }
+      fetchProfile()
     } else {
       setAddressMode("new")
     }
-  }, [session])
+  }, [user])
 
   // ============================================================================
   // Event Handlers
@@ -234,8 +253,8 @@ export function useCheckout({
             subtotal,
             shippingCost,
             discountCode: couponCode,
-            walletAmountUsed: paymentMethod === "cod" ? 0 : walletAmountUsed,
             paymentMethod,
+            userId: user?.id,
             shippingAddress: {
               full_name: formData.fullName,
               phone: formData.phone,
@@ -288,7 +307,6 @@ export function useCheckout({
       subtotal,
       shippingCost,
       couponCode,
-      walletAmountUsed,
       paymentMethod,
       validateForm,
       initializeRazorpay,

@@ -66,6 +66,10 @@ export interface OrderDetail {
   shipping_address: any;
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
+  awb_number?: string | null;
+  courier_name?: string | null;
+  bluedart_waybill_no?: string | null;
+  bluedart_awb_pdf?: string | null;
   created_at: string;
   customer: {
     id: string;
@@ -262,6 +266,10 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
     shipping_address: orderData.shipping_address || {},
     razorpay_order_id: orderData.razorpay_order_id || null,
     razorpay_payment_id: orderData.razorpay_payment_id || null,
+    awb_number: (orderData as any).awb_number || null,
+    courier_name: (orderData as any).courier_name || null,
+    bluedart_waybill_no: (orderData as any).bluedart_waybill_no || null,
+    bluedart_awb_pdf: (orderData as any).bluedart_awb_pdf || null,
     created_at: createdAt,
     customer: {
       id: profile?._id.toString() || userId || '',

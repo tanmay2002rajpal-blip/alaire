@@ -30,11 +30,11 @@ export default async function CategoriesPage() {
 
       {/* Categories Grid */}
       {categories.length > 0 ? (
-        <StaggerReveal className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {categories.map((category) => (
             <CategoryCard key={category.id} category={category} />
           ))}
-        </StaggerReveal>
+        </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <p className="text-lg font-medium">No categories found</p>

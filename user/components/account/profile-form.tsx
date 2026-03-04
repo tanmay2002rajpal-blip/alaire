@@ -38,6 +38,7 @@ export function ProfileForm({ user, profile, addresses }: ProfileFormProps) {
         body: JSON.stringify({
           fullName: formData.fullName,
           phone: formData.phone,
+          userId: user.id,
         }),
       })
 

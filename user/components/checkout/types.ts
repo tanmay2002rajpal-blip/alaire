@@ -127,8 +127,6 @@ export interface PaymentMethodCardProps {
   paymentMethod: PaymentMethod
   /** Handler for payment method changes */
   onPaymentMethodChange: (method: PaymentMethod) => void
-  /** Wallet amount being used (to show warning for COD) */
-  walletAmountUsed: number
 }
 
 /**

@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Heart, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/components/auth/auth-provider"
+import { Button } from "@/components/ui/button"
 
 interface WishlistButtonProps {
   productId: string
@@ -24,6 +25,8 @@ export function WishlistButton({
   const [isLoading, setIsLoading] = useState(false)
   const [inWishlist, setInWishlist] = useState(isInWishlist)
 
+  const { user } = useAuth()
+
   const handleToggle = async () => {
     setIsLoading(true)
 
@@ -31,7 +34,7 @@ export function WishlistButton({
       const response = await fetch("/api/wishlist/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
+        body: JSON.stringify({ productId, userId: user?.id }),
       })
 
       const data = await response.json()

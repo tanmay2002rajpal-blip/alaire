@@ -5,25 +5,48 @@ import { getDb } from "@/lib/db/client"
 interface UpdateProfileRequest {
   fullName: string
   phone: string
+  userId?: string
 }
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
+    const body: UpdateProfileRequest = await request.json()
+    const userId = session?.user?.id || body.userId
 
-    if (!session?.user?.id) {
+    if (!userId) {
       return NextResponse.json(
         { message: "Unauthorized" },
         { status: 401 }
       )
     }
 
-    const body: UpdateProfileRequest = await request.json()
     const { fullName, phone } = body
     const db = await getDb()
 
+    const isEmail = userId.includes("@")
+    let targetUserId = userId
+
+    if (isEmail) {
+      const userDoc = await db.collection("users").findOne({ email: userId })
+      if (!userDoc) {
+        // Create the user if they don't exist yet but are authenticated via OTP fallback
+        await db.collection("users").insertOne({
+          email: userId,
+          full_name: fullName,
+          name: fullName,
+          phone,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          role: "customer"
+        })
+        return NextResponse.json({ success: true })
+      }
+      targetUserId = userDoc._id.toString()
+    }
+
     await db.collection("users").updateOne(
-      { $expr: { $eq: [{ $toString: "$_id" }, session.user.id] } },
+      { $expr: { $eq: [{ $toString: "$_id" }, targetUserId] } },
       {
         $set: {
           full_name: fullName,
@@ -31,8 +54,7 @@ export async function POST(request: Request) {
           phone,
           updated_at: new Date().toISOString(),
         },
-      },
-      { upsert: true }
+      }
     )
 
     return NextResponse.json({ success: true })

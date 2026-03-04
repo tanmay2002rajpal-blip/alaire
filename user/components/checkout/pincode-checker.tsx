@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { checkPincodeServiceability } from "@/lib/bluedart/actions"
-import { formatPrice } from "@/lib/utils"
 import type { PincodeData } from "@/lib/bluedart/types"
 
 interface PincodeCheckerProps {
@@ -47,16 +46,15 @@ export function PincodeChecker({
         onServiceabilityChange?.(result.data)
 
         // Notify parent about city and state for auto-filling
-        if (result.data.city && result.data.state) {
+        if (result.data.city && result.data.state && result.data.city !== 'Unknown') {
           onCityStateChange?.(result.data.city, result.data.state)
         }
       } else {
-        setError(result.error || "Delivery not available to this pincode")
+        // Just silently fail the auto-fill, no need to show a red error
         setHasChecked(true)
         onServiceabilityChange?.(null)
       }
     } catch {
-      setError("Failed to check serviceability. Please try again.")
       setHasChecked(true)
       onServiceabilityChange?.(null)
     } finally {
@@ -125,7 +123,7 @@ export function PincodeChecker({
                 Checking
               </>
             ) : (
-              "Check"
+              "Auto-fill"
             )}
           </Button>
         </div>
@@ -137,64 +135,13 @@ export function PincodeChecker({
           <div className="flex items-center gap-3">
             <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
             <p className="text-sm text-gray-600">
-              Checking delivery availability...
+              Getting city and state...
             </p>
           </div>
         </div>
       )}
 
-      {/* Success State */}
-      {!isChecking && hasChecked && serviceabilityData && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-full bg-green-100 p-1">
-              <Check className="h-4 w-4 text-green-700" />
-            </div>
-            <div className="flex-1 space-y-2">
-              <div>
-                <p className="font-medium text-green-900">
-                  Delivery available
-                </p>
-                <div className="mt-1 space-y-1 text-sm text-green-700">
-                  <div className="flex items-center gap-2">
-                    <Truck className="h-3.5 w-3.5" />
-                    <span>
-                      Estimated: {formatEstimatedDays(serviceabilityData.estimatedDays)}
-                    </span>
-                  </div>
-                  <div>
-                    Shipping: <span className="font-medium">{formatPrice(serviceabilityData.shippingCost)}</span>
-                  </div>
-                  {serviceabilityData.courierName && (
-                    <div className="text-xs text-green-600">
-                      via {serviceabilityData.courierName}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Error State */}
-      {!isChecking && hasChecked && error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-full bg-red-100 p-1">
-              <X className="h-4 w-4 text-red-700" />
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-red-900">
-                Delivery not available
-              </p>
-              <p className="mt-1 text-sm text-red-700">
-                {error}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Removed strict success and error states as it is now just an auto-fill */}
     </div>
   )
 }

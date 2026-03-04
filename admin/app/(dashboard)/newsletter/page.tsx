@@ -1,140 +1,155 @@
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Plus, Mail, Users, Send, TrendingUp, UserCheck, UserX } from "lucide-react"
-import { getNewsletterStats, getNewsletterSubscribers } from "@/lib/queries/newsletter"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+'use client'
 
-export default async function NewsletterPage() {
-  const [stats, subscribers] = await Promise.all([
-    getNewsletterStats(),
-    getNewsletterSubscribers(),
-  ])
+import { useState, useEffect } from 'react'
+import { getSubscribers, sendNewsletterBroadcast } from './actions'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Mail, Send, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    })
+export default function NewsletterPage() {
+  const [subscribers, setSubscribers] = useState<{ id: string; email: string; subscribed_at: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  
+  const [subject, setSubject] = useState('')
+  const [htmlContent, setHtmlContent] = useState('')
+
+  useEffect(() => {
+    loadSubscribers()
+  }, [])
+
+  async function loadSubscribers() {
+    try {
+      setLoading(true)
+      const data = await getSubscribers()
+      setSubscribers(data)
+    } catch (err) {
+      toast.error('Failed to load subscribers')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault()
+    if (!subject || !htmlContent) {
+      toast.error('Subject and Content are required')
+      return
+    }
+
+    if (!confirm('Are you sure you want to send this to ALL active subscribers?')) return
+
+    try {
+      setSending(true)
+      const res = await sendNewsletterBroadcast(subject, htmlContent)
+      if (res.success) {
+        toast.success(`Successfully sent to ${res.count} subscribers!`)
+        setSubject('')
+        setHtmlContent('')
+      } else {
+        toast.error(res.error || 'Failed to send broadcast')
+      }
+    } catch (err) {
+      toast.error('An unexpected error occurred')
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Newsletter</h1>
-          <p className="text-muted-foreground">
-            Manage email subscribers and campaigns
-          </p>
-        </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          New Campaign
-        </Button>
+    <div className="flex-1 space-y-4 p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Newsletter</h2>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <Users className="h-4 w-4" />
-            <span className="text-sm">Total Subscribers</span>
-          </div>
-          <p className="text-2xl font-bold">{stats.total}</p>
-          <p className="text-xs text-muted-foreground">Email list size</p>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <Card className="col-span-4">
+          <CardHeader>
+            <CardTitle>Compose Broadcast</CardTitle>
+            <CardDescription>
+              Send an email to {subscribers.length} active subscribers.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSend} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Subject</label>
+                <Input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="E.g., Special Offer Inside!"
+                  disabled={sending}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">HTML Content</label>
+                <Textarea
+                  value={htmlContent}
+                  onChange={(e) => setHtmlContent(e.target.value)}
+                  placeholder="<p>Hello! Check out our new arrivals...</p>"
+                  className="min-h-[300px] font-mono"
+                  disabled={sending}
+                />
+              </div>
+              <Button type="submit" disabled={sending || subscribers.length === 0} className="w-full">
+                {sending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Send to {subscribers.length} Subscribers
+              </Button>
+            </form>
+          </CardContent>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <UserCheck className="h-4 w-4" />
-            <span className="text-sm">Active</span>
-          </div>
-          <p className="text-2xl font-bold">{stats.active}</p>
-          <p className="text-xs text-muted-foreground">Subscribed users</p>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <UserX className="h-4 w-4" />
-            <span className="text-sm">Unsubscribed</span>
-          </div>
-          <p className="text-2xl font-bold">{stats.unsubscribed}</p>
-          <p className="text-xs text-muted-foreground">Opted out</p>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <Mail className="h-4 w-4" />
-            <span className="text-sm">Campaigns Sent</span>
-          </div>
-          <p className="text-2xl font-bold">0</p>
-          <p className="text-xs text-muted-foreground">All time</p>
-        </Card>
-      </div>
 
-      {/* Subscribers List */}
-      {subscribers.length === 0 ? (
-        <Card className="p-12">
-          <div className="flex flex-col items-center justify-center text-center">
-            <div className="rounded-full bg-muted p-4 mb-4">
-              <Mail className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">No subscribers yet</h3>
-            <p className="text-muted-foreground mb-4 max-w-md">
-              Build your email list to send newsletters, promotions, and updates to your customers.
-            </p>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Import Subscribers
-            </Button>
-          </div>
-        </Card>
-      ) : (
-        <Card>
-          <div className="p-4 border-b">
-            <h3 className="font-semibold">Subscribers</h3>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Subscribed</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {subscribers.map((subscriber) => (
-                <TableRow key={subscriber.id}>
-                  <TableCell className="font-medium">{subscriber.email}</TableCell>
-                  <TableCell>
-                    {subscriber.is_active ? (
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">
-                        Active
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                        Unsubscribed
-                      </span>
+        <Card className="col-span-3">
+          <CardHeader>
+            <CardTitle>Total Subscribers</CardTitle>
+            <CardDescription>List of active newsletter subscribers</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex justify-center p-4">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="max-h-[500px] overflow-auto border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Email</TableHead>
+                      <TableHead className="text-right">Joined</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {subscribers.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={2} className="text-center py-4 text-muted-foreground">
+                          No subscribers found.
+                        </TableCell>
+                      </TableRow>
                     )}
-                  </TableCell>
-                  <TableCell>{formatDate(subscriber.subscribed_at)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">
-                      <Mail className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    {subscribers.map((sub) => (
+                      <TableRow key={sub.id}>
+                        <TableCell className="font-medium">{sub.email}</TableCell>
+                        <TableCell className="text-right text-muted-foreground text-sm">
+                          {new Date(sub.subscribed_at).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
         </Card>
-      )}
+      </div>
     </div>
   )
 }

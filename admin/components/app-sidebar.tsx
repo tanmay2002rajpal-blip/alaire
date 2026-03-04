@@ -42,8 +42,8 @@ const navigation = {
   operations: [
     { title: 'Orders', href: '/orders', icon: IconShoppingCart },
     { title: 'Products', href: '/products', icon: IconPackage },
+    { title: 'Active Carts', href: '/carts', icon: IconChartBar },
     { title: 'Categories', href: '/categories', icon: IconCategory },
-    // { title: 'Inventory', href: '/inventory', icon: IconBox }, // Removed - stock visible in Products
     { title: 'Customers', href: '/customers', icon: IconUsers },
     { title: 'Coupons', href: '/coupons', icon: IconDiscount },
   ],
@@ -51,16 +51,13 @@ const navigation = {
     { title: 'Hero Slides', href: '/content/hero', icon: IconPhoto },
     { title: 'Blog Posts', href: '/content/blog', icon: IconFileText },
     // { title: 'Promotions', href: '/content/promotions', icon: IconSpeakerphone }, // Removed - unused
-    // { title: 'Newsletter', href: '/newsletter', icon: IconMail }, // Removed - not ready
+    { title: 'Newsletter', href: '/newsletter', icon: IconMail },
   ],
   analytics: [
     { title: 'Sales Reports', href: '/analytics/sales', icon: IconChartBar },
     // { title: 'Customer Insights', href: '/analytics/customers', icon: IconUsersGroup }, // Removed
   ],
-  settings: [
-    // { title: 'Team', href: '/team', icon: IconUsersGroup }, // Removed - single admin
-    { title: 'Settings', href: '/settings', icon: IconSettings },
-  ],
+  settings: [],
 }
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -166,22 +163,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup className="mt-auto">
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navigation.settings.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={isActive(item.href)}>
-                    <Link href={item.href}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
       </SidebarContent>
 
       <SidebarFooter>

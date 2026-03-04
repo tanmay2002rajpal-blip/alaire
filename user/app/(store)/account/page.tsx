@@ -1,6 +1,7 @@
-import { auth } from "@/lib/auth"
-import { getDb } from "@/lib/db/client"
-import { serializeDoc, serializeDocs } from "@/lib/db/helpers"
+"use client"
+
+import { useState, useEffect } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
 import { ProfileForm } from "@/components/account/profile-form"
 import {
   Card,
@@ -10,27 +11,62 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-export default async function AccountPage() {
-  const session = await auth()
-  const userId = session?.user?.id
+export default function AccountPage() {
+  const { user } = useAuth()
+  const [profile, setProfile] = useState<any>(null)
+  const [addresses, setAddresses] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const db = await getDb()
+  useEffect(() => {
+    async function fetchProfile() {
+      if (!user) {
+        setIsLoading(false)
+        return
+      }
 
-  // Get profile data
-  const profileDoc = await db
-    .collection("users")
-    .findOne({ $expr: { $eq: [{ $toString: "$_id" }, userId] } })
+      try {
+        const res = await fetch(`/api/account/profile?userId=${user.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setProfile(data.profile || null)
+          setAddresses(data.addresses || [])
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile:", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchProfile()
+  }, [user])
 
-  const profile = profileDoc ? serializeDoc(profileDoc) : null
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="animate-pulse space-y-2">
+              <div className="h-6 w-48 bg-muted rounded" />
+              <div className="h-4 w-72 bg-muted rounded" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="animate-pulse space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="h-10 bg-muted rounded" />
+                <div className="h-10 bg-muted rounded" />
+              </div>
+              <div className="h-10 bg-muted rounded" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
-  // Get addresses
-  const addressDocs = await db
-    .collection("user_addresses")
-    .find({ user_id: userId })
-    .sort({ is_default: -1 })
-    .toArray()
-
-  const addresses = serializeDocs(addressDocs)
+  if (!user) {
+    return null
+  }
 
   return (
     <div className="space-y-6">
@@ -44,13 +80,13 @@ export default async function AccountPage() {
         <CardContent>
           <ProfileForm
             user={{
-              id: session!.user!.id as string,
-              name: session!.user!.name,
-              email: session!.user!.email,
-              image: session!.user!.image,
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              image: user.image,
             }}
-            profile={profile as unknown as import("@/types").Profile | null}
-            addresses={addresses as unknown as import("@/types").Address[]}
+            profile={profile}
+            addresses={addresses}
           />
         </CardContent>
       </Card>

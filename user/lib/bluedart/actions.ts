@@ -135,9 +135,13 @@ export async function checkPincodeServiceability(
   } catch (error) {
     console.error('Pincode serviceability check error:', error)
 
-    // If error is about missing credentials, fall back to default shipping
-    const errorMessage = error instanceof Error ? error.message : ''
-    if (errorMessage.includes('credentials not configured')) {
+    // If error is about missing credentials or API authorization, fall back to default shipping
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    if (
+      errorMessage.includes('credentials not configured') ||
+      errorMessage.includes('401') ||
+      errorMessage.includes('Access to the method is not allowed')
+    ) {
       const pincodeDetails = blueDartClient.getPincodeDetails(pincode)
       const data: PincodeData = {
         pincode,

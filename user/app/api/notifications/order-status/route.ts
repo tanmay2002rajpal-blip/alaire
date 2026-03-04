@@ -5,6 +5,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import {
+  sendOrderProcessingEmail,
+  sendOrderCancelledEmail,
   sendOrderShippedEmail,
   sendOrderDeliveredEmail,
   sendOrderRefundEmail,
@@ -49,6 +51,15 @@ export async function POST(request: NextRequest) {
     let success = false
 
     switch (status) {
+      case "processing":
+        success = await sendOrderProcessingEmail({
+          status: "processing",
+          orderNumber,
+          customerName,
+          customerEmail,
+        })
+        break
+
       case "shipped":
         success = await sendOrderShippedEmail({
           status: "shipped",
@@ -64,6 +75,15 @@ export async function POST(request: NextRequest) {
       case "delivered":
         success = await sendOrderDeliveredEmail({
           status: "delivered",
+          orderNumber,
+          customerName,
+          customerEmail,
+        })
+        break
+
+      case "cancelled":
+        success = await sendOrderCancelledEmail({
+          status: "cancelled",
           orderNumber,
           customerName,
           customerEmail,

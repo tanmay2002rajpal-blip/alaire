@@ -3,12 +3,12 @@
 import { useState, useEffect, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronRight, ShoppingBag } from "lucide-react"
+import { ChevronRight, ShoppingBag, UserCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks"
 import { CheckoutForm } from "@/components/checkout/checkout-form"
 import { OrderSummary } from "@/components/checkout/order-summary"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/components/auth/auth-provider"
 
 // Hydration-safe mounted check
 function useIsMounted() {
@@ -23,6 +23,7 @@ export default function CheckoutPage() {
   const router = useRouter()
   const { items, getSubtotal, clearCart } = useCart()
   const mounted = useIsMounted()
+  const { openAuthDialog, user, isLoading: authLoading } = useAuth()
 
   // Coupon state
   const [couponCode, setCouponCode] = useState<string>("")
@@ -35,11 +36,10 @@ export default function CheckoutPage() {
   // Shipping state (from pincode checker)
   const [shippingCost, setShippingCost] = useState(0)
 
-  const { data: session } = useSession()
 
   useEffect(() => {
     async function fetchWallet() {
-      if (!session?.user?.id) return
+      if (!user?.id) return
       try {
         const res = await fetch("/api/account/wallet-balance")
         if (res.ok) {
@@ -51,7 +51,7 @@ export default function CheckoutPage() {
       }
     }
     fetchWallet()
-  }, [session])
+  }, [user])
 
   if (!mounted) {
     return (
@@ -126,41 +126,59 @@ export default function CheckoutPage() {
 
       <h1 className="mb-8 text-3xl font-bold tracking-tight">Checkout</h1>
 
-      <div className="grid gap-8 lg:grid-cols-12">
-        {/* Checkout Form */}
-        <div className="lg:col-span-7">
-          <CheckoutForm
-            items={items}
-            subtotal={subtotal}
-            discount={discount}
-            shippingCost={shippingCost}
-            walletAmountUsed={walletAmountUsed}
-            couponCode={couponCode}
-            onShippingChange={handleShippingChange}
-            onSuccess={(orderId) => {
-              clearCart()
-              router.push(`/order-confirmation/${orderId}`)
-            }}
-          />
+      {authLoading ? (
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 w-64 bg-muted rounded" />
+          <div className="h-64 bg-muted rounded" />
         </div>
+      ) : !user ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center border rounded-lg bg-gray-50/50">
+          <UserCircle2 className="h-16 w-16 text-muted-foreground mb-4" />
+          <h2 className="text-2xl font-semibold mb-2">Create an account to order</h2>
+          <p className="text-muted-foreground mb-6 max-w-sm">
+            Sign in with your email to quickly and securely place your order and track its status.
+          </p>
+          <Button size="lg" onClick={openAuthDialog}>
+            Sign In with Email
+          </Button>
+        </div>
+      ) : (
+        <div className="grid gap-8 lg:grid-cols-12">
+          {/* Checkout Form */}
+          <div className="lg:col-span-7">
+            <CheckoutForm
+              items={items}
+              subtotal={subtotal}
+              discount={discount}
+              shippingCost={shippingCost}
+              walletAmountUsed={walletAmountUsed}
+              couponCode={couponCode}
+              onShippingChange={handleShippingChange}
+              onSuccess={(orderId) => {
+                clearCart()
+                router.push(`/order-confirmation/${orderId}`)
+              }}
+            />
+          </div>
 
-        {/* Order Summary */}
-        <div className="lg:col-span-5">
-          <OrderSummary
-            items={items}
-            subtotal={subtotal}
-            discount={discount}
-            shipping={shippingCost}
-            walletBalance={walletBalance}
-            useWallet={useWallet}
-            walletAmountUsed={walletAmountUsed}
-            couponCode={couponCode}
-            onCouponApply={handleCouponApply}
-            onCouponRemove={handleCouponRemove}
-            onWalletToggle={handleWalletToggle}
-          />
+          {/* Order Summary */}
+          <div className="lg:col-span-5">
+            <OrderSummary
+              items={items}
+              subtotal={subtotal}
+              discount={discount}
+              shipping={shippingCost}
+              walletBalance={walletBalance}
+              useWallet={useWallet}
+              walletAmountUsed={walletAmountUsed}
+              couponCode={couponCode}
+              onCouponApply={handleCouponApply}
+              onCouponRemove={handleCouponRemove}
+              onWalletToggle={handleWalletToggle}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

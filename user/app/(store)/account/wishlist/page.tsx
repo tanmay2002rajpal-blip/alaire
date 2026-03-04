@@ -1,9 +1,10 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Heart } from "lucide-react"
-import { auth } from "@/lib/auth"
-import { getDb } from "@/lib/db/client"
-import { serializeDoc, serializeDocs } from "@/lib/db/helpers"
+import { useAuth } from "@/components/auth/auth-provider"
 import { formatPrice } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,7 +14,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { RemoveFromWishlistButton } from "@/components/wishlist/remove-button"
 
 interface WishlistProduct {
   id: string
@@ -24,44 +24,70 @@ interface WishlistProduct {
   variants: Array<{ price: number; compare_at_price: number | null }> | null
 }
 
-export default async function WishlistPage() {
-  const session = await auth()
-  const userId = session?.user?.id
+interface WishlistItem {
+  id: string
+  product_id: string
+  product: WishlistProduct | null
+}
 
-  const db = await getDb()
+export default function WishlistPage() {
+  const { user } = useAuth()
+  const [items, setItems] = useState<WishlistItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const wishlistDocs = await db
-    .collection("wishlists")
-    .find({ user_id: userId })
-    .sort({ created_at: -1 })
-    .toArray()
-
-  const wishlistItems = await Promise.all(
-    wishlistDocs.map(async (wDoc) => {
-      const item = serializeDoc(wDoc)
-      const productDoc = await db
-        .collection("products")
-        .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.product_id] } })
-
-      if (!productDoc) return { ...item, product: null }
-
-      const product = serializeDoc(productDoc)
-      const variantDocs = await db
-        .collection("product_variants")
-        .find({ product_id: product.id })
-        .project({ price: 1, compare_at_price: 1 })
-        .limit(1)
-        .toArray()
-
-      return {
-        ...item,
-        product: {
-          ...product,
-          variants: serializeDocs(variantDocs),
-        },
+  useEffect(() => {
+    async function fetchWishlist() {
+      if (!user) {
+        setIsLoading(false)
+        return
       }
-    })
-  )
+      try {
+        const res = await fetch("/api/account/wishlist")
+        if (res.ok) {
+          const data = await res.json()
+          setItems(data.items || [])
+        }
+      } catch (err) {
+        console.error("Failed to fetch wishlist:", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchWishlist()
+  }, [user])
+
+  const handleRemove = async (itemId: string) => {
+    try {
+      const res = await fetch(`/api/account/wishlist/${itemId}?userId=${user?.id}`, { method: "DELETE" })
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => i.id !== itemId))
+      }
+    } catch {
+      // non-fatal
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="animate-pulse space-y-2">
+              <div className="h-6 w-36 bg-muted rounded" />
+              <div className="h-4 w-56 bg-muted rounded" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="animate-pulse grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-64 bg-muted rounded-lg" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -73,7 +99,7 @@ export default async function WishlistPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {wishlistItems.length === 0 ? (
+          {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Heart className="h-12 w-12 text-muted-foreground/50" />
               <p className="mt-4 text-lg font-medium">Your wishlist is empty</p>
@@ -89,8 +115,8 @@ export default async function WishlistPage() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {wishlistItems.map((item) => {
-                const product = item.product as WishlistProduct | null
+              {items.map((item) => {
+                const product = item.product
                 if (!product) return null
 
                 const price = product.variants?.[0]?.price ?? product.base_price ?? 0
@@ -101,7 +127,13 @@ export default async function WishlistPage() {
                     key={item.id}
                     className="group relative rounded-lg border p-4"
                   >
-                    <RemoveFromWishlistButton itemId={item.id} />
+                    <button
+                      onClick={() => handleRemove(item.id)}
+                      className="absolute top-2 right-2 z-10 rounded-full p-1.5 bg-background/80 backdrop-blur-sm border hover:bg-destructive/10 transition-colors"
+                      aria-label="Remove from wishlist"
+                    >
+                      <Heart className="h-4 w-4 fill-destructive text-destructive" />
+                    </button>
 
                     <Link href={`/products/${product.slug}`}>
                       <div className="relative mb-4 aspect-square overflow-hidden rounded-md bg-muted">

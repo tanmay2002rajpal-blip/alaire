@@ -1,9 +1,9 @@
 #!/bin/bash
-cd /home/omrajpal/clawd/alaire/admin
+cd /Volumes/Crucial\ X9/alaire/admin
 npm run dev -- -p 3001 &
 ADMIN_PID=$!
 
-cd /home/omrajpal/clawd/alaire/user
+cd /Volumes/Crucial\ X9/alaire/user
 npm run dev -- -p 3000 &
 USER_PID=$!
 

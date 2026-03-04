@@ -131,18 +131,13 @@ export function ShippingAddressCard({
         />
       </div>
 
-      {/* Only show address fields if pincode is serviceable */}
-      {serviceabilityData?.serviceable !== false && (
-        <>
-          {serviceabilityData && <Separator className="my-4" />}
-          <AddressFormFields
-            formData={formData}
-            onInputChange={onInputChange}
-            onStateChange={onStateChange}
-            showContactFields={showContactFields}
-          />
-        </>
-      )}
+      {/* Address fields are always shown now */}
+      <AddressFormFields
+        formData={formData}
+        onInputChange={onInputChange}
+        onStateChange={onStateChange}
+        showContactFields={showContactFields}
+      />
     </>
   )
 

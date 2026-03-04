@@ -56,7 +56,7 @@ export const shippingAddressSchema = z.object({
   phone: phoneSchema,
   line1: z
     .string()
-    .min(5, "Address too short")
+    .min(1, "Address too short")
     .max(200, "Address too long")
     .transform((addr) => addr.trim()),
   line2: z
@@ -90,7 +90,7 @@ export const cartItemSchema = z.object({
   variantName: z.string().max(100).optional(),
   price: z.number().positive("Price must be positive").max(1000000, "Price too high"),
   quantity: z.number().int().positive().max(100, "Quantity too high"),
-  image: z.string().url().optional(),
+  image: z.string().optional(),
 })
 
 export type CartItemInput = z.infer<typeof cartItemSchema>
@@ -112,6 +112,7 @@ export const createOrderSchema = z.object({
     .transform((code) => code?.toUpperCase().trim()),
   walletAmountUsed: z.number().nonnegative().max(100000, "Wallet amount too high").optional(),
   paymentMethod: z.enum(["prepaid", "cod"]).default("prepaid"),
+  userId: z.union([objectIdSchema, emailSchema]).optional(),
 })
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>

@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Loader2, ArrowRight, Mail } from "lucide-react"
 import { signIn } from "next-auth/react"
 import {
   Dialog,
@@ -13,15 +14,105 @@ import {
   DialogOverlay,
 } from "@/components/ui/dialog"
 import { useAuth } from "./auth-provider"
+import { toast } from "sonner"
 
 export function AuthDialog() {
-  const { isAuthDialogOpen, closeAuthDialog } = useAuth()
+  const { isAuthDialogOpen, closeAuthDialog, setUserFromLogin } = useAuth()
+  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+  const [step, setStep] = useState<"email" | "otp">("email")
+  const [email, setEmail] = useState("")
+  const [otp, setOtp] = useState("")
 
-  const handleGoogleSignIn = async () => {
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email || !email.includes("@")) {
+      toast.error("Please enter a valid email address.")
+      return
+    }
+
     setIsLoading(true)
-    await signIn("google", { callbackUrl: window.location.href })
-    // Don't set loading false on success - page will redirect
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+
+      if (!res.ok) {
+        throw new Error("Failed to send OTP")
+      }
+
+      toast.success("Verification code sent to your email.")
+      setStep("otp")
+    } catch (error) {
+      toast.error("Failed to send code. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (otp.length !== 6) {
+      toast.error("Please enter the 6-digit code.")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const result = await signIn("OTP", {
+        email,
+        otp,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        toast.error("Invalid or expired code. Please try again.")
+        setIsLoading(false)
+        return
+      }
+
+      // signIn succeeded — the JWT cookie *should* be set, but regardless,
+      // also persist the user in localStorage so all client components see it immediately
+      // Fetch actual session data from the server to get the user id
+      try {
+        const sessionRes = await fetch("/api/auth/session")
+        const sessionData = await sessionRes.json()
+        if (sessionData?.user) {
+          setUserFromLogin({
+            id: sessionData.user.id || sessionData.user.sub || email,
+            email: sessionData.user.email || email,
+            name: sessionData.user.name || null,
+            image: sessionData.user.image || null,
+          })
+        } else {
+          // Fallback: even if session endpoint didn't return user, store email-based user
+          setUserFromLogin({
+            id: email,
+            email,
+            name: null,
+            image: null,
+          })
+        }
+      } catch {
+        // Fallback: store email-based user
+        setUserFromLogin({
+          id: email,
+          email,
+          name: null,
+          image: null,
+        })
+      }
+
+      toast.success("Welcome to Alaire!")
+      closeAuthDialog()
+      router.refresh()
+      setIsLoading(false)
+    } catch (error) {
+      toast.error("An error occurred. Please try again.")
+      setIsLoading(false)
+    }
   }
 
   const handleLinkClick = () => {
@@ -30,75 +121,113 @@ export function AuthDialog() {
 
   return (
     <Dialog open={isAuthDialogOpen} onOpenChange={closeAuthDialog}>
-      <DialogOverlay className="bg-black/50 backdrop-blur-sm" />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader className="text-center space-y-3">
-          <div className="flex justify-center">
-            <h1 className="text-3xl font-serif tracking-wider">ALAIRE</h1>
-          </div>
-          <DialogTitle className="text-xl font-normal">
-            Sign in to continue
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Sign in with Google to access your account
-          </DialogDescription>
-        </DialogHeader>
+      <DialogOverlay className="bg-background/80 backdrop-blur-md transition-all duration-500" />
+      <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden border-border bg-background shadow-2xl rounded-2xl ring-1 ring-foreground/5 text-foreground">
+        <div className="relative px-8 py-10 md:py-12 flex flex-col items-center">
+          {/* Subtle glowing background orb */}
+          <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-primary/10 to-transparent opacity-80 pointer-events-none" />
 
-        <div className="flex flex-col gap-6 py-4">
-          <button
-            onClick={handleGoogleSignIn}
-            disabled={isLoading}
-            className="flex items-center justify-center gap-3 w-full px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-          >
-            {isLoading ? (
-              <Loader2 className="size-5 animate-spin" />
+          <DialogHeader className="text-center space-y-4 mb-10 relative z-10 w-full">
+            <h1 className="text-3xl font-serif tracking-widest text-primary">ALAIRE</h1>
+            <DialogTitle className="text-xl font-medium tracking-wide">
+              {step === "email" ? "Sign In" : "Verification"}
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-sm max-w-[280px] mx-auto">
+              {step === "email"
+                ? "Enter your email to receive a secure login code."
+                : `We sent a 6-digit code to ${email}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="w-full relative z-10">
+            {step === "email" ? (
+              <form onSubmit={handleSendOtp} className="space-y-6">
+                <div className="space-y-2 relative group">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground/50 group-focus-within:text-primary transition-colors duration-300" />
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="w-full pl-12 pr-4 py-3.5 bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary focus:bg-background transition-all duration-300 placeholder:text-muted-foreground/50 text-foreground"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-primary text-primary-foreground font-medium tracking-wide rounded-xl hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed group shadow-sm"
+                >
+                  {isLoading ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <>
+                      Continue
+                      <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
+                </button>
+              </form>
             ) : (
-              <svg
-                className="size-5"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  fill="#4285F4"
-                />
-                <path
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  fill="#34A853"
-                />
-                <path
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  fill="#FBBC05"
-                />
-                <path
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  fill="#EA4335"
-                />
-              </svg>
-            )}
-            <span className="font-medium text-gray-700">
-              {isLoading ? "Signing in..." : "Continue with Google"}
-            </span>
-          </button>
+              <form onSubmit={handleVerifyOtp} className="space-y-6">
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Enter 6-digit code"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                    maxLength={6}
+                    className="w-full text-center tracking-[0.5em] text-2xl font-mono px-4 py-3.5 bg-muted/50 border border-border rounded-xl focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary focus:bg-background transition-all duration-300 placeholder:text-muted-foreground/40 placeholder:tracking-normal placeholder:font-sans placeholder:text-sm text-foreground"
+                  />
+                </div>
 
-          <p className="text-xs text-center text-gray-500">
-            By continuing, you agree to our{" "}
-            <Link
-              href="/terms"
-              onClick={handleLinkClick}
-              className="underline hover:text-gray-700"
-            >
-              Terms
-            </Link>{" "}
-            &{" "}
-            <Link
-              href="/privacy"
-              onClick={handleLinkClick}
-              className="underline hover:text-gray-700"
-            >
-              Privacy
-            </Link>
-          </p>
+                <button
+                  type="submit"
+                  disabled={isLoading || otp.length !== 6}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-primary text-primary-foreground font-medium tracking-wide rounded-xl hover:bg-primary/90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                >
+                  {isLoading ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    "Verify & Sign In"
+                  )}
+                </button>
+
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setStep("email")}
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-300 underline-offset-4 hover:underline"
+                  >
+                    Use a different email
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          <div className="mt-10 pt-6 border-t border-border w-full relative z-10">
+            <p className="text-xs text-center text-muted-foreground leading-relaxed max-w-[280px] mx-auto">
+              By continuing, you agree to Alaire's{" "}
+              <Link
+                href="/terms"
+                onClick={handleLinkClick}
+                className="text-foreground/70 hover:text-foreground transition-colors duration-300 underline underline-offset-2"
+              >
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/privacy"
+                onClick={handleLinkClick}
+                className="text-foreground/70 hover:text-foreground transition-colors duration-300 underline underline-offset-2"
+              >
+                Privacy Policy
+              </Link>.
+            </p>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import Image from "next/image"
 import { Loader2, Tag, X, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card"
 import { formatPrice } from "@/lib/utils"
 import { validateCoupon } from "@/lib/actions/coupon"
+import { getSampleProductImage } from "@/lib/sample-images"
 import { toast } from "sonner"
 import type { CartItem } from "@/hooks/use-cart"
 
@@ -87,24 +88,23 @@ export function OrderSummary({
       <CardContent className="space-y-4">
         {/* Items */}
         <div className="space-y-4">
-          {items.map((item) => (
-            <div key={item.id} className="flex gap-4">
-              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
-                {item.image ? (
+          {items.map((item) => {
+            const imageUrl = item.image && !item.image.includes("placehold") && !item.image.includes("placeholder")
+              ? item.image
+              : getSampleProductImage(item.name)
+
+            return (
+              <div key={item.id} className="flex gap-4">
+                <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
                   <Image
-                    src={item.image}
+                    src={imageUrl}
                     alt={item.name}
                     fill
                     sizes="64px"
                     className="object-cover"
                   />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                    No image
-                  </div>
-                )}
-              </div>
-              <div className="flex-1">
+                </div>
+                <div className="flex-1">
                 <p className="font-medium leading-tight">{item.name}</p>
                 {item.variantName && (
                   <p className="text-sm text-muted-foreground">
@@ -119,7 +119,8 @@ export function OrderSummary({
                 {formatPrice(item.price * item.quantity)}
               </p>
             </div>
-          ))}
+            )
+          })}
         </div>
 
         <Separator />

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { gsap } from "gsap"
 import { cn } from "@/lib/utils"
+import { getSampleProductImage } from "@/lib/sample-images"
 import { X, ZoomIn, ChevronLeft, ChevronRight, Play, Pause } from "lucide-react"
 
 interface ProductGalleryProps {
@@ -23,8 +24,10 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null)
   const prevIndexRef = useRef(0)
 
-  // Use actual images, fall back to placeholder if empty
-  const displayImages = images && images.length > 0 ? images : ["/placeholder.svg"]
+  // Use actual images, fall back to sample image if empty or placeholder
+  const displayImages = images && images.length > 0 
+    ? images.map((img) => (!img || img.includes("placehold") || img.includes("placeholder")) ? getSampleProductImage(productName) : img)
+    : [getSampleProductImage(productName)]
 
   // Animate image transition
   useEffect(() => {

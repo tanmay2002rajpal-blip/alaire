@@ -1,8 +1,10 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Package, ChevronRight } from "lucide-react"
-import { auth } from "@/lib/auth"
-import { getUserOrders } from "@/lib/db/queries/orders"
+import { useAuth } from "@/components/auth/auth-provider"
 import { formatPrice } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -13,25 +15,72 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { ORDER_STATUSES } from "@/lib/constants"
-import type { OrderItem } from "@/lib/db/queries/orders"
 
-export default async function OrdersPage() {
-  const session = await auth()
-  const userId = session?.user?.id
+interface OrderItem {
+  id: string
+  product_name: string
+  variant_name: string | null
+  quantity: number
+  price_at_purchase: number
+  image_url: string | null
+}
 
-  if (!userId) {
+interface Order {
+  id: string
+  order_number: string
+  status: string
+  total: number
+  created_at: string
+  items: OrderItem[]
+}
+
+export default function OrdersPage() {
+  const { user } = useAuth()
+  const [orders, setOrders] = useState<Order[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchOrders() {
+      if (!user) {
+        setIsLoading(false)
+        return
+      }
+      try {
+        const response = await fetch(`/api/account/orders?userId=${user.id}`)
+        if (response.ok) {
+          const data = await response.json()
+          setOrders(data.orders || [])
+        }
+      } catch (err) {
+        console.error("Failed to fetch orders:", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchOrders()
+  }, [user])
+
+  if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <Package className="h-12 w-12 text-muted-foreground/50" />
-        <p className="mt-4 text-lg font-medium">Please sign in</p>
-        <p className="text-sm text-muted-foreground">
-          Sign in to view your order history
-        </p>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="animate-pulse space-y-2">
+              <div className="h-6 w-36 bg-muted rounded" />
+              <div className="h-4 w-56 bg-muted rounded" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="animate-pulse space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-24 bg-muted rounded-lg" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
-
-  const orders = await getUserOrders(userId)
 
   return (
     <div className="space-y-6">
@@ -75,7 +124,7 @@ export default async function OrdersPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-medium">
-                            Order #{order.id.slice(0, 8).toUpperCase()}
+                            Order #{order.order_number || order.id.slice(0, 8).toUpperCase()}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {new Date(order.created_at).toLocaleDateString("en-IN", {

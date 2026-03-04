@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     const session = await auth()
-    const userId = session?.user?.id ?? null
+    const sessionUserId = session?.user?.id ?? null
 
     let validatedBody: CreateOrderInput
     try {
@@ -65,9 +65,11 @@ export async function POST(request: Request) {
       shippingAddress,
       email,
       discountCode,
-      walletAmountUsed = 0,
       paymentMethod = "prepaid",
+      userId: bodyUserId,
     } = validatedBody
+
+    const userId = sessionUserId ?? bodyUserId ?? null
 
     if (!items || items.length === 0) {
       return NextResponse.json(
@@ -162,12 +164,7 @@ export async function POST(request: Request) {
     // ========================================================================
 
     const shipping = shippingCost
-    const actualWalletUsed = paymentMethod === "cod"
-      ? 0
-      : Math.min(walletAmountUsed, Math.max(0, subtotal - discount + shipping))
-
-    const beforeWallet = Math.max(0, subtotal - discount + shipping)
-    const total = Math.max(0, beforeWallet - actualWalletUsed)
+    const total = Math.max(0, subtotal - discount + shipping)
 
     // ========================================================================
     // Razorpay Order (Prepaid Only)
@@ -199,7 +196,6 @@ export async function POST(request: Request) {
       discount_amount: discount,
       discount_code_id: discountCodeId,
       shipping_amount: shipping,
-      wallet_amount_used: actualWalletUsed,
       total,
       shipping_address: shippingAddress,
       razorpay_order_id: razorpayOrderId,
@@ -249,29 +245,6 @@ export async function POST(request: Request) {
         created_at: new Date().toISOString(),
       })
 
-      if (actualWalletUsed > 0 && userId) {
-        const wallet = await db
-          .collection("wallets")
-          .findOne({ user_id: userId })
-
-        if (wallet) {
-          await db
-            .collection("wallets")
-            .updateOne(
-              { _id: wallet._id },
-              { $inc: { balance: -actualWalletUsed } }
-            )
-
-          await db.collection("wallet_transactions").insertOne({
-            wallet_id: wallet._id.toString(),
-            type: "debit",
-            amount: actualWalletUsed,
-            description: `Used for order ${orderNumber}`,
-            created_at: new Date().toISOString(),
-          })
-        }
-      }
-
       // Decrease stock
       for (const item of items) {
         if (item.variantId) {
@@ -304,7 +277,7 @@ export async function POST(request: Request) {
           subtotal,
           discount,
           shipping,
-          walletUsed: actualWalletUsed,
+          walletUsed: 0,
           total,
           shippingAddress,
           paymentMethod: "Cash on Delivery",

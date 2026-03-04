@@ -318,6 +318,29 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                 <CardTitle>Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {order.bluedart_waybill_no && (
+                  <div className="mb-4 space-y-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm border border-blue-200 dark:border-blue-800">
+                    <p className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                       <Package className="h-4 w-4" /> Blue Dart Shipment
+                    </p>
+                    <div className="flex justify-between items-center text-blue-800 dark:text-blue-300">
+                      <span>Waybill: <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{order.bluedart_waybill_no}</span></span>
+                      <a href={`https://www.bluedart.com/tracking/-/trackme/awb/${order.bluedart_waybill_no}`} target="_blank" rel="noreferrer" className="underline font-medium hover:text-blue-900">
+                        Track
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {order.bluedart_awb_pdf && (
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white border-transparent" variant="outline" asChild>
+                    <a href={order.bluedart_awb_pdf} target="_blank" rel="noreferrer" download={`Waybill_${order.order_number}.pdf`}>
+                      <Printer className="h-4 w-4 mr-2" />
+                      Download Waybill
+                    </a>
+                  </Button>
+                )}
+
                 <Button className="w-full" variant="outline">
                   <Printer className="h-4 w-4 mr-2" />
                   Print Invoice

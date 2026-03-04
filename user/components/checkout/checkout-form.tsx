@@ -38,7 +38,6 @@ import type { CheckoutFormProps } from "./types"
  * @param props.subtotal - Order subtotal
  * @param props.discount - Applied discount amount
  * @param props.shippingCost - Calculated shipping cost
- * @param props.walletAmountUsed - Wallet balance applied
  * @param props.couponCode - Applied coupon code
  * @param props.onShippingChange - Callback for shipping cost changes
  * @param props.onSuccess - Callback for successful checkout
@@ -62,7 +61,6 @@ export function CheckoutForm({
   subtotal,
   discount: _discount = 0, // eslint-disable-line @typescript-eslint/no-unused-vars
   shippingCost = 0,
-  walletAmountUsed = 0,
   couponCode,
   onShippingChange,
   onSuccess,
@@ -95,7 +93,6 @@ export function CheckoutForm({
     items,
     subtotal,
     shippingCost,
-    walletAmountUsed,
     couponCode,
     onSuccess,
   })
@@ -152,7 +149,6 @@ export function CheckoutForm({
         <PaymentMethodCard
           paymentMethod={paymentMethod}
           onPaymentMethodChange={setPaymentMethod}
-          walletAmountUsed={walletAmountUsed}
         />
 
         {/*
@@ -164,7 +160,7 @@ export function CheckoutForm({
           type="submit"
           size="lg"
           className="w-full"
-          disabled={isLoading || serviceabilityData?.serviceable === false}
+          disabled={isLoading}
           aria-busy={isLoading}
         >
           {isLoading ? (

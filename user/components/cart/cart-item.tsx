@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { X } from "lucide-react"
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { AnimatedQuantity } from "@/components/ui/animated-quantity"
 import { useCart, type CartItem as CartItemType } from "@/hooks"
 import { formatPrice } from "@/lib/utils"
+import { getSampleProductImage } from "@/lib/sample-images"
 
 interface CartItemProps {
   item: CartItemType
@@ -15,6 +17,13 @@ interface CartItemProps {
 export function CartItem({ item }: CartItemProps) {
   const { updateQuantity, removeItem } = useCart()
 
+  const imageUrl = useMemo(() => {
+    if (item.image && !item.image.includes("placehold") && !item.image.includes("placeholder")) {
+      return item.image
+    }
+    return getSampleProductImage(item.name)
+  }, [item.image, item.name])
+
   return (
     <div className="group flex gap-4 py-5 transition-colors hover:bg-muted/30 -mx-4 px-4 rounded-lg">
       {/* Image */}
@@ -22,19 +31,13 @@ export function CartItem({ item }: CartItemProps) {
         href={`/products/${item.productId}`}
         className="relative aspect-square h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted/50 transition-transform hover:scale-105"
       >
-        {item.image ? (
-          <Image
-            src={item.image}
-            alt={item.name}
-            fill
-            sizes="96px"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            No image
-          </div>
-        )}
+        <Image
+          src={imageUrl}
+          alt={item.name}
+          fill
+          sizes="96px"
+          className="object-cover"
+        />
       </Link>
 
       {/* Details */}

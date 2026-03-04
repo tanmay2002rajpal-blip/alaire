@@ -6,18 +6,26 @@ export async function POST(request: Request) {
   try {
     const session = await auth()
 
-    if (!session?.user?.id) {
+    const { productId, userId: rawUserId } = await request.json()
+    const userId = session?.user?.id || rawUserId
+
+    if (!userId) {
       return NextResponse.json(
         { message: "Please login to add items to wishlist", requireAuth: true },
         { status: 401 }
       )
     }
 
-    const { productId } = await request.json()
     const db = await getDb()
 
+    let targetUserId = userId
+    if (userId.includes("@")) {
+      const userDoc = await db.collection("users").findOne({ email: userId })
+      if (userDoc) targetUserId = userDoc._id.toString()
+    }
+
     const existing = await db.collection("wishlists").findOne({
-      user_id: session.user.id,
+      user_id: targetUserId,
       product_id: productId,
     })
 
@@ -26,7 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ added: false })
     } else {
       await db.collection("wishlists").insertOne({
-        user_id: session.user.id,
+        user_id: targetUserId,
         product_id: productId,
         created_at: new Date().toISOString(),
       })
