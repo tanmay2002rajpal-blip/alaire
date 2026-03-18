@@ -199,7 +199,7 @@ export async function getCustomerStats(): Promise<CustomerStats> {
 
   // Get total revenue
   const revenueResult = await ordersCol.aggregate<{ _id: null; total: number }>([
-    { $match: { status: 'delivered' } },
+    { $match: { status: { $in: ['delivered', 'shipped', 'processing', 'confirmed', 'paid'] } } },
     { $group: { _id: null, total: { $sum: '$total' } } },
   ]).toArray()
 

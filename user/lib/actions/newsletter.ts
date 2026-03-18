@@ -33,7 +33,7 @@ export async function subscribeToNewsletter(email: string): Promise<SubscribeRes
       $set: {
         email: email.toLowerCase(),
         is_active: true,
-        subscribed_at: new Date().toISOString(),
+        subscribed_at: new Date(),
         unsubscribed_at: null,
       },
     },

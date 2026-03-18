@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb"
 import { getDb } from "../client"
 import { serializeDocs } from "../helpers"
 import type { ReviewWithUser } from "@/types"
@@ -32,9 +33,10 @@ export async function getProductReviews(
 
   let profilesMap: Record<string, { full_name: string | null; avatar_url: string | null }> = {}
   if (userIds.length > 0) {
+    const userObjectIds = userIds.filter((id: string) => ObjectId.isValid(id)).map((id: string) => new ObjectId(id))
     const profiles = await db
       .collection("users")
-      .find({ $expr: { $in: [{ $toString: "$_id" }, userIds] } })
+      .find({ _id: { $in: userObjectIds } })
       .project({ full_name: 1, name: 1, avatar_url: 1, image: 1 })
       .toArray()
 
@@ -96,10 +98,10 @@ export async function canUserReview(
 
   if (orderItems.length === 0) return false
 
-  const orderIds = orderItems.map((oi) => oi.order_id)
+  const orderObjectIds = orderItems.map((oi) => oi.order_id).filter((id: unknown) => id instanceof ObjectId ? true : typeof id === "string" && ObjectId.isValid(id)).map((id: unknown) => id instanceof ObjectId ? id : new ObjectId(id as string))
 
   const purchase = await db.collection("orders").findOne({
-    $expr: { $in: [{ $toString: "$_id" }, orderIds] },
+    _id: { $in: orderObjectIds },
     user_id: userId,
     status: { $in: ["delivered", "shipped", "processing", "confirmed"] },
   })

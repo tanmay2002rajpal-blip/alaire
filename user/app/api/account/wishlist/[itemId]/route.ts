@@ -5,21 +5,21 @@ import { ObjectId } from "mongodb"
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { itemId: string } }
+  { params }: { params: Promise<{ itemId: string }> }
 ) {
   try {
     const session = await auth()
-    const { searchParams } = new URL(request.url)
-    const userId = session?.user?.id || searchParams.get("userId")
 
-    if (!userId) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { message: "Unauthorized" },
         { status: 401 }
       )
     }
 
-    const { itemId } = params
+    const userId = session.user.id
+
+    const { itemId } = await params
     if (!itemId || !ObjectId.isValid(itemId)) {
       return NextResponse.json(
         { message: "Invalid item ID" },
@@ -29,11 +29,7 @@ export async function DELETE(
 
     const db = await getDb()
 
-    let searchIds = [userId]
-    if (userId.includes("@")) {
-      const userDoc = await db.collection("users").findOne({ email: userId })
-      if (userDoc) searchIds.push(userDoc._id.toString())
-    }
+    const searchIds = [userId]
 
     const result = await db.collection("wishlists").deleteOne({
       _id: new ObjectId(itemId),

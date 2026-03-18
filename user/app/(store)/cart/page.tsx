@@ -46,16 +46,16 @@ export default function CartPage() {
   }
 
   const subtotal = getSubtotal()
-  const shipping = subtotal >= 999 ? 0 : 99
-  const total = subtotal + shipping
+  const freeShipping = subtotal >= 999
+  const total = subtotal
 
   return (
     <div className="container py-8">
       <h1 className="font-serif text-3xl md:text-4xl mb-8">Shopping Cart</h1>
 
-      <div className="grid lg:grid-cols-3 gap-8">
+      <div className="grid lg:grid-cols-3 gap-6 lg:gap-8 overflow-hidden">
         {/* Cart Items */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4 min-w-0">
           {items.map((item: CartItem) => (
             <div
               key={item.id}
@@ -68,6 +68,7 @@ export default function CartPage() {
                     src={item.image}
                     alt={item.name}
                     fill
+                    sizes="96px"
                     className="object-cover"
                   />
                 ) : (
@@ -148,10 +149,10 @@ export default function CartPage() {
 
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Shipping</span>
-                <span>{shipping === 0 ? "Free" : formatPrice(shipping)}</span>
+                <span>{freeShipping ? "Free" : "Calculated at checkout"}</span>
               </div>
 
-              {shipping > 0 && (
+              {!freeShipping && (
                 <p className="text-xs text-muted-foreground">
                   Free shipping on orders over ₹999
                 </p>

@@ -78,7 +78,7 @@ export default function PrivacyPage() {
         <h2>9. Contact Us</h2>
         <p>
           If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact our privacy
-          team at privacy@alaire.com. We are committed to addressing your inquiries and resolving any privacy-related issues promptly and
+          team at privacy@alaire.in. We are committed to addressing your inquiries and resolving any privacy-related issues promptly and
           in accordance with applicable data protection laws.
         </p>
       </div>

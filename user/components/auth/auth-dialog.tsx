@@ -26,7 +26,8 @@ export function AuthDialog() {
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !email.includes("@")) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!email || !emailRegex.test(email.trim())) {
       toast.error("Please enter a valid email address.")
       return
     }
@@ -61,7 +62,7 @@ export function AuthDialog() {
 
     setIsLoading(true)
     try {
-      const result = await signIn("OTP", {
+      const result = await signIn("credentials", {
         email,
         otp,
         redirect: false,

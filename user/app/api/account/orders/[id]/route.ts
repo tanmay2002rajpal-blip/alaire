@@ -10,30 +10,14 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const { searchParams } = new URL(request.url)
     const session = await auth()
 
-    const rawUserId = session?.user?.id || searchParams.get("userId")
-
-    if (!rawUserId) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    let searchIds = [rawUserId]
-
-    if (rawUserId.includes("@")) {
-      const db = await getDb()
-      const userDoc = await db.collection("users").findOne({ email: rawUserId })
-      if (userDoc) searchIds.push(userDoc._id.toString())
-    } else {
-      const db = await getDb()
-      try {
-        const userDoc = await db.collection("users").findOne({ _id: new ObjectId(rawUserId) })
-        if (userDoc && userDoc.email) searchIds.push(userDoc.email)
-      } catch (e) {
-        // ignore invalid object ID format
-      }
-    }
+    const userId = session.user.id
+    let searchIds = [userId]
 
     const order = await getOrderById(id, searchIds)
 

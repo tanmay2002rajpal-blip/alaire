@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb"
 import { getDb } from "../client"
 import { serializeDoc, serializeDocs } from "../helpers"
 import type { ShippingAddress } from "@/types"
@@ -59,52 +60,35 @@ export async function getOrderById(
 ): Promise<OrderWithDetails | null> {
   const db = await getDb()
 
-  const matchCondition = Array.isArray(userId)
-    ? { user_id: { $in: userId } }
-    : { user_id: userId }
+  // Match both string and ObjectId forms of user_id
+  const ids = Array.isArray(userId) ? userId : [userId]
+  const allIds: (string | ObjectId)[] = []
+  for (const id of ids) {
+    allIds.push(id)
+    if (ObjectId.isValid(id)) allIds.push(new ObjectId(id))
+  }
+  const matchCondition = { user_id: { $in: allIds } }
 
   const pipeline = [
     {
       $match: {
-        $expr: { $eq: [{ $toString: "$_id" }, orderId] },
+        _id: new ObjectId(orderId),
         ...matchCondition,
       },
     },
     {
       $lookup: {
         from: "order_items",
-        let: { oid: { $toString: "$_id" } },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$order_id", "$$oid"] } } },
-          {
-            $project: {
-              product_id: 1,
-              variant_id: 1,
-              product_name: 1,
-              variant_name: 1,
-              quantity: 1,
-              price_at_purchase: 1,
-              image_url: 1,
-            },
-          },
-        ],
+        localField: "_id",
+        foreignField: "order_id",
         as: "items",
       },
     },
     {
       $lookup: {
         from: "order_status_history",
-        let: { oid: { $toString: "$_id" } },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$order_id", "$$oid"] } } },
-          {
-            $project: {
-              status: 1,
-              note: 1,
-              created_at: 1,
-            },
-          },
-        ],
+        localField: "_id",
+        foreignField: "order_id",
         as: "status_history",
       },
     },
@@ -128,7 +112,8 @@ export async function getOrderById(
  * Used by the order confirmation page shown right after placing an order.
  */
 export async function getOrderConfirmation(
-  orderId: string
+  orderId: string,
+  userId?: string
 ): Promise<{
   id: string
   order_number: string
@@ -147,27 +132,15 @@ export async function getOrderConfirmation(
   const pipeline = [
     {
       $match: {
-        $expr: { $eq: [{ $toString: "$_id" }, orderId] },
+        _id: new ObjectId(orderId),
+        ...(userId ? { user_id: new ObjectId(userId) } : {}),
       },
     },
     {
       $lookup: {
         from: "order_items",
-        let: { oid: { $toString: "$_id" } },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$order_id", "$$oid"] } } },
-          {
-            $project: {
-              product_id: 1,
-              variant_id: 1,
-              product_name: 1,
-              variant_name: 1,
-              quantity: 1,
-              price_at_purchase: 1,
-              image_url: 1,
-            },
-          },
-        ],
+        localField: "_id",
+        foreignField: "order_id",
         as: "items",
       },
     },
@@ -205,9 +178,14 @@ export async function getUserOrders(
 ): Promise<OrderWithDetails[]> {
   const db = await getDb()
 
-  const matchCondition = Array.isArray(userId)
-    ? { user_id: { $in: userId } }
-    : { user_id: userId }
+  // Match both string and ObjectId forms of user_id
+  const ids = Array.isArray(userId) ? userId : [userId]
+  const allIds: (string | ObjectId)[] = []
+  for (const id of ids) {
+    allIds.push(id)
+    if (ObjectId.isValid(id)) allIds.push(new ObjectId(id))
+  }
+  const matchCondition = { user_id: { $in: allIds } }
 
   const pipeline = [
     { $match: matchCondition },
@@ -216,21 +194,8 @@ export async function getUserOrders(
     {
       $lookup: {
         from: "order_items",
-        let: { oid: { $toString: "$_id" } },
-        pipeline: [
-          { $match: { $expr: { $eq: ["$order_id", "$$oid"] } } },
-          {
-            $project: {
-              product_id: 1,
-              variant_id: 1,
-              product_name: 1,
-              variant_name: 1,
-              quantity: 1,
-              price_at_purchase: 1,
-              image_url: 1,
-            },
-          },
-        ],
+        localField: "_id",
+        foreignField: "order_id",
         as: "items",
       },
     },

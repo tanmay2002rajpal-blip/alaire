@@ -4,6 +4,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { format } from "date-fns"
 import { marked } from "marked"
+import DOMPurify from "isomorphic-dompurify"
 import { ArrowLeft, CalendarDays, User, Clock } from "lucide-react"
 import { getBlogPostBySlug, getRecentBlogPosts } from "@/lib/actions/blog"
 import { Button } from "@/components/ui/button"
@@ -19,9 +20,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
   const post = await getBlogPostBySlug(slug)
 
   if (!post) {
-    return {
-      title: "Post Not Found",
-    }
+    notFound()
   }
 
   return {
@@ -54,7 +53,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const recentPosts = await getRecentBlogPosts(3)
   const relatedPosts = recentPosts.filter((p) => p.slug !== post.slug).slice(0, 2)
   const readingTime = post.content ? estimateReadingTime(post.content) : 3
-  const htmlContent = post.content ? await marked.parse(post.content) : ""
+  const htmlContent = post.content ? DOMPurify.sanitize(await marked.parse(post.content)) : ""
 
   return (
     <article className="min-h-screen bg-background">

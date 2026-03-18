@@ -34,6 +34,14 @@
 import { Resend } from "resend"
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+// ============================================================================
 // Configuration
 // ============================================================================
 
@@ -171,14 +179,18 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
     paymentMethod,
   } = data
 
+  // Escape user-supplied values
+  const safeCustomerName = escapeHtml(customerName)
+  const safeOrderNumber = escapeHtml(orderNumber)
+
   // Build HTML table rows for order items
   const itemsHtml = items
     .map(
       (item) => `
       <tr>
         <td style="padding: 12px 0; border-bottom: 1px solid #eee;">
-          <strong>${item.product_name}</strong>
-          ${item.variant_name ? `<br><span style="color: #666; font-size: 14px;">${item.variant_name}</span>` : ""}
+          <strong>${escapeHtml(item.product_name)}</strong>
+          ${item.variant_name ? `<br><span style="color: #666; font-size: 14px;">${escapeHtml(item.variant_name)}</span>` : ""}
         </td>
         <td style="padding: 12px 0; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
         <td style="padding: 12px 0; border-bottom: 1px solid #eee; text-align: right;">${formatPrice(item.price * item.quantity)}</td>
@@ -208,13 +220,13 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
             <span style="color: white; font-size: 30px;">✓</span>
           </div>
           <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Order Confirmed</h2>
-          <p style="color: #666; margin: 0;">Thank you for your order, ${customerName}!</p>
+          <p style="color: #666; margin: 0;">Thank you for your order, ${safeCustomerName}!</p>
         </div>
 
         <!-- Order Number -->
         <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
           <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
-          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
+          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${safeOrderNumber}</p>
         </div>
 
         <!-- Order Items -->
@@ -263,12 +275,12 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
         <!-- Shipping Address -->
         <h3 style="font-size: 18px; font-weight: normal; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px;">Shipping Address</h3>
         <div style="margin-bottom: 30px; line-height: 1.6;">
-          <p style="margin: 0; font-weight: bold;">${shippingAddress.full_name}</p>
+          <p style="margin: 0; font-weight: bold;">${escapeHtml(shippingAddress.full_name)}</p>
           <p style="margin: 5px 0; color: #666;">
-            ${shippingAddress.line1}<br>
-            ${shippingAddress.line2 ? `${shippingAddress.line2}<br>` : ""}
-            ${shippingAddress.city}, ${shippingAddress.state} ${shippingAddress.pincode}<br>
-            Phone: ${shippingAddress.phone}
+            ${escapeHtml(shippingAddress.line1)}<br>
+            ${shippingAddress.line2 ? `${escapeHtml(shippingAddress.line2)}<br>` : ""}
+            ${escapeHtml(shippingAddress.city)}, ${escapeHtml(shippingAddress.state)} ${escapeHtml(shippingAddress.pincode)}<br>
+            Phone: ${escapeHtml(shippingAddress.phone)}
           </p>
         </div>
 
@@ -301,7 +313,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <orders@omrajpal.tech>",
       to: customerEmail,
       subject: `Order Confirmed - ${orderNumber}`,
       html,

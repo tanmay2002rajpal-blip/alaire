@@ -93,8 +93,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`${dmSans.variable} ${cormorant.variable} ${geistMono.variable} antialiased`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${dmSans.variable} ${cormorant.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
         {children}
         <Toaster position="bottom-right" />
       </body>

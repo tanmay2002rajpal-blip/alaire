@@ -3,6 +3,7 @@
 import { getUsersCollection, getOrdersCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
+import { getSession } from '@/lib/auth/jwt'
 
 interface ActionResult {
   success: boolean
@@ -16,6 +17,9 @@ export async function toggleCustomerStatusAction(
   customerId: string
 ): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!customerId) {
       return { success: false, error: 'Customer ID is required' }
     }
@@ -60,6 +64,9 @@ export async function updateCustomerAction(
   }
 ): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!customerId) {
       return { success: false, error: 'Customer ID is required' }
     }
@@ -101,6 +108,9 @@ export async function exportCustomersAction(): Promise<{
   error?: string
 }> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const usersCol = await getUsersCollection()
     const ordersCol = await getOrdersCollection()
 

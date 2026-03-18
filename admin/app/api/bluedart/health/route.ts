@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getBlueDartHealthStatus } from '@/../../user/lib/bluedart/config'
-import { getDiagnosticsSummary } from '@/../../user/lib/bluedart/diagnostics'
+import { getBlueDartHealthStatus } from '@/lib/bluedart/config'
+import { getDiagnosticsSummary } from '@/lib/bluedart/diagnostics'
+import { getSession } from '@/lib/auth/jwt'
 
 /**
  * Blue Dart Health Check Endpoint for Admin
@@ -15,6 +16,11 @@ import { getDiagnosticsSummary } from '@/../../user/lib/bluedart/diagnostics'
  */
 export async function GET() {
   try {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const healthStatus = getBlueDartHealthStatus()
     const diagnosticsSummary = await getDiagnosticsSummary()
 

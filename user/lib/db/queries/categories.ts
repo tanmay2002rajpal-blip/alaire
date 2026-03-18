@@ -35,11 +35,11 @@ export async function getCategoriesWithCounts(): Promise<CategoryWithCount[]> {
     {
       $lookup: {
         from: "products",
-        let: { catId: { $toString: "$_id" } },
+        let: { catId: "$_id" },
         pipeline: [
           {
             $match: {
-              $expr: { $eq: [{ $toString: "$category_id" }, "$$catId"] },
+              $expr: { $eq: ["$category_id", "$$catId"] },
               is_active: true,
             },
           },

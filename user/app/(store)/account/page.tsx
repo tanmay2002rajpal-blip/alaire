@@ -25,7 +25,7 @@ export default function AccountPage() {
       }
 
       try {
-        const res = await fetch(`/api/account/profile?userId=${user.id}`)
+        const res = await fetch(`/api/account/profile`)
         if (res.ok) {
           const data = await res.json()
           setProfile(data.profile || null)

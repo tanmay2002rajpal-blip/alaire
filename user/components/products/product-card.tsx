@@ -163,7 +163,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
           )}
 
           {/* Quick Actions Overlay */}
-          <div className="absolute inset-x-4 bottom-4 flex items-center justify-center gap-2 opacity-0 transition-all duration-500 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0">
+          <div className="absolute inset-x-4 bottom-4 flex items-center justify-center gap-2 opacity-100 translate-y-0 sm:opacity-0 sm:translate-y-4 transition-all duration-500 sm:group-hover:opacity-100 sm:group-hover:translate-y-0">
             <Button
               size="sm"
               variant="secondary"
@@ -177,7 +177,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
             <Button
               size="icon"
               variant="secondary"
-              className="h-10 w-10 bg-background/95 backdrop-blur-sm hover:bg-background"
+              className="h-10 w-10 bg-background/95 backdrop-blur-sm hover:bg-background hidden sm:flex"
               aria-label="Quick view"
             >
               <Eye className="h-4 w-4" />
@@ -192,7 +192,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
         size="icon"
         className={cn(
           "absolute right-3 top-3 h-9 w-9 rounded-full bg-background/80 backdrop-blur-sm transition-all duration-300",
-          "opacity-0 group-hover:opacity-100",
+          "sm:opacity-0 sm:group-hover:opacity-100",
           "hover:bg-background hover:scale-110",
           isWishlisted && "opacity-100 text-red-500"
         )}

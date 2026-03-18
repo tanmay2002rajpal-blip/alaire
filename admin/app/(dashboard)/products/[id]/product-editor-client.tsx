@@ -22,6 +22,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { ImageUpload } from '@/components/ui/image-upload'
 import {
   createProductAction,
@@ -110,6 +120,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [variants, setVariants] = useState<VariantFormData[]>(
     product?.variants?.map(v => ({
       id: v.id,
@@ -201,12 +212,8 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
     }
   }
 
-  const handleDelete = async () => {
+  const handleDeleteConfirm = async () => {
     if (!product || isNew) return
-
-    if (!confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
-      return
-    }
 
     setIsDeleting(true)
     try {
@@ -227,6 +234,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
       })
     } finally {
       setIsDeleting(false)
+      setIsDeleteDialogOpen(false)
     }
   }
 
@@ -297,7 +305,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
           {!isNew && (
             <Button
               variant="destructive"
-              onClick={handleDelete}
+              onClick={() => setIsDeleteDialogOpen(true)}
               disabled={isSubmitting || isDeleting}
             >
               {isDeleting ? (
@@ -734,6 +742,31 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
 
         </Tabs>
       </form>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{' '}
+              <code className="bg-muted px-1 rounded">{product?.name}</code>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

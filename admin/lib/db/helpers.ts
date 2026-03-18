@@ -16,33 +16,35 @@ export function isValidObjectId(id: string): boolean {
 }
 
 /**
+ * Recursively serialize a value for passing to Client Components.
+ * Converts ObjectId to string, Date to ISO string, and recurses into objects/arrays.
+ */
+function serializeValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value
+  if (value instanceof ObjectId) return value.toString()
+  if (value instanceof Date) return value.toISOString()
+  if (Array.isArray(value)) return value.map(serializeValue)
+  if (typeof value === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = serializeValue(v)
+    }
+    return result
+  }
+  return value
+}
+
+/**
  * Serialize a MongoDB document, converting ObjectId to string and Date to ISO string.
  */
 export function serializeDoc<T extends Document>(doc: WithId<T>): Record<string, any> {
-  const result: Record<string, any> = {}
-
-  for (const [key, value] of Object.entries(doc)) {
-    if (key === '_id') {
-      result['id'] = value.toString()
-    } else if (value instanceof ObjectId) {
-      result[key] = value.toString()
-    } else if (value instanceof Date) {
-      result[key] = value.toISOString()
-    } else if (Array.isArray(value)) {
-      result[key] = value.map(item =>
-        item instanceof ObjectId ? item.toString() :
-        item instanceof Date ? item.toISOString() :
-        item
-      )
-    } else if (value !== null && typeof value === 'object' && !(value instanceof ObjectId) && !(value instanceof Date)) {
-      // Leave nested objects as-is (e.g., shipping_address, options)
-      result[key] = value
-    } else {
-      result[key] = value
-    }
+  if (!doc) return doc as Record<string, any>
+  const { _id, ...rest } = doc as Record<string, unknown>
+  const serialized = serializeValue(rest) as Record<string, unknown>
+  return {
+    ...serialized,
+    id: _id ? _id.toString() : '',
   }
-
-  return result
 }
 
 /**

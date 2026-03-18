@@ -10,12 +10,16 @@
  */
 const requiredEnvVars = [
   'ADMIN_API_SECRET',
+  'ADMIN_JWT_SECRET',
+  'MONGODB_URI',
 ] as const;
 
 type RequiredEnvVar = (typeof requiredEnvVars)[number];
 
 interface EnvConfig {
   ADMIN_API_SECRET: string;
+  ADMIN_JWT_SECRET: string;
+  MONGODB_URI: string;
 }
 
 /**
@@ -49,6 +53,8 @@ export function validateEnv(): EnvConfig {
 
   return {
     ADMIN_API_SECRET: process.env.ADMIN_API_SECRET!,
+    ADMIN_JWT_SECRET: process.env.ADMIN_JWT_SECRET!,
+    MONGODB_URI: process.env.MONGODB_URI!,
   };
 }
 

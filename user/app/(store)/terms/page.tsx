@@ -73,7 +73,7 @@ export default function TermsPage() {
 
         <h2>9. Contact</h2>
         <p>
-          If you have any questions or concerns about these Terms of Service, please contact our legal team at legal@alaire.com.
+          If you have any questions or concerns about these Terms of Service, please contact our legal team at legal@alaire.in.
           We are committed to addressing your inquiries promptly and transparently. For other matters, please visit our contact page
           for appropriate department email addresses.
         </p>

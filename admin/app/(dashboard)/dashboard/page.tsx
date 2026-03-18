@@ -1,11 +1,9 @@
 import { StatsCards } from '@/components/dashboard/stats-cards';
 import { RevenueChart } from '@/components/dashboard/revenue-chart';
-import { ActivityFeed } from '@/components/dashboard/activity-feed';
 import {
   getDashboardStats,
   getRecentOrders,
   getRevenueChart,
-  getRecentActivity,
 } from '@/lib/queries/dashboard';
 import {
   Card,
@@ -51,11 +49,10 @@ const getStatusBadgeVariant = (
 
 export default async function DashboardPage() {
   // Fetch all dashboard data in parallel
-  const [stats, recentOrders, revenueData, activityLog] = await Promise.all([
+  const [stats, recentOrders, revenueData] = await Promise.all([
     getDashboardStats(),
     getRecentOrders(5),
     getRevenueChart(7),
-    getRecentActivity(10),
   ]);
 
   // Calculate revenue change percentage
@@ -110,15 +107,8 @@ export default async function DashboardPage() {
         newCustomers={stats.newCustomersThisWeek}
       />
 
-      {/* Revenue Chart + Activity Feed - 2/3 + 1/3 Split */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <RevenueChart data={revenueData} />
-        </div>
-        <div className="lg:col-span-1">
-          <ActivityFeed activities={activityLog} />
-        </div>
-      </div>
+      {/* Revenue Chart - Full Width */}
+      <RevenueChart data={revenueData} />
 
       {/* Recent Orders Table - Full Width */}
       <Card>

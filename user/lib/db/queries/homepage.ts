@@ -51,7 +51,7 @@ export async function getHomepageStats(): Promise<HomepageStats> {
       .find({ is_approved: true })
       .project({ rating: 1 })
       .toArray(),
-    db.collection("orders").countDocuments({ status: "delivered" }),
+    db.collection("orders").countDocuments({ status: { $in: ["delivered", "shipped", "processing", "confirmed", "paid"] } }),
   ])
 
   let averageRating = 0

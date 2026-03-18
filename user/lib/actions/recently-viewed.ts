@@ -15,7 +15,7 @@ export async function trackProductView(productId: string): Promise<void> {
       $set: {
         user_id: session.user.id,
         product_id: productId,
-        viewed_at: new Date().toISOString(),
+        viewed_at: new Date(),
       },
     },
     { upsert: true }

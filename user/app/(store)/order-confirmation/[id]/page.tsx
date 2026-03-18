@@ -4,6 +4,7 @@ import Image from "next/image"
 import type { Metadata } from "next"
 import { CheckCircle2, Package, MapPin, CreditCard, Truck, ShoppingBag } from "lucide-react"
 import { getOrderConfirmation } from "@/lib/db/queries"
+import { auth } from "@/lib/auth"
 import { formatPrice } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -25,7 +26,8 @@ export default async function OrderConfirmationPage({
   params,
 }: OrderConfirmationPageProps) {
   const { id } = await params
-  const order = await getOrderConfirmation(id)
+  const session = await auth()
+  const order = await getOrderConfirmation(id, session?.user?.id)
 
   if (!order) {
     notFound()
@@ -50,7 +52,7 @@ export default async function OrderConfirmationPage({
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
           <CheckCircle2 className="h-10 w-10 text-green-600" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           Order Confirmed!
         </h1>
         <p className="mt-2 text-muted-foreground">
@@ -81,6 +83,7 @@ export default async function OrderConfirmationPage({
                       src={item.image_url}
                       alt={item.product_name}
                       fill
+                      sizes="64px"
                       className="object-cover"
                     />
                   </div>

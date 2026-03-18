@@ -20,7 +20,7 @@ export function NewsletterForm({ variant = "default", className }: NewsletterFor
   const userEmail = session?.user?.email || ""
 
   const [email, setEmail] = useState("")
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "already" | "error">("idle")
   const formRef = useRef<HTMLFormElement>(null)
   const successRef = useRef<HTMLDivElement>(null)
 
@@ -35,13 +35,26 @@ export function NewsletterForm({ variant = "default", className }: NewsletterFor
     e.preventDefault()
     if (!email) return
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      setStatus("error")
+      setTimeout(() => setStatus("idle"), 4000)
+      return
+    }
+
     setStatus("loading")
 
     const result = await subscribeToNewsletter(email)
 
-    if (result.success || result.error === "Email already subscribed") {
+    if (result.error === "Email already subscribed") {
+      setStatus("already")
+      setTimeout(() => setStatus("idle"), 4000)
+      return
+    }
+
+    if (result.success) {
       setStatus("success")
-      
+
       // If we're not authenticated, clear the input so they see it was submitted.
       if (!isAuthenticated) {
         setEmail("")
@@ -70,7 +83,7 @@ export function NewsletterForm({ variant = "default", className }: NewsletterFor
         size={variant === "large" ? "lg" : isMinimal ? "icon" : "default"}
         variant={isMinimal ? "ghost" : "default"}
         className={btnClass}
-        disabled={status === "loading" || status === "success"}
+        disabled={status === "loading" || status === "success" || status === "already"}
       >
         {status === "loading" ? (
           <Loader2 className={cn("animate-spin", isMinimal ? "h-4 w-4" : "h-5 w-5")} />
@@ -79,6 +92,13 @@ export function NewsletterForm({ variant = "default", className }: NewsletterFor
             <>
               <Check className="mr-2 h-5 w-5" />
               Subscribed
+            </>
+          )
+        ) : status === "already" ? (
+          isMinimal ? <Check className="h-4 w-4 text-amber-500" /> : (
+            <>
+              <Check className="mr-2 h-5 w-5" />
+              Already Subscribed
             </>
           )
         ) : isMinimal ? (
@@ -116,6 +136,9 @@ export function NewsletterForm({ variant = "default", className }: NewsletterFor
           <div ref={successRef} className="text-sm text-center text-white/50">
              Thank you for subscribing. You'll receive our latest updates soon.
           </div>
+        )}
+        {status === "already" && (
+          <p className="text-sm text-center text-amber-400">You're already subscribed to our newsletter!</p>
         )}
         {status === "error" && (
           <p className="text-sm text-center text-red-500">Something went wrong. Please try again.</p>
@@ -166,6 +189,9 @@ export function NewsletterForm({ variant = "default", className }: NewsletterFor
       </form>
       {status === "success" && (
         <p className="text-sm text-muted-foreground text-center">Thank you for subscribing!</p>
+      )}
+      {status === "already" && (
+        <p className="text-sm text-amber-600 text-center">You're already subscribed to our newsletter!</p>
       )}
       {status === "error" && (
         <p className="text-sm text-red-500 text-center">Something went wrong. Please try again.</p>

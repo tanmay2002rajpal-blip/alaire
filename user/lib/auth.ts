@@ -1,4 +1,5 @@
 import NextAuth from "next-auth"
+import { createHash } from "crypto"
 import { getDb } from "@/lib/db/client"
 import Credentials from "next-auth/providers/credentials"
 import authConfig from "./auth.config"
@@ -22,12 +23,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         
         const email = credentials.email.toLowerCase()
         const otp = credentials.otp as string
-        
+        const hashedOtp = createHash("sha256").update(otp).digest("hex")
+
         const db = await getDb()
-        
+
         const validOtp = await db.collection("otps").findOne({
           email,
-          otp,
+          otp: hashedOtp,
           expires_at: { $gt: new Date() }
         })
         

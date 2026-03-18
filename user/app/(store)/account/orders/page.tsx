@@ -46,7 +46,7 @@ export default function OrdersPage() {
         return
       }
       try {
-        const response = await fetch(`/api/account/orders?userId=${user.id}`)
+        const response = await fetch(`/api/account/orders`)
         if (response.ok) {
           const data = await response.json()
           setOrders(data.orders || [])

@@ -3,6 +3,7 @@
 import { getProductVariantsCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
+import { getSession } from '@/lib/auth/jwt'
 
 interface StockUpdateResult {
   success: boolean
@@ -24,6 +25,9 @@ export async function updateStockAction(
   adjustment?: 'set' | 'add' | 'subtract'
 ): Promise<StockUpdateResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!variantId) {
       return { success: false, error: 'Variant ID is required' }
     }
@@ -80,6 +84,9 @@ export async function bulkUpdateStockAction(
   updates: { variantId: string; stock: number }[]
 ): Promise<BulkUpdateResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized', updated: 0 }
+
     if (!updates || updates.length === 0) {
       return { success: false, error: 'No updates provided', updated: 0 }
     }
@@ -131,6 +138,9 @@ export async function updateLowStockThresholdAction(
   threshold: number
 ): Promise<StockUpdateResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!productId) {
       return { success: false, error: 'Product ID is required' }
     }

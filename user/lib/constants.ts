@@ -53,6 +53,7 @@ export const INDIAN_STATES = [
 
 export const ORDER_STATUSES = {
   pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
+  confirmed: { label: 'Confirmed', color: 'bg-blue-100 text-blue-800' },
   paid: { label: 'Paid', color: 'bg-blue-100 text-blue-800' },
   processing: { label: 'Processing', color: 'bg-purple-100 text-purple-800' },
   shipped: { label: 'Shipped', color: 'bg-indigo-100 text-indigo-800' },
@@ -62,14 +63,14 @@ export const ORDER_STATUSES = {
 } as const
 
 export const NAV_LINKS = [
-  { href: '/products?filter=sale', label: 'Sale' },
+  { href: '/products', label: 'Sale' },
   { href: '/categories', label: 'Collection' },
   { href: '/blog', label: 'Blogs' },
 ] as const
 
 export const FOOTER_LINKS = {
   shop: [
-    { href: '/products?filter=sale', label: 'Sale' },
+    { href: '/products', label: 'Sale' },
     { href: '/categories', label: 'Collection' },
     { href: '/blog', label: 'Blogs' },
   ],
@@ -77,7 +78,6 @@ export const FOOTER_LINKS = {
     { href: '/account', label: 'My Account' },
     { href: '/account/orders', label: 'Orders' },
     { href: '/account/wishlist', label: 'Wishlist' },
-    { href: '/account/wallet', label: 'Wallet' },
   ],
   help: [
     { href: '/contact', label: 'Contact Us' },

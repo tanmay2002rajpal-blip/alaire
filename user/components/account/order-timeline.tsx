@@ -4,13 +4,42 @@ import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ORDER_STATUSES } from "@/lib/constants"
 
-const TIMELINE_STEPS = [
-  { key: "pending", label: "Pending" },
-  { key: "paid", label: "Paid" },
+interface TimelineStep {
+  key: string
+  label: string
+}
+
+const PREPAID_STEPS: TimelineStep[] = [
+  { key: "confirmed", label: "Confirmed" },
   { key: "processing", label: "Processing" },
   { key: "shipped", label: "Shipped" },
   { key: "delivered", label: "Delivered" },
-] as const
+]
+
+const COD_STEPS: TimelineStep[] = [
+  { key: "confirmed", label: "Confirmed" },
+  { key: "processing", label: "Processing" },
+  { key: "shipped", label: "Shipped" },
+  { key: "delivered", label: "Delivered" },
+]
+
+// Map various status values to a canonical timeline key
+function normalizeStatus(status: string): string {
+  switch (status) {
+    case "pending":
+    case "confirmed":
+    case "paid":
+      return "confirmed"
+    case "processing":
+      return "processing"
+    case "shipped":
+      return "shipped"
+    case "delivered":
+      return "delivered"
+    default:
+      return status
+  }
+}
 
 interface StatusHistoryItem {
   status: string
@@ -20,9 +49,10 @@ interface StatusHistoryItem {
 interface OrderTimelineProps {
   currentStatus: string
   statusHistory: StatusHistoryItem[]
+  paymentMethod?: "prepaid" | "cod" | string
 }
 
-export function OrderTimeline({ currentStatus, statusHistory }: OrderTimelineProps) {
+export function OrderTimeline({ currentStatus, statusHistory, paymentMethod }: OrderTimelineProps) {
   // Handle cancelled/refunded as special states
   if (currentStatus === "cancelled" || currentStatus === "refunded") {
     const statusConfig = ORDER_STATUSES[currentStatus as keyof typeof ORDER_STATUSES]
@@ -40,12 +70,17 @@ export function OrderTimeline({ currentStatus, statusHistory }: OrderTimelinePro
     )
   }
 
-  const currentStepIndex = TIMELINE_STEPS.findIndex((step) => step.key === currentStatus)
+  const steps = paymentMethod === "cod" ? COD_STEPS : PREPAID_STEPS
+  const normalized = normalizeStatus(currentStatus)
+  const currentStepIndex = steps.findIndex((step) => step.key === normalized)
+  // If status not found in steps, assume first step is active
+  const activeIndex = currentStepIndex >= 0 ? currentStepIndex : 0
 
   // Build a map of status -> timestamp
   const statusTimestamps: Record<string, string> = {}
   statusHistory.forEach((item) => {
-    statusTimestamps[item.status] = item.created_at
+    const key = normalizeStatus(item.status)
+    statusTimestamps[key] = item.created_at
   })
 
   return (
@@ -57,15 +92,15 @@ export function OrderTimeline({ currentStatus, statusHistory }: OrderTimelinePro
       <div
         className="absolute left-0 top-4 h-0.5 bg-foreground transition-all duration-500"
         style={{
-          width: `${(currentStepIndex / (TIMELINE_STEPS.length - 1)) * 100}%`,
+          width: `${(activeIndex / (steps.length - 1)) * 100}%`,
         }}
       />
 
       {/* Steps */}
       <div className="relative flex justify-between">
-        {TIMELINE_STEPS.map((step, index) => {
-          const isCompleted = index < currentStepIndex
-          const isCurrent = index === currentStepIndex
+        {steps.map((step, index) => {
+          const isCompleted = index < activeIndex
+          const isCurrent = index === activeIndex
           const timestamp = statusTimestamps[step.key]
 
           return (

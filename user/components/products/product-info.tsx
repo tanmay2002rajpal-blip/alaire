@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { VariantSelector } from "./variant-selector"
 import { AddToCartButton } from "./add-to-cart-button"
 import { formatPrice, calculateDiscount } from "@/lib/utils"
+import { getSampleProductImage } from "@/lib/sample-images"
 import type { Product, ProductVariant, ProductOption } from "@/types"
 
 interface ProductInfoProps {
@@ -39,7 +40,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
     return product.variants.find((variant) => {
       const variantOptions = variant.options as Record<string, string>
       return Object.entries(selectedOptions).every(
-        ([key, value]) => variantOptions[key] === value
+        ([key, value]) => (variantOptions[key] ?? variantOptions[key.toLowerCase()]) === value
       )
     })
   }, [product.variants, selectedOptions])
@@ -151,7 +152,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
           variantName={selectedVariant ? Object.values(selectedOptions).join(" / ") : undefined}
           price={price}
           compareAtPrice={compareAtPrice ?? undefined}
-          image={product.images?.[0]}
+          image={product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)}
           maxQuantity={selectedVariant?.stock_quantity ?? 10}
           quantity={quantity}
           disabled={!inStock || !allOptionsSelected}

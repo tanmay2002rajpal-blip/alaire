@@ -1,5 +1,6 @@
 "use server"
 
+import { ObjectId } from "mongodb"
 import { getDb } from "@/lib/db/client"
 
 export interface StockCheckItem {
@@ -36,7 +37,7 @@ export async function checkStock(items: StockCheckItem[]): Promise<StockCheckRes
     if (item.variantId) {
       const variant = await db
         .collection("product_variants")
-        .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.variantId] } })
+        .findOne({ _id: new ObjectId(item.variantId) })
 
       stockQuantity = variant?.stock_quantity ?? 0
       if (variant?.name) {
@@ -53,7 +54,7 @@ export async function checkStock(items: StockCheckItem[]): Promise<StockCheckRes
       } else {
         const product = await db
           .collection("products")
-          .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.productId] } })
+          .findOne({ _id: new ObjectId(item.productId) })
 
         stockQuantity = product?.stock_quantity ?? 0
       }
@@ -90,7 +91,7 @@ export async function getStockInfo(
   if (variantId) {
     const variant = await db
       .collection("product_variants")
-      .findOne({ $expr: { $eq: [{ $toString: "$_id" }, variantId] } })
+      .findOne({ _id: new ObjectId(variantId) })
 
     stockQuantity = variant?.stock_quantity ?? 0
   } else {

@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server"
+import { ObjectId } from "mongodb"
 import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    const { searchParams } = new URL(request.url)
-    const userId = session?.user?.id || searchParams.get("userId")
 
-    if (!userId) {
+    if (!session?.user?.id) {
       return NextResponse.json(
-        { profile: null, addresses: [] },
-        { status: 200 }
+        { message: "Unauthorized" },
+        { status: 401 }
       )
     }
+
+    const userId = session.user.id
 
     const db = await getDb()
     const isEmail = userId.includes("@")
@@ -23,7 +24,9 @@ export async function GET(request: Request) {
     if (isEmail) {
       profileDoc = await db.collection("users").findOne({ email: userId })
     } else {
-      profileDoc = await db.collection("users").findOne({ $expr: { $eq: [{ $toString: "$_id" }, userId] } })
+      profileDoc = ObjectId.isValid(userId)
+        ? await db.collection("users").findOne({ _id: new ObjectId(userId) })
+        : null
     }
 
     const realUserId = profileDoc ? profileDoc._id.toString() : userId

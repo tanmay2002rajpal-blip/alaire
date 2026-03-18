@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { ObjectId } from "mongodb"
 import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
 
@@ -23,8 +24,8 @@ export async function POST(request: NextRequest) {
     const db = await getDb()
 
     const order = await db.collection("orders").findOne({
-      $expr: { $eq: [{ $toString: "$_id" }, orderId] },
-      user_id: session.user.id,
+      _id: new ObjectId(orderId),
+      user_id: new ObjectId(session.user.id),
     })
 
     if (!order) {
@@ -38,8 +39,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check return window (7 days)
-    const deliveryDate = new Date(order.created_at)
+    // Check return window (7 days from delivery)
+    const deliveredEntry = await db.collection("order_status_history").findOne(
+      { order_id: new ObjectId(orderId), status: "delivered" },
+      { sort: { created_at: -1 } }
+    )
+    const deliveryDate = deliveredEntry
+      ? new Date(deliveredEntry.created_at)
+      : new Date(order.updated_at)
     const returnWindowEnd = new Date(deliveryDate)
     returnWindowEnd.setDate(returnWindowEnd.getDate() + 7)
 
@@ -52,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Check for existing return request
     const existingRequest = await db.collection("return_requests").findOne({
-      order_id: orderId,
+      order_id: new ObjectId(orderId),
       status: "pending",
     })
 
@@ -65,31 +72,31 @@ export async function POST(request: NextRequest) {
 
     // Create return request
     const result = await db.collection("return_requests").insertOne({
-      order_id: orderId,
-      user_id: session.user.id,
+      order_id: new ObjectId(orderId),
+      user_id: new ObjectId(session.user.id),
       reason,
       details: details || null,
       status: "pending",
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
     })
 
     // Create notification
     await db.collection("notifications").insertOne({
-      user_id: session.user.id,
+      user_id: new ObjectId(session.user.id),
       title: "Return Request Submitted",
       message: `Your return request for order ${order.order_number} has been submitted. Our team will contact you within 24-48 hours.`,
       type: "order",
       link: `/account/orders/${orderId}`,
       read: false,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
     })
 
     // Add to order status history
     await db.collection("order_status_history").insertOne({
-      order_id: orderId,
+      order_id: new ObjectId(orderId),
       status: "return_requested",
       note: `Return requested: ${reason}. ${details || ""}`,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
     })
 
     return NextResponse.json({

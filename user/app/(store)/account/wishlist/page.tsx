@@ -58,7 +58,7 @@ export default function WishlistPage() {
 
   const handleRemove = async (itemId: string) => {
     try {
-      const res = await fetch(`/api/account/wishlist/${itemId}?userId=${user?.id}`, { method: "DELETE" })
+      const res = await fetch(`/api/account/wishlist/${itemId}`, { method: "DELETE" })
       if (res.ok) {
         setItems((prev) => prev.filter((i) => i.id !== itemId))
       }

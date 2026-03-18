@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
+import { ObjectId } from "mongodb"
+import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
 import { blueDartClient } from "@/lib/bluedart/client"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import { verifyPaymentSchema, validateRequest, type VerifyPaymentInput } from "@/lib/validations/api"
 
 interface OrderItemData {
@@ -16,6 +19,22 @@ interface OrderItemData {
 
 export async function POST(request: Request) {
   try {
+    // Rate limiting
+    const clientIp = getClientIp(request)
+    const rateLimitResult = checkRateLimit(`verify-payment:${clientIp}`, { maxRequests: 10, windowMs: 60000 })
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { message: "Too many requests. Please try again later." },
+        { status: 429 }
+      )
+    }
+
+    // Auth check
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
+    }
+
     let validatedBody: VerifyPaymentInput
     try {
       const rawBody = await request.json()
@@ -43,7 +62,13 @@ export async function POST(request: Request) {
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex")
 
-    if (generatedSignature !== razorpay_signature) {
+    const isValid = generatedSignature.length === razorpay_signature.length &&
+      crypto.timingSafeEqual(
+        Buffer.from(generatedSignature, "hex"),
+        Buffer.from(razorpay_signature, "hex")
+      )
+
+    if (!isValid) {
       return NextResponse.json(
         { message: "Invalid payment signature" },
         { status: 400 }
@@ -57,7 +82,7 @@ export async function POST(request: Request) {
     // ========================================================================
 
     const order = await db.collection("orders").findOne({
-      $expr: { $eq: [{ $toString: "$_id" }, orderId] },
+      _id: new ObjectId(orderId),
     })
 
     if (!order) {
@@ -69,7 +94,7 @@ export async function POST(request: Request) {
 
     const orderItems = await db
       .collection<OrderItemData>("order_items")
-      .find({ order_id: orderId })
+      .find({ order_id: new ObjectId(orderId) })
       .toArray()
 
     // ========================================================================
@@ -77,13 +102,13 @@ export async function POST(request: Request) {
     // ========================================================================
 
     await db.collection("orders").updateOne(
-      { $expr: { $eq: [{ $toString: "$_id" }, orderId] } },
+      { _id: new ObjectId(orderId) },
       {
         $set: {
           status: "paid",
           razorpay_payment_id,
-          paid_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          paid_at: new Date(),
+          updated_at: new Date(),
         },
       }
     )
@@ -101,16 +126,16 @@ export async function POST(request: Request) {
         await db
           .collection("wallets")
           .updateOne(
-            { _id: wallet._id },
+            { _id: wallet._id, balance: { $gte: order.wallet_amount_used } },
             { $inc: { balance: -order.wallet_amount_used } }
           )
 
         await db.collection("wallet_transactions").insertOne({
-          wallet_id: wallet._id.toString(),
+          wallet_id: wallet._id,
           type: "debit",
           amount: order.wallet_amount_used,
           description: `Used for order ${order.order_number || orderId}`,
-          created_at: new Date().toISOString(),
+          created_at: new Date(),
         })
       }
     }
@@ -120,12 +145,12 @@ export async function POST(request: Request) {
     // ========================================================================
 
     await db.collection("order_status_history").insertOne({
-      order_id: orderId,
+      order_id: new ObjectId(orderId),
       status: "paid",
       note: `Payment received via Razorpay (${razorpay_payment_id})${
         order.wallet_amount_used > 0 ? ` + \u20B9${order.wallet_amount_used} from wallet` : ""
       }`,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
     })
 
     // ========================================================================
@@ -174,11 +199,14 @@ export async function POST(request: Request) {
 
     if (orderItems.length > 0) {
       for (const item of orderItems) {
-        if (item.variant_id) {
-          await db.collection("product_variants").updateOne(
-            { $expr: { $eq: [{ $toString: "$_id" }, item.variant_id] } },
+        if (item.variant_id && ObjectId.isValid(item.variant_id)) {
+          const result = await db.collection("product_variants").updateOne(
+            { _id: new ObjectId(item.variant_id), stock_quantity: { $gte: item.quantity } },
             { $inc: { stock_quantity: -item.quantity } }
           )
+          if (result.modifiedCount === 0) {
+            console.error(`Stock insufficient for variant ${item.variant_id}`)
+          }
         }
       }
     }
@@ -239,7 +267,7 @@ export async function POST(request: Request) {
         const awbNo = waybillResult.GenerateWayBillResult?.AWBNo
         if (awbNo) {
           await db.collection("orders").updateOne(
-            { $expr: { $eq: [{ $toString: "$_id" }, orderId] } },
+            { _id: new ObjectId(orderId) },
             {
               $set: {
                 awb_number: awbNo,

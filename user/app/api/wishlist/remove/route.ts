@@ -15,6 +15,14 @@ export async function POST(request: Request) {
     }
 
     const { itemId } = await request.json()
+
+    if (!itemId || !ObjectId.isValid(itemId)) {
+      return NextResponse.json(
+        { message: "Invalid item ID" },
+        { status: 400 }
+      )
+    }
+
     const db = await getDb()
 
     await db.collection("wishlists").deleteOne({

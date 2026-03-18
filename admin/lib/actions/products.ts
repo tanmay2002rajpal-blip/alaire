@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb'
 import { getProductsCollection, getProductVariantsCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
+import { getSession } from '@/lib/auth/jwt'
 
 interface ActionResult {
   success: boolean
@@ -51,6 +52,9 @@ interface UpdateProductData extends Partial<CreateProductData> {
  */
 export async function createProductAction(data: CreateProductData): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const products = await getProductsCollection()
 
     if (!data.name || !data.slug) {
@@ -115,6 +119,9 @@ export async function updateProductAction(
   data: UpdateProductData
 ): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!id) {
       return { success: false, error: 'Product ID is required' }
     }
@@ -212,6 +219,9 @@ export async function updateProductAction(
  */
 export async function deleteProductAction(id: string): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!id) {
       return { success: false, error: 'Product ID is required' }
     }
@@ -244,6 +254,9 @@ export async function toggleProductStatusAction(
   id: string
 ): Promise<ToggleStatusResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!id) {
       return { success: false, error: 'Product ID is required' }
     }
@@ -284,6 +297,9 @@ export async function toggleProductStatusAction(
  */
 export async function bulkDeleteProductsAction(ids: string[]): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!ids || ids.length === 0) {
       return { success: false, error: 'No product IDs provided' }
     }
@@ -317,6 +333,9 @@ export async function bulkUpdateProductStatusAction(
   isActive: boolean
 ): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!ids || ids.length === 0) {
       return { success: false, error: 'No product IDs provided' }
     }

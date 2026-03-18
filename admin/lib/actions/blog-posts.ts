@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb'
 import { getBlogPostsCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from "next/cache"
+import { getSession } from '@/lib/auth/jwt'
 
 export interface BlogPostInput {
   title: string
@@ -19,6 +20,9 @@ export interface BlogPostInput {
  */
 export async function createBlogPost(data: BlogPostInput) {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const postsCol = await getBlogPostsCollection()
     const now = new Date()
     const postId = new ObjectId()
@@ -69,6 +73,9 @@ export async function createBlogPost(data: BlogPostInput) {
  */
 export async function updateBlogPost(id: string, data: Partial<BlogPostInput>) {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const postsCol = await getBlogPostsCollection()
     const oid = toObjectId(id)
 
@@ -123,6 +130,9 @@ export async function updateBlogPost(id: string, data: Partial<BlogPostInput>) {
  */
 export async function deleteBlogPost(id: string) {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const postsCol = await getBlogPostsCollection()
     await postsCol.deleteOne({ _id: toObjectId(id) })
 

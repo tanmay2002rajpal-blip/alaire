@@ -166,7 +166,7 @@ export async function getCouponStats(): Promise<CouponStats> {
   for (const coupon of couponsData) {
     totalUsage += coupon.usage_count || 0
     if (coupon.type === 'percentage') {
-      totalSavings += (coupon.usage_count || 0) * (coupon.value * 10)
+      totalSavings += (coupon.usage_count || 0) * coupon.value
     } else {
       totalSavings += (coupon.usage_count || 0) * coupon.value
     }

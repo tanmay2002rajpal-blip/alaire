@@ -36,7 +36,7 @@ export async function syncCartToDb(
         items,
         total_items: totalItems,
         subtotal,
-        updated_at: new Date().toISOString()
+        updated_at: new Date()
       }
     },
     { upsert: true }

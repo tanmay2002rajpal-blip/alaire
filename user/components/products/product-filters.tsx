@@ -231,7 +231,7 @@ export function ProductFilters({ categories }: ProductFiltersProps) {
               <SheetTitle>Filters</SheetTitle>
             </SheetHeader>
             <Separator className="my-4" />
-            {filtersContent}
+            <div className="px-4 overflow-y-auto">{filtersContent}</div>
           </SheetContent>
         </Sheet>
 

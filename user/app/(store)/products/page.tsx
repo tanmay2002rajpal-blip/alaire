@@ -15,6 +15,7 @@ interface ProductsPageProps {
     price_min?: string
     price_max?: string
     sort?: string
+    filter?: string
   }>
 }
 
@@ -44,6 +45,7 @@ async function ProductsContent({
     priceMin: params.price_min ? parseInt(params.price_min) : undefined,
     priceMax: params.price_max ? parseInt(params.price_max) : undefined,
     sort: params.sort as "newest" | "price_asc" | "price_desc" | "name_asc" | undefined,
+    filter: params.filter as "sale" | undefined,
   })
 
   return <ProductGrid products={products} />
@@ -56,14 +58,14 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     <div className="container py-8">
       {/* Page Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">All Products</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">All Products</h1>
         <p className="mt-2 text-muted-foreground">
           Explore our curated collection of premium products
         </p>
       </div>
 
       {/* Main Content */}
-      <div className="flex gap-8">
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
         <ProductFilters categories={categories} />
 
         <div className="flex-1">

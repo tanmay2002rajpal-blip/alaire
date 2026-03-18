@@ -1,20 +1,20 @@
-import { NextRequest, NextResponse } from "next/server"
 import NextAuth from "next-auth"
 import authConfig from "@/lib/auth.config"
+import { NextResponse } from "next/server"
 
 const { auth } = NextAuth(authConfig)
 
-export default async function middleware(request: NextRequest) {
-  const session = await auth()
+export default auth((req) => {
+  const { pathname } = req.nextUrl
+  const isAuthRoute = pathname.startsWith("/account") || pathname.startsWith("/checkout")
 
-  // Protected routes are now handled by client-side useAuth() in account/layout.tsx
-  // to support localStorage fallback for authentication.
+  if (isAuthRoute && !req.auth) {
+    return NextResponse.redirect(new URL("/", req.url))
+  }
 
   return NextResponse.next()
-}
+})
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/account/:path*", "/checkout/:path*"],
 }

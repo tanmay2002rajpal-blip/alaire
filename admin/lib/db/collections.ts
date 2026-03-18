@@ -74,7 +74,7 @@ export async function getUsersCollection(): Promise<Collection<UserDoc>> {
 
 export async function getAddressesCollection(): Promise<Collection<AddressDoc>> {
   const db = await getDb()
-  return db.collection<AddressDoc>('addresses')
+  return db.collection<AddressDoc>('user_addresses')
 }
 
 export async function getCouponsCollection(): Promise<Collection<CouponDoc>> {

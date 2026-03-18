@@ -54,7 +54,7 @@ export async function submitReview(input: SubmitReviewInput): Promise<SubmitRevi
     content: input.content.trim(),
     is_verified_purchase: true,
     is_approved: true,
-    created_at: new Date().toISOString(),
+    created_at: new Date(),
   })
 
   revalidatePath(`/products/[slug]`, "page")

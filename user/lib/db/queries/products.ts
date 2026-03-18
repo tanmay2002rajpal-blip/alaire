@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb"
 import { getDb } from "../client"
 import { serializeDoc, serializeDocs } from "../helpers"
 import type { Product, Category, ProductVariant } from "@/types"
@@ -20,6 +21,7 @@ export interface GetProductsOptions {
   sort?: ProductSortOption
   limit?: number
   offset?: number
+  filter?: "sale"
 }
 
 // ============================================================================
@@ -37,6 +39,7 @@ export async function getProducts(
     sort = "newest",
     limit = 24,
     offset = 0,
+    filter,
   } = options
 
   // Build match filter
@@ -45,7 +48,8 @@ export async function getProducts(
   if (category) {
     const cat = await db.collection("categories").findOne({ slug: category })
     if (cat) {
-      match.category_id = cat._id.toString()
+      // Match both ObjectId and string forms since products may store either
+      match.category_id = { $in: [cat._id, cat._id.toString()] }
     }
   }
 
@@ -74,22 +78,16 @@ export async function getProducts(
     {
       $lookup: {
         from: "product_variants",
-        let: { pid: { $toString: "$_id" } },
-        pipeline: [{ $match: { $expr: { $eq: ["$product_id", "$$pid"] } } }],
+        localField: "_id",
+        foreignField: "product_id",
         as: "variants",
       },
     },
     {
       $lookup: {
         from: "categories",
-        let: { catId: "$category_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: { $eq: [{ $toString: "$_id" }, "$$catId"] },
-            },
-          },
-        ],
+        localField: "category_id",
+        foreignField: "_id",
         as: "categoryArr",
       },
     },
@@ -122,6 +120,15 @@ export async function getProducts(
     })
   }
 
+  // Sale filter: keep only products where any variant has a compare_at_price > price
+  if (filter === "sale") {
+    products = products.filter((product) =>
+      product.variants?.some(
+        (v) => v.compare_at_price != null && v.compare_at_price > (v.price ?? 0)
+      )
+    )
+  }
+
   return products
 }
 
@@ -135,38 +142,32 @@ export async function getProductBySlug(
     {
       $lookup: {
         from: "product_variants",
-        let: { pid: { $toString: "$_id" } },
-        pipeline: [{ $match: { $expr: { $eq: ["$product_id", "$$pid"] } } }],
+        localField: "_id",
+        foreignField: "product_id",
         as: "variants",
       },
     },
     {
       $lookup: {
         from: "product_options",
-        let: { pid: { $toString: "$_id" } },
-        pipeline: [{ $match: { $expr: { $eq: ["$product_id", "$$pid"] } } }],
+        localField: "_id",
+        foreignField: "product_id",
         as: "options",
       },
     },
     {
       $lookup: {
         from: "product_details",
-        let: { pid: { $toString: "$_id" } },
-        pipeline: [{ $match: { $expr: { $eq: ["$product_id", "$$pid"] } } }],
+        localField: "_id",
+        foreignField: "product_id",
         as: "details",
       },
     },
     {
       $lookup: {
         from: "categories",
-        let: { catId: "$category_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: { $eq: [{ $toString: "$_id" }, "$$catId"] },
-            },
-          },
-        ],
+        localField: "category_id",
+        foreignField: "_id",
         as: "categoryArr",
       },
     },
@@ -216,32 +217,28 @@ export async function getRelatedProducts(
   if (relatedDocs.length > 0) {
     const ids = relatedDocs.map((r) => r.related_product_id)
 
+    const objectIds = ids.filter((id: string) => ObjectId.isValid(id)).map((id: string) => new ObjectId(id))
+
     const pipeline = [
       {
         $match: {
           is_active: true,
-          $expr: { $in: [{ $toString: "$_id" }, ids] },
+          _id: { $in: objectIds },
         },
       },
       {
         $lookup: {
           from: "product_variants",
-          let: { pid: { $toString: "$_id" } },
-          pipeline: [{ $match: { $expr: { $eq: ["$product_id", "$$pid"] } } }],
+          localField: "_id",
+          foreignField: "product_id",
           as: "variants",
         },
       },
       {
         $lookup: {
           from: "categories",
-          let: { catId: "$category_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: [{ $toString: "$_id" }, "$$catId"] },
-              },
-            },
-          ],
+          localField: "category_id",
+          foreignField: "_id",
           as: "categoryArr",
         },
       },
@@ -273,29 +270,23 @@ export async function getRelatedProducts(
         $match: {
           category_id: categoryId,
           is_active: true,
-          $expr: { $ne: [{ $toString: "$_id" }, productId] },
+          _id: { $ne: new ObjectId(productId) },
         },
       },
       { $limit: limit },
       {
         $lookup: {
           from: "product_variants",
-          let: { pid: { $toString: "$_id" } },
-          pipeline: [{ $match: { $expr: { $eq: ["$product_id", "$$pid"] } } }],
+          localField: "_id",
+          foreignField: "product_id",
           as: "variants",
         },
       },
       {
         $lookup: {
           from: "categories",
-          let: { catId: "$category_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: [{ $toString: "$_id" }, "$$catId"] },
-              },
-            },
-          ],
+          localField: "category_id",
+          foreignField: "_id",
           as: "categoryArr",
         },
       },
@@ -337,12 +328,12 @@ export async function getRecentlyViewed(
 
   if (docs.length === 0) return []
 
-  const productIds = docs.map((d) => d.product_id)
+  const productIds = docs.map((d) => d.product_id).filter((id: string) => ObjectId.isValid(id)).map((id: string) => new ObjectId(id))
 
   const products = await db
     .collection("products")
     .find({
-      $expr: { $in: [{ $toString: "$_id" }, productIds] },
+      _id: { $in: productIds },
       is_active: true,
     })
     .toArray()

@@ -15,6 +15,14 @@ export async function POST(request: Request) {
     }
 
     const { notificationId } = await request.json()
+
+    if (!notificationId || !ObjectId.isValid(notificationId)) {
+      return NextResponse.json(
+        { message: "Invalid notification ID" },
+        { status: 400 }
+      )
+    }
+
     const db = await getDb()
 
     await db.collection("notifications").updateOne(

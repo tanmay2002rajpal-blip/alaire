@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb'
 import { getCategoriesCollection, getProductsCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache';
+import { getSession } from '@/lib/auth/jwt'
 
 /**
  * Generates a URL-friendly slug from a category name
@@ -20,6 +21,9 @@ function generateSlug(name: string): string {
  */
 export async function createCategoryAction(formData: FormData) {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const categories = await getCategoriesCollection()
 
     const name = formData.get('name') as string;
@@ -70,6 +74,9 @@ export async function createCategoryAction(formData: FormData) {
  */
 export async function updateCategoryAction(id: string, formData: FormData) {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const categories = await getCategoriesCollection()
     const oid = toObjectId(id)
 
@@ -157,6 +164,9 @@ export async function updateCategoryAction(id: string, formData: FormData) {
  */
 export async function deleteCategoryAction(id: string) {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const categories = await getCategoriesCollection()
     const products = await getProductsCollection()
     const oid = toObjectId(id)
@@ -190,6 +200,9 @@ export async function deleteCategoryAction(id: string) {
  */
 export async function reorderCategoriesAction(orderedIds: string[]) {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const categories = await getCategoriesCollection()
 
     const updates = orderedIds.map((id, index) =>

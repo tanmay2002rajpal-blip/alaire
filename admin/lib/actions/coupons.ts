@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb'
 import { getCouponsCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
+import { getSession } from '@/lib/auth/jwt'
 import type { CreateCouponData, UpdateCouponData } from '@/lib/queries/coupons'
 
 interface ActionResult {
@@ -17,6 +18,9 @@ interface ActionResult {
  */
 export async function createCouponAction(data: CreateCouponData): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const couponsCol = await getCouponsCollection()
 
     if (!data.code || data.code.length < 3) {
@@ -77,6 +81,9 @@ export async function updateCouponAction(
   data: UpdateCouponData
 ): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!id) {
       return { success: false, error: 'Coupon ID is required' }
     }
@@ -138,6 +145,9 @@ export async function updateCouponAction(
  */
 export async function deleteCouponAction(id: string): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!id) {
       return { success: false, error: 'Coupon ID is required' }
     }
@@ -161,6 +171,9 @@ export async function deleteCouponAction(id: string): Promise<ActionResult> {
  */
 export async function toggleCouponStatusAction(id: string): Promise<ActionResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     if (!id) {
       return { success: false, error: 'Coupon ID is required' }
     }
@@ -199,20 +212,23 @@ export async function generateCouponCodeAction(): Promise<{
   code?: string
   error?: string
 }> {
+  const session = await getSession()
+  if (!session) return { success: false, error: 'Unauthorized' }
+
   const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-
-  for (let i = 0; i < 8; i++) {
-    code += characters.charAt(Math.floor(Math.random() * characters.length))
-  }
-
-  // Check if code exists
   const couponsCol = await getCouponsCollection()
-  const existing = await couponsCol.findOne({ code })
 
-  if (existing) {
-    return generateCouponCodeAction()
+  for (let attempt = 0; attempt < 10; attempt++) {
+    let code = ''
+    for (let i = 0; i < 8; i++) {
+      code += characters.charAt(Math.floor(Math.random() * characters.length))
+    }
+
+    const existing = await couponsCol.findOne({ code })
+    if (!existing) {
+      return { success: true, code }
+    }
   }
 
-  return { success: true, code }
+  return { success: false, error: 'Could not generate unique code after 10 attempts' }
 }

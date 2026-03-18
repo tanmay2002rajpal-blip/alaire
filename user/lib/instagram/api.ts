@@ -7,7 +7,7 @@ export async function getInstagramFeed(limit: number = 8): Promise<InstagramMedi
   const userId = process.env.INSTAGRAM_USER_ID
 
   if (!accessToken || !userId) {
-    console.warn("Instagram credentials not configured")
+    // Instagram credentials not configured — using placeholder images
     return []
   }
 

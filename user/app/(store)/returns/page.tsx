@@ -32,7 +32,7 @@ export default function ReturnsPage() {
 
         <h2>3. How to Initiate a Return</h2>
         <p>
-          To initiate a return, please contact our customer service team at returns@alaire.com with your order number and reason for return.
+          To initiate a return, please contact our customer service team at returns@alaire.in with your order number and reason for return.
           We will provide you with a return authorization number and detailed instructions for shipping your item back to us. Please do not
           send items back without first obtaining authorization, as unauthorized returns may not be processed or refunded.
         </p>
@@ -68,14 +68,14 @@ export default function ReturnsPage() {
 
         <h2>8. Damaged or Defective Items</h2>
         <p>
-          If you receive a damaged or defective item, please contact us at returns@alaire.com within 48 hours of delivery with photographs
+          If you receive a damaged or defective item, please contact us at returns@alaire.in within 48 hours of delivery with photographs
           of the damage or defect. We will arrange for a replacement or full refund, including return shipping costs. Our quality team
           investigates all reports of damaged or defective products to maintain our standards of excellence.
         </p>
 
         <h2>9. Contact</h2>
         <p>
-          For any questions or concerns about our return policy, please contact our customer service team at returns@alaire.com. Our team
+          For any questions or concerns about our return policy, please contact our customer service team at returns@alaire.in. Our team
           is available to assist you with return authorizations, shipping instructions, and refund status inquiries. We are committed to
           making the return process as smooth and hassle-free as possible for our valued customers.
         </p>

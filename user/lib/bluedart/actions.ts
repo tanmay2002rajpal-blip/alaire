@@ -342,7 +342,7 @@ export async function createShipment(orderData: {
       awbNumber: waybillResult.AWBNo,
       destinationArea: waybillResult.DestinationArea,
       destinationLocation: waybillResult.DestinationLocation,
-      pickupToken: pickupResult?.TokenNumber || null,
+      pickupToken: pickupResult?.TokenNumber || undefined,
     }
     await saveDiagnostic(diagnostic)
 
@@ -351,7 +351,7 @@ export async function createShipment(orderData: {
       awbNumber: waybillResult.AWBNo,
       destinationArea: waybillResult.DestinationArea,
       destinationLocation: waybillResult.DestinationLocation,
-      pickupToken: pickupResult?.TokenNumber || null,
+      pickupToken: pickupResult?.TokenNumber || undefined,
     }
   } catch (error) {
     console.error('Blue Dart shipment creation error:', error)

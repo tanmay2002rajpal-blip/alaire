@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
+import { randomInt, createHash } from "crypto"
 import { getDb } from "@/lib/db/client"
 import { Resend } from "resend"
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -15,19 +17,31 @@ export async function POST(req: Request) {
       )
     }
 
-    // Generate 6 digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString()
+    // Rate limiting
+    const clientIp = getClientIp(req)
+    const emailLimit = checkRateLimit(`otp-email:${email}`, { maxRequests: 3, windowMs: 600000 })
+    const ipLimit = checkRateLimit(`otp-ip:${clientIp}`, { maxRequests: 10, windowMs: 3600000 })
+    if (!emailLimit.allowed || !ipLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many OTP requests. Please try again later." },
+        { status: 429 }
+      )
+    }
+
+    // Generate 6 digit OTP using crypto
+    const otp = randomInt(100000, 999999).toString()
+    const hashedOtp = createHash("sha256").update(otp).digest("hex")
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
 
     const db = await getDb()
 
-    // Save/Update OTP in database
+    // Save/Update hashed OTP in database
     await db.collection("otps").updateOne(
       { email },
       {
         $set: {
           email,
-          otp,
+          otp: hashedOtp,
           expires_at: expiresAt,
           updated_at: new Date(),
         },
@@ -38,7 +52,7 @@ export async function POST(req: Request) {
     // Send email using Resend
     if (process.env.RESEND_API_KEY) {
       await resend.emails.send({
-        from: "Alaire <noreply@omrajpal.tech>", 
+        from: "Alaire <noreply@omrajpal.tech>",
         to: email,
         subject: "Your login code for Alaire",
         html: `
@@ -51,8 +65,6 @@ export async function POST(req: Request) {
           </div>
         `,
       })
-    } else {
-      console.log("No RESEND_API_KEY. OTP is:", otp)
     }
 
     return NextResponse.json({ success: true })

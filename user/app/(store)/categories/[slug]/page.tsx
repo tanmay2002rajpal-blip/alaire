@@ -63,23 +63,30 @@ export default async function CategoryPage({
 
       {/* Products Section */}
       <div className="container py-10 lg:py-14">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-muted-foreground">
-            {products.length} {products.length === 1 ? "product" : "products"}
-          </p>
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+          {/* Filters Sidebar */}
           <ProductFilters categories={categories} />
-        </div>
 
-        {products.length > 0 ? (
-          <ProductGrid products={products} columns={4} />
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-lg font-medium">No products found</p>
-            <p className="mt-2 text-muted-foreground">
-              Try adjusting your filters or check back soon
-            </p>
+          {/* Products */}
+          <div className="flex-1 min-w-0">
+            <div className="mb-6">
+              <p className="text-muted-foreground">
+                {products.length} {products.length === 1 ? "product" : "products"}
+              </p>
+            </div>
+
+            {products.length > 0 ? (
+              <ProductGrid products={products} columns={3} />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <p className="text-lg font-medium">No products found</p>
+                <p className="mt-2 text-muted-foreground">
+                  Try adjusting your filters or check back soon
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

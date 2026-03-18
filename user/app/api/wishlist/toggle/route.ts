@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { ObjectId } from "mongodb"
 import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
 
@@ -6,8 +7,15 @@ export async function POST(request: Request) {
   try {
     const session = await auth()
 
-    const { productId, userId: rawUserId } = await request.json()
-    const userId = session?.user?.id || rawUserId
+    const { productId } = await request.json()
+    const userId = session?.user?.id
+
+    if (!productId || typeof productId !== "string" || !ObjectId.isValid(productId)) {
+      return NextResponse.json(
+        { message: "Invalid product ID" },
+        { status: 400 }
+      )
+    }
 
     if (!userId) {
       return NextResponse.json(
@@ -36,7 +44,7 @@ export async function POST(request: Request) {
       await db.collection("wishlists").insertOne({
         user_id: targetUserId,
         product_id: productId,
-        created_at: new Date().toISOString(),
+        created_at: new Date(),
       })
       return NextResponse.json({ added: true })
     }

@@ -3,7 +3,8 @@ import {
   getRecentDiagnostics,
   getDiagnosticsByOrderId,
   getDiagnosticsSummary,
-} from '@/../../user/lib/bluedart/diagnostics'
+} from '@/lib/bluedart/diagnostics'
+import { getSession } from '@/lib/auth/jwt'
 
 /**
  * Blue Dart Diagnostics API for Admin
@@ -17,6 +18,11 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
     const searchParams = request.nextUrl.searchParams
     const orderId = searchParams.get('orderId')
     const limit = parseInt(searchParams.get('limit') || '20', 10)

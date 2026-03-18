@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Printer, RefreshCcw, XCircle, Package } from 'lucide-react';
+import { ArrowLeft, Printer, Package } from 'lucide-react';
 
 import { getOrderById } from '@/lib/queries/orders';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
 import { OrderTimeline } from '@/components/orders/order-timeline';
 import { OrderStatusUpdate } from '@/components/orders/order-status-update';
 import OrderDetailClient from './order-detail-client';
+import { OrderActionButtons } from './order-action-buttons';
 
 interface OrderDetailPageProps {
   params: Promise<{
@@ -341,28 +342,11 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   </Button>
                 )}
 
-                <Button className="w-full" variant="outline">
-                  <Printer className="h-4 w-4 mr-2" />
-                  Print Invoice
-                </Button>
-
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  disabled={order.status === 'refunded'}
-                >
-                  <RefreshCcw className="h-4 w-4 mr-2" />
-                  Refund Order
-                </Button>
-
-                <Button
-                  className="w-full"
-                  variant="destructive"
-                  disabled={['cancelled', 'delivered', 'refunded'].includes(order.status)}
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Cancel Order
-                </Button>
+                <OrderActionButtons
+                  orderId={order.id}
+                  orderNumber={order.order_number}
+                  orderStatus={order.status}
+                />
               </CardContent>
             </Card>
           </div>

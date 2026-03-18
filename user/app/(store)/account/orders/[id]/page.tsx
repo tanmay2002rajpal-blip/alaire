@@ -38,7 +38,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
       }
 
       try {
-        const res = await fetch(`/api/account/orders/${id}?userId=${user.id}`)
+        const res = await fetch(`/api/account/orders/${id}`)
         if (res.ok) {
           const data = await res.json()
           setOrder(data.order)
@@ -104,8 +104,8 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl font-semibold">
-              Order #{order.id.slice(0, 8).toUpperCase()}
+            <h1 className="text-lg sm:text-xl font-semibold break-all sm:break-normal">
+              Order #{order.order_number || order.id.slice(0, 8).toUpperCase()}
             </h1>
             <p className="text-sm text-muted-foreground">
               Placed on {formatDate(order.created_at)}
@@ -124,6 +124,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
           <OrderTimeline
             currentStatus={order.status}
             statusHistory={order.status_history}
+            paymentMethod={order.payment_method}
           />
         </CardContent>
       </Card>
@@ -173,7 +174,7 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Shipping</span>
                 <span>
-                  {order.shipping_cost === 0
+                  {(order.shipping_cost ?? 0) === 0
                     ? "Free"
                     : formatPrice(order.shipping_cost)}
                 </span>

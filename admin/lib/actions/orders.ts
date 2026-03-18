@@ -4,6 +4,7 @@ import { ObjectId } from 'mongodb'
 import { getOrdersCollection, getOrderStatusHistoryCollection, getUsersCollection, getActivityLogCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
+import { getSession } from '@/lib/auth/jwt'
 
 interface UpdateStatusResult {
   success: boolean
@@ -27,6 +28,9 @@ export async function updateOrderStatusAction(
   shippingDetails?: ShippingDetails
 ): Promise<UpdateStatusResult> {
   try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
     const ordersCol = await getOrdersCollection()
     const historyCol = await getOrderStatusHistoryCollection()
     const oid = toObjectId(orderId)
@@ -137,7 +141,7 @@ async function sendStatusNotification(
       return
     }
 
-    const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3001'
+    const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3000'
 
     await fetch(`${userAppUrl}/api/notifications/order-status`, {
       method: 'POST',

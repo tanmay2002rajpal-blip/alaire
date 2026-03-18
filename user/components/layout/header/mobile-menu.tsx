@@ -7,6 +7,7 @@
 
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Menu } from "lucide-react"
 import {
@@ -67,6 +68,19 @@ export function MobileMenu({
     onOpenChange(false)
   }
 
+  // Avoid hydration mismatch from Radix generating different IDs on server vs client
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  if (!mounted) {
+    return (
+      <Button variant="ghost" size="icon" className="nav-item lg:hidden">
+        <Menu className="h-5 w-5" />
+        <span className="sr-only">Open menu</span>
+      </Button>
+    )
+  }
+
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       {/* Hamburger Button - visible only on mobile */}
@@ -85,7 +99,7 @@ export function MobileMenu({
           </SheetTitle>
         </SheetHeader>
 
-        <nav className="mt-8 flex flex-col gap-6" aria-label="Mobile navigation">
+        <nav className="mt-8 flex flex-col gap-6 px-4" aria-label="Mobile navigation">
           {/* Main Navigation Links */}
           {links.map((link, index) => (
             <Link

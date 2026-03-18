@@ -100,7 +100,7 @@ export function HeroSection({ stats }: HeroSectionProps) {
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12">
           <div className="hero-stat group text-center">
             <p className="stat-number font-serif text-4xl font-light tracking-tight md:text-5xl lg:text-6xl" data-value={`${productCount}+`}>
-              0+
+              {productCount}+
             </p>
             <p className="mt-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Premium Products
@@ -110,7 +110,7 @@ export function HeroSection({ stats }: HeroSectionProps) {
 
           <div className="hero-stat group text-center">
             <p className="stat-number font-serif text-4xl font-light tracking-tight md:text-5xl lg:text-6xl" data-value={`${customerCount}+`}>
-              0+
+              {customerCount}+
             </p>
             <p className="mt-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Happy Customers
@@ -120,7 +120,7 @@ export function HeroSection({ stats }: HeroSectionProps) {
 
           <div className="hero-stat group text-center">
             <p className="stat-number font-serif text-4xl font-light tracking-tight md:text-5xl lg:text-6xl" data-value={`${categoryCount}+`}>
-              0+
+              {categoryCount}+
             </p>
             <p className="mt-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Categories
@@ -130,7 +130,7 @@ export function HeroSection({ stats }: HeroSectionProps) {
 
           <div className="hero-stat group text-center">
             <p className="stat-number font-serif text-4xl font-light tracking-tight md:text-5xl lg:text-6xl" data-value={averageRating.toFixed(1)}>
-              0
+              {averageRating.toFixed(1)}
             </p>
             <p className="mt-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
               Average Rating

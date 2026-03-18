@@ -9,6 +9,10 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY)
 }
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 interface OrderStatusEmailData {
   orderNumber: string
   customerName: string
@@ -33,7 +37,9 @@ function formatPrice(amount: number): string {
  * Sends order processing notification email.
  */
 export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber, customerName, customerEmail } = data
+  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail } = data
+  const customerName = escapeHtml(rawCustomerName)
+  const orderNumber = escapeHtml(rawOrderNumber)
 
   const html = `
     <!DOCTYPE html>
@@ -83,7 +89,7 @@ export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Prom
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <orders@omrajpal.tech>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} is Processing ⚙️`,
       html,
@@ -99,7 +105,9 @@ export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Prom
  * Sends order cancelled notification email.
  */
 export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber, customerName, customerEmail } = data
+  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail } = data
+  const customerName = escapeHtml(rawCustomerName)
+  const orderNumber = escapeHtml(rawOrderNumber)
 
   const html = `
     <!DOCTYPE html>
@@ -155,7 +163,7 @@ export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promi
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <orders@omrajpal.tech>",
       to: customerEmail,
       subject: `Order Cancelled - ${orderNumber}`,
       html,
@@ -171,7 +179,9 @@ export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promi
  * Sends order shipped notification email.
  */
 export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber, customerName, customerEmail, trackingNumber, courierName, estimatedDelivery } = data
+  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail, trackingNumber, courierName, estimatedDelivery } = data
+  const customerName = escapeHtml(rawCustomerName)
+  const orderNumber = escapeHtml(rawOrderNumber)
 
   const html = `
     <!DOCTYPE html>
@@ -209,16 +219,16 @@ export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise
           <table style="width: 100%;">
             <tr>
               <td style="padding: 5px 0; color: #666;">Courier Partner:</td>
-              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${courierName || "Standard Delivery"}</td>
+              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${escapeHtml(courierName || "Standard Delivery")}</td>
             </tr>
             <tr>
               <td style="padding: 5px 0; color: #666;">Tracking Number:</td>
-              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${trackingNumber}</td>
+              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${escapeHtml(trackingNumber)}</td>
             </tr>
             ${estimatedDelivery ? `
             <tr>
               <td style="padding: 5px 0; color: #666;">Estimated Delivery:</td>
-              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${estimatedDelivery}</td>
+              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${escapeHtml(estimatedDelivery)}</td>
             </tr>
             ` : ""}
           </table>
@@ -258,7 +268,7 @@ export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <orders@omrajpal.tech>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} Has Shipped! 📦`,
       html,
@@ -274,7 +284,9 @@ export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise
  * Sends order delivered notification email.
  */
 export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber, customerName, customerEmail } = data
+  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail } = data
+  const customerName = escapeHtml(rawCustomerName)
+  const orderNumber = escapeHtml(rawOrderNumber)
 
   const html = `
     <!DOCTYPE html>
@@ -349,7 +361,7 @@ export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promi
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <orders@omrajpal.tech>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} Has Been Delivered! ✓`,
       html,
@@ -365,7 +377,9 @@ export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promi
  * Sends order refund notification email.
  */
 export async function sendOrderRefundEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber, customerName, customerEmail, refundAmount } = data
+  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail, refundAmount } = data
+  const customerName = escapeHtml(rawCustomerName)
+  const orderNumber = escapeHtml(rawOrderNumber)
 
   const html = `
     <!DOCTYPE html>
@@ -433,7 +447,7 @@ export async function sendOrderRefundEmail(data: OrderStatusEmailData): Promise<
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <orders@omrajpal.tech>",
       to: customerEmail,
       subject: `Refund Processed for Order ${orderNumber}`,
       html,

@@ -93,7 +93,7 @@ export async function addAddress(input: AddressInput): Promise<{ success: boolea
     state: input.state,
     pincode: input.pincode,
     is_default: input.is_default || isFirst,
-    created_at: new Date().toISOString(),
+    created_at: new Date(),
   })
 
   revalidatePath("/account/addresses")
@@ -143,7 +143,7 @@ export async function updateAddress(id: string, input: AddressInput): Promise<{ 
         state: input.state,
         pincode: input.pincode,
         is_default: input.is_default || false,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date(),
       },
     }
   )

@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import {
   HeroCarousel,
   HeroSection,
@@ -7,6 +8,11 @@ import {
   InstagramFeed,
 } from "@/components/home"
 import { getFeaturedProducts, getCategories, getHeroSlides, getHomepageStats } from "@/lib/db/queries"
+
+export const metadata: Metadata = {
+  title: 'Alaire — Premium Fashion & Lifestyle',
+  description: 'Shop the latest trends in premium fashion, clothing, and accessories at Alaire. Free shipping on orders above ₹999.',
+}
 
 export default async function HomePage() {
   const [products, categories, heroSlides, stats] = await Promise.all([

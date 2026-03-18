@@ -155,8 +155,9 @@ export async function logout(): Promise<void> {
     const sessions = await getAdminSessionsCollection()
     const activityLog = await getActivityLogCollection()
 
-    // Delete session from database
-    await sessions.deleteOne({ _id: new ObjectId(session.session_id) })
+    // Delete session from database using token_hash (session_id is a UUID, not ObjectId)
+    const tokenHash = crypto.createHash('sha256').update(session.session_id).digest('hex')
+    await sessions.deleteOne({ token_hash: tokenHash })
 
     // Log logout
     await activityLog.insertOne({

@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       discountCode,
       paymentMethod = "prepaid",
       userId: bodyUserId,
+      walletAmountUsed,
     } = validatedBody
 
     const userId = sessionUserId ?? bodyUserId ?? null
@@ -84,23 +85,35 @@ export async function POST(request: Request) {
     // Stock Availability Check
     // ========================================================================
 
+    // Batch stock check — fetch all variant IDs in one query
+    const variantIds = items.filter(i => i.variantId && ObjectId.isValid(i.variantId)).map(i => new ObjectId(i.variantId!))
+    const productIdsWithoutVariant = items.filter(i => !i.variantId && i.productId).map(i => new ObjectId(i.productId))
+
+    const [variantDocs, productVariantDocs] = await Promise.all([
+      variantIds.length > 0
+        ? db.collection("product_variants").find({ _id: { $in: variantIds } }).toArray()
+        : Promise.resolve([]),
+      productIdsWithoutVariant.length > 0
+        ? db.collection("product_variants").find({ product_id: { $in: productIdsWithoutVariant } }).toArray()
+        : Promise.resolve([]),
+    ])
+
+    const variantMap = new Map(variantDocs.map(v => [v._id.toString(), v]))
+    const productVariantMap = new Map<string, number>()
+    for (const v of productVariantDocs) {
+      const pid = v.product_id.toString()
+      productVariantMap.set(pid, (productVariantMap.get(pid) ?? 0) + (v.stock_quantity ?? 0))
+    }
+
     const outOfStockItems: string[] = []
     for (const item of items) {
       let stockQuantity = 0
 
       if (item.variantId) {
-        const variant = await db
-          .collection("product_variants")
-          .findOne({ $expr: { $eq: [{ $toString: "$_id" }, item.variantId] } })
+        const variant = variantMap.get(item.variantId)
         stockQuantity = variant?.stock_quantity ?? 0
-      } else {
-        const variants = await db
-          .collection("product_variants")
-          .find({ product_id: new ObjectId(item.productId) })
-          .toArray()
-        if (variants.length > 0) {
-          stockQuantity = variants.reduce((sum, v) => sum + (v.stock_quantity ?? 0), 0)
-        }
+      } else if (item.productId) {
+        stockQuantity = productVariantMap.get(item.productId) ?? 0
       }
 
       if (stockQuantity < item.quantity) {
@@ -118,6 +131,25 @@ export async function POST(request: Request) {
     }
 
     // ========================================================================
+    // Server-side Price Verification
+    // ========================================================================
+
+    for (const item of items) {
+      if (item.variantId) {
+        const variant = variantMap.get(item.variantId)
+        if (variant && variant.price !== item.price) {
+          return NextResponse.json(
+            { message: `Price changed for ${item.name}. Please refresh your cart.` },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
+    // Recalculate subtotal server-side
+    const calculatedSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+    // ========================================================================
     // Discount Calculation
     // ========================================================================
 
@@ -125,28 +157,60 @@ export async function POST(request: Request) {
     let discountCodeId: string | null = null
 
     if (discountCode) {
-      const code = await db
-        .collection("coupons")
-        .findOne({ code: discountCode.toUpperCase(), is_active: true })
+      const now = new Date()
 
+      // Atomically validate coupon and increment usage in one operation
+      // This prevents race conditions where two concurrent orders could both pass the usage limit check
+      const couponResult = await db.collection("coupons").findOneAndUpdate(
+        {
+          code: discountCode.toUpperCase(),
+          is_active: true,
+          $or: [
+            { valid_from: { $exists: false } },
+            { valid_from: null },
+            { valid_from: { $lte: now } },
+          ],
+          $and: [
+            {
+              $or: [
+                { valid_until: { $exists: false } },
+                { valid_until: null },
+                { valid_until: { $gte: now } },
+              ],
+            },
+          ],
+          $expr: {
+            $or: [
+              // No usage limit set
+              {
+                $and: [
+                  { $eq: [{ $ifNull: ["$usage_limit", null] }, null] },
+                  { $eq: [{ $ifNull: ["$max_uses", null] }, null] },
+                ],
+              },
+              // usage_count < usage_limit or max_uses
+              {
+                $lt: [
+                  { $ifNull: ["$usage_count", { $ifNull: ["$current_uses", 0] }] },
+                  { $ifNull: ["$usage_limit", { $ifNull: ["$max_uses", Infinity] }] },
+                ],
+              },
+            ],
+          },
+        },
+        { $inc: { usage_count: 1 } },
+        { returnDocument: "before" }
+      )
+
+      const code = couponResult
       if (code) {
-        const now = new Date()
-        const validFrom = code.valid_from ? new Date(code.valid_from) : null
-        const validUntil = code.valid_until ? new Date(code.valid_until) : null
         const minOrder = code.min_order_amount ?? 0
-        const usageLimit = code.usage_limit ?? code.max_uses ?? null
-        const usageCount = code.usage_count ?? code.current_uses ?? 0
 
-        if (
-          (!validFrom || now >= validFrom) &&
-          (!validUntil || now <= validUntil) &&
-          subtotal >= minOrder &&
-          (usageLimit === null || usageCount < usageLimit)
-        ) {
+        if (calculatedSubtotal >= minOrder) {
           const discountValue = Number(code.value) || Number(code.discount_value) || 0
           const discountType = code.type || code.discount_type
           if (discountType === "percentage") {
-            discount = (subtotal * discountValue) / 100
+            discount = (calculatedSubtotal * discountValue) / 100
             const maxDiscount = Number(code.max_discount) || Number(code.max_discount_amount) || 0
             if (maxDiscount) {
               discount = Math.min(discount, maxDiscount)
@@ -155,6 +219,12 @@ export async function POST(request: Request) {
             discount = discountValue
           }
           discountCodeId = code._id.toString()
+        } else {
+          // Min order not met — roll back the usage increment
+          await db.collection("coupons").updateOne(
+            { _id: code._id },
+            { $inc: { usage_count: -1 } }
+          )
         }
       }
     }
@@ -164,7 +234,7 @@ export async function POST(request: Request) {
     // ========================================================================
 
     const shipping = shippingCost
-    const total = Math.max(0, subtotal - discount + shipping)
+    const total = Math.max(0, calculatedSubtotal - discount + shipping)
 
     // ========================================================================
     // Razorpay Order (Prepaid Only)
@@ -189,20 +259,21 @@ export async function POST(request: Request) {
     // ========================================================================
 
     const orderDoc = {
-      user_id: userId,
+      user_id: userId && ObjectId.isValid(userId) ? new ObjectId(userId) : userId,
       email,
-      order_number: `AL-${Date.now().toString(36).toUpperCase()}`,
-      subtotal,
+      order_number: `AL-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`,
+      subtotal: calculatedSubtotal,
       discount_amount: discount,
       discount_code_id: discountCodeId,
       shipping_amount: shipping,
       total,
       shipping_address: shippingAddress,
       razorpay_order_id: razorpayOrderId,
+      wallet_amount_used: walletAmountUsed || 0,
       payment_method: paymentMethod,
       status: paymentMethod === "cod" ? "confirmed" : "pending",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: new Date(),
+      updated_at: new Date(),
     }
 
     const orderResult = await db.collection("orders").insertOne(orderDoc)
@@ -211,7 +282,7 @@ export async function POST(request: Request) {
 
     // Create order line items
     const orderItems = items.map((item) => ({
-      order_id: orderId,
+      order_id: orderResult.insertedId,
       product_id: item.productId,
       variant_id: item.variantId ?? null,
       product_name: item.name,
@@ -220,18 +291,12 @@ export async function POST(request: Request) {
       price_at_purchase: item.price,
       quantity: item.quantity,
       image_url: item.image ?? null,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
     }))
 
     await db.collection("order_items").insertMany(orderItems)
 
-    // Increment discount code usage
-    if (discountCodeId) {
-      await db.collection("coupons").updateOne(
-        { _id: new ObjectId(discountCodeId) },
-        { $inc: { usage_count: 1 } }
-      )
-    }
+    // Coupon usage already incremented atomically during validation above
 
     // ========================================================================
     // COD Order Processing
@@ -239,26 +304,75 @@ export async function POST(request: Request) {
 
     if (paymentMethod === "cod") {
       await db.collection("order_status_history").insertOne({
-        order_id: orderId,
+        order_id: orderResult.insertedId,
         status: "confirmed",
         note: "Cash on Delivery order placed",
-        created_at: new Date().toISOString(),
+        created_at: new Date(),
       })
 
-      // Decrease stock
+      // Decrease stock atomically with rollback on failure
+      const deductedItems: { variantId?: string; productId?: string; quantity: number }[] = []
+      let stockDeductionFailed = false
+
       for (const item of items) {
-        if (item.variantId) {
-          await db.collection("product_variants").updateOne(
-            { $expr: { $eq: [{ $toString: "$_id" }, item.variantId] } },
+        if (item.variantId && ObjectId.isValid(item.variantId)) {
+          const result = await db.collection("product_variants").updateOne(
+            { _id: new ObjectId(item.variantId), stock_quantity: { $gte: item.quantity } },
             { $inc: { stock_quantity: -item.quantity } }
           )
+          if (result.modifiedCount === 0) {
+            console.error(`Stock insufficient for variant ${item.variantId}`)
+            stockDeductionFailed = true
+            break
+          }
+          deductedItems.push({ variantId: item.variantId, quantity: item.quantity })
         } else if (item.productId) {
-          // No specific variant selected - decrement first available variant
-          await db.collection("product_variants").updateOne(
-            { product_id: new ObjectId(item.productId), stock_quantity: { $gt: 0 } },
+          const result = await db.collection("product_variants").updateOne(
+            { product_id: new ObjectId(item.productId), stock_quantity: { $gte: item.quantity } },
             { $inc: { stock_quantity: -item.quantity } }
+          )
+          if (result.modifiedCount === 0) {
+            console.error(`Stock insufficient for product ${item.productId}`)
+            stockDeductionFailed = true
+            break
+          }
+          deductedItems.push({ productId: item.productId, quantity: item.quantity })
+        }
+      }
+
+      // Rollback on stock deduction failure: restore already-deducted stock and delete order
+      if (stockDeductionFailed) {
+        for (const deducted of deductedItems) {
+          if (deducted.variantId) {
+            await db.collection("product_variants").updateOne(
+              { _id: new ObjectId(deducted.variantId) },
+              { $inc: { stock_quantity: deducted.quantity } }
+            )
+          } else if (deducted.productId) {
+            await db.collection("product_variants").updateOne(
+              { product_id: new ObjectId(deducted.productId) },
+              { $inc: { stock_quantity: deducted.quantity } }
+            )
+          }
+        }
+
+        // Delete the order and its items
+        await db.collection("order_items").deleteMany({ order_id: orderResult.insertedId })
+        await db.collection("order_status_history").deleteMany({ order_id: orderResult.insertedId })
+        await db.collection("orders").deleteOne({ _id: orderResult.insertedId })
+
+        // Roll back coupon usage if it was incremented
+        if (discountCodeId) {
+          await db.collection("coupons").updateOne(
+            { _id: new ObjectId(discountCodeId) },
+            { $inc: { usage_count: -1 } }
           )
         }
+
+        return NextResponse.json(
+          { message: "Some items went out of stock. Please refresh your cart and try again." },
+          { status: 409 }
+        )
       }
 
       // Send confirmation email (non-blocking)
@@ -274,7 +388,7 @@ export async function POST(request: Request) {
             quantity: item.quantity,
             price: item.price,
           })),
-          subtotal,
+          subtotal: calculatedSubtotal,
           discount,
           shipping,
           walletUsed: 0,
@@ -320,7 +434,7 @@ export async function POST(request: Request) {
             PieceCount: "1",
             ActualWeight: "0.5",
             CreditReferenceNo: orderNumber,
-            DeclaredValue: String(subtotal),
+            DeclaredValue: String(calculatedSubtotal),
             PickupDate: pickupDate,
             PickupTime: pickupTime,
           },

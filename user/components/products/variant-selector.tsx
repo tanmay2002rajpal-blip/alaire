@@ -22,12 +22,15 @@ export function VariantSelector({
     return variants.some((variant) => {
       if (!variant.is_active) return false
       const variantOptions = variant.options as Record<string, string>
-      if (variantOptions[optionName] !== value) return false
+      // Check case-insensitive key match
+      const getVariantValue = (key: string) =>
+        variantOptions[key] ?? variantOptions[key.toLowerCase()] ?? variantOptions[key.charAt(0).toUpperCase() + key.slice(1)]
+      if (getVariantValue(optionName) !== value) return false
 
       // Check if this combination with other selected options exists
       for (const [key, selectedValue] of Object.entries(selectedOptions)) {
         if (key === optionName) continue
-        if (variantOptions[key] !== selectedValue) return false
+        if (getVariantValue(key) !== selectedValue) return false
       }
 
       return variant.stock_quantity > 0
