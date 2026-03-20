@@ -16,3 +16,13 @@ admin/.playwright-mcp/
 *.db-wal
 .playwright-mcp/
 test-results/
+audit-report/
+
+# Screenshots and reports
+*.png
+COMPREHENSIVE_QA_REPORT.md
+E2E_TEST_REPORT.md
+FINAL_QA_REPORT.md
+QA_TODO.md
+TEST_REPORT_FULL.md
+dashboard-snapshot.md
