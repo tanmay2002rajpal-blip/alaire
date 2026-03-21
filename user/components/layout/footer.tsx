@@ -42,7 +42,7 @@ export function Footer() {
   }, [])
 
   return (
-    <footer ref={footerRef} className="border-t border-border/50 bg-muted/30">
+    <footer ref={footerRef} className="mt-auto border-t border-border/50 bg-muted/30">
       {/* Main Footer Content */}
       <div className="container py-16 lg:py-20">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-12 lg:gap-8">

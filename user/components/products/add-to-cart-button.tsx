@@ -71,7 +71,7 @@ export function AddToCartButton({
       onClick={handleAddToCart}
       disabled={disabled || isLoading}
       size="lg"
-      className={className}
+      className={`h-12 md:h-11 ${className || ""}`}
     >
       {isLoading ? (
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />

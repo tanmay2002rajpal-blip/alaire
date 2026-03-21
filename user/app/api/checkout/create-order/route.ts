@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
 import { blueDartClient } from "@/lib/bluedart/client"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
+import { sendAdminOrderNotification } from "@/lib/emails/admin-notification"
 import { createOrderSchema, validateRequest, type CreateOrderInput } from "@/lib/validations/api"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 
@@ -398,6 +399,31 @@ export async function POST(request: Request) {
         })
       } catch (emailError) {
         console.error("Order confirmation email failed (non-fatal):", emailError)
+      }
+
+      // Admin notification email (non-blocking)
+      try {
+        await sendAdminOrderNotification({
+          orderId,
+          orderNumber,
+          customerName: shippingAddress.full_name,
+          customerEmail: email,
+          customerPhone: shippingAddress.phone,
+          items: items.map((item) => ({
+            product_name: item.name,
+            variant_name: item.variantName,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          subtotal: calculatedSubtotal,
+          discount,
+          shipping,
+          total,
+          paymentMethod: "Cash on Delivery",
+          shippingAddress,
+        })
+      } catch (adminEmailError) {
+        console.error("Admin notification email failed (non-fatal):", adminEmailError)
       }
 
       // Create Blue Dart shipment (non-blocking, only if configured)

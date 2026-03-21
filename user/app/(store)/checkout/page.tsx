@@ -3,7 +3,7 @@
 import { useState, useEffect, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronRight, ShoppingBag, UserCircle2 } from "lucide-react"
+import { ChevronRight, ShoppingBag, UserCircle2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks"
 import { CheckoutForm } from "@/components/checkout/checkout-form"
@@ -24,6 +24,7 @@ export default function CheckoutPage() {
   const { items, getSubtotal, clearCart } = useCart()
   const mounted = useIsMounted()
   const { openAuthDialog, user, isLoading: authLoading } = useAuth()
+  const [isOrderProcessing, setIsOrderProcessing] = useState(false)
 
   // Coupon state
   const [couponCode, setCouponCode] = useState<string>("")
@@ -59,6 +60,25 @@ export default function CheckoutPage() {
         <div className="animate-pulse space-y-4">
           <div className="h-8 w-48 bg-muted rounded" />
           <div className="h-64 bg-muted rounded" />
+        </div>
+      </div>
+    )
+  }
+
+  if (isOrderProcessing) {
+    return (
+      <div className="container py-16">
+        <div className="flex flex-col items-center justify-center gap-6 text-center">
+          <div className="relative">
+            <div className="h-16 w-16 rounded-full border-4 border-muted" />
+            <Loader2 className="absolute inset-0 h-16 w-16 animate-spin text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Processing your order...</h1>
+            <p className="text-muted-foreground mt-1">
+              Please wait while we confirm your order
+            </p>
+          </div>
         </div>
       </div>
     )
@@ -155,6 +175,7 @@ export default function CheckoutPage() {
               couponCode={couponCode}
               onShippingChange={handleShippingChange}
               onSuccess={(orderId) => {
+                setIsOrderProcessing(true)
                 clearCart()
                 router.push(`/order-confirmation/${orderId}`)
               }}

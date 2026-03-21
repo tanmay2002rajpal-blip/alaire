@@ -11,7 +11,7 @@ export default function PrivacyPage() {
         Privacy Policy
       </h1>
       <p className="text-muted-foreground mb-8">
-        Last updated: December 2024
+        Last updated: March 21, 2026
       </p>
 
       <div className="prose prose-neutral max-w-none">

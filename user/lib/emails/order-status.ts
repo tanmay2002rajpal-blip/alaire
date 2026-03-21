@@ -1,6 +1,6 @@
 /**
- * @fileoverview Order status notification emails.
- * Sends emails when order status changes (shipped, delivered, etc.)
+ * @fileoverview Order status notification emails — luxury branded templates.
+ * Sends emails when order status changes (processing, shipped, delivered, cancelled, refunded).
  */
 
 import { Resend } from "resend"
@@ -11,6 +11,15 @@ function getResend() {
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function formatPrice(amount: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
 }
 
 interface OrderStatusEmailData {
@@ -24,74 +33,155 @@ interface OrderStatusEmailData {
   refundAmount?: number
 }
 
-function formatPrice(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://alaire.in"
 
-/**
- * Sends order processing notification email.
- */
-export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail } = data
-  const customerName = escapeHtml(rawCustomerName)
-  const orderNumber = escapeHtml(rawOrderNumber)
+// ============================================================================
+// Shared Template Shell
+// ============================================================================
 
-  const html = `
+function buildEmail({
+  accentColor,
+  iconHtml,
+  headline,
+  subtext,
+  orderNumber,
+  bodyHtml,
+  ctaText,
+  ctaUrl,
+}: {
+  accentColor: string
+  iconHtml: string
+  headline: string
+  subtext: string
+  orderNumber: string
+  bodyHtml: string
+  ctaText: string
+  ctaUrl: string
+}): string {
+  return `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9f9f9;">
-      <div style="background-color: #ffffff; padding: 40px 30px;">
-        <!-- Header -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <h1 style="font-size: 32px; font-weight: normal; letter-spacing: 4px; margin: 0;">ALAIRE</h1>
-        </div>
+    <body style="margin: 0; padding: 0; background-color: #f7f4ef; -webkit-font-smoothing: antialiased;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f7f4ef;">
+        <tr>
+          <td align="center" style="padding: 40px 16px;">
+            <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width: 560px; width: 100%;">
 
-        <!-- Processing Icon -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <div style="width: 60px; height: 60px; background-color: #eab308; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-            <span style="color: white; font-size: 30px;">⚙️</span>
-          </div>
-          <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Order is Processing</h2>
-          <p style="color: #666; margin: 0;">Hi ${customerName}, your order is now being processed.</p>
-        </div>
+              <!-- Logo -->
+              <tr>
+                <td align="center" style="padding-bottom: 32px;">
+                  <h1 style="margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 28px; font-weight: normal; letter-spacing: 6px; color: #1a1a1a;">ALAIRE</h1>
+                </td>
+              </tr>
 
-        <!-- Order Details -->
-        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
-          <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
-          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
-        </div>
+              <!-- Card -->
+              <tr>
+                <td style="background-color: #ffffff; border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                  <div style="height: 3px; background: ${accentColor};"></div>
 
-        <!-- CTA -->
-        <div style="text-align: center; margin-bottom: 30px;">
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL}/account/orders" style="display: inline-block; background-color: #000; color: #fff; padding: 15px 40px; text-decoration: none; font-size: 14px; letter-spacing: 1px;">
-            VIEW ORDER
-          </a>
-        </div>
+                  <!-- Header -->
+                  <div style="padding: 48px 40px 32px; text-align: center;">
+                    <div style="width: 56px; height: 56px; margin: 0 auto 24px; border-radius: 50%; border: 2px solid ${accentColor}; line-height: 56px; text-align: center; font-size: 24px;">
+                      ${iconHtml}
+                    </div>
+                    <h2 style="margin: 0 0 8px; font-family: Georgia, 'Times New Roman', serif; font-size: 26px; font-weight: normal; color: #1a1a1a; letter-spacing: 1px;">${headline}</h2>
+                    <p style="margin: 0; font-family: -apple-system, sans-serif; font-size: 15px; color: #8a7e6b; line-height: 1.5;">
+                      ${subtext}
+                    </p>
+                  </div>
 
-        <!-- Footer -->
-        <div style="text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
-          <p style="color: #666; font-size: 14px;">Questions? Contact us at <a href="mailto:support@alaire.in" style="color: #000;">support@alaire.in</a></p>
-          <p style="color: #999; font-size: 12px;">© ${new Date().getFullYear()} Alaire.</p>
-        </div>
-      </div>
+                  <!-- Order Number -->
+                  <div style="margin: 0 40px 32px; background-color: #faf8f4; border: 1px solid #f0ece4; padding: 16px 24px; text-align: center;">
+                    <span style="font-family: -apple-system, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #8a7e6b;">Order Number</span>
+                    <br>
+                    <span style="font-family: Georgia, serif; font-size: 18px; font-weight: bold; color: #1a1a1a; letter-spacing: 1px;">${orderNumber}</span>
+                  </div>
+
+                  <!-- Body Content -->
+                  ${bodyHtml}
+
+                  <!-- CTA -->
+                  <div style="padding: 8px 40px 40px; text-align: center;">
+                    <a href="${ctaUrl}" style="display: inline-block; background-color: #1a1a1a; color: #ffffff; padding: 16px 48px; text-decoration: none; font-family: -apple-system, sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;">
+                      ${ctaText}
+                    </a>
+                  </div>
+
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="padding: 32px 20px; text-align: center;">
+                  <p style="margin: 0 0 8px; font-family: -apple-system, sans-serif; font-size: 13px; color: #8a7e6b;">
+                    Need help? Reach us at <a href="mailto:support@alaire.in" style="color: #c4a265; text-decoration: none;">support@alaire.in</a>
+                  </p>
+                  <p style="margin: 0; font-family: -apple-system, sans-serif; font-size: 12px; color: #b8ad9e;">
+                    &copy; ${new Date().getFullYear()} Alaire. Crafted with intention.
+                  </p>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `
+}
+
+// ============================================================================
+// Processing Email
+// ============================================================================
+
+export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Promise<boolean> {
+  const customerName = escapeHtml(data.customerName.split(" ")[0])
+  const orderNumber = escapeHtml(data.orderNumber)
+
+  const html = buildEmail({
+    accentColor: "linear-gradient(90deg, #c4a265, #dfc08a, #c4a265)",
+    iconHtml: "&#9881;",
+    headline: "We're On It",
+    subtext: `${customerName}, your order is being carefully prepared and packed by our team.`,
+    orderNumber,
+    bodyHtml: `
+      <div style="padding: 0 40px 32px;">
+        <div style="background-color: #faf8f4; border: 1px solid #f0ece4; padding: 24px; border-radius: 2px;">
+          <table style="width: 100%; font-family: -apple-system, sans-serif; font-size: 14px;">
+            <tr>
+              <td style="padding: 8px 0; color: #8a7e6b; vertical-align: top; width: 24px;">01</td>
+              <td style="padding: 8px 0 8px 12px; color: #1a1a1a;"><strong>Order received</strong> — confirmed and in our system</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #c4a265; vertical-align: top; font-weight: bold;">02</td>
+              <td style="padding: 8px 0 8px 12px; color: #c4a265; font-weight: bold;">Processing — being packed with care</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #d1ccc3; vertical-align: top;">03</td>
+              <td style="padding: 8px 0 8px 12px; color: #d1ccc3;">Shipped — on its way to you</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #d1ccc3; vertical-align: top;">04</td>
+              <td style="padding: 8px 0 8px 12px; color: #d1ccc3;">Delivered — at your doorstep</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    `,
+    ctaText: "View Order",
+    ctaUrl: `${siteUrl}/account/orders`,
+  })
 
   try {
     await getResend().emails.send({
       from: "Alaire <orders@alaire.in>",
-      to: customerEmail,
-      subject: `Your Order ${orderNumber} is Processing ⚙️`,
+      to: data.customerEmail,
+      subject: `Your Order ${orderNumber} is Being Prepared`,
       html,
     })
     return true
@@ -101,71 +191,186 @@ export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Prom
   }
 }
 
-/**
- * Sends order cancelled notification email.
- */
-export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail } = data
-  const customerName = escapeHtml(rawCustomerName)
-  const orderNumber = escapeHtml(rawOrderNumber)
+// ============================================================================
+// Shipped Email
+// ============================================================================
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9f9f9;">
-      <div style="background-color: #ffffff; padding: 40px 30px;">
-        <!-- Header -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <h1 style="font-size: 32px; font-weight: normal; letter-spacing: 4px; margin: 0;">ALAIRE</h1>
-        </div>
+export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise<boolean> {
+  const customerName = escapeHtml(data.customerName.split(" ")[0])
+  const orderNumber = escapeHtml(data.orderNumber)
 
-        <!-- Cancelled Icon -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <div style="width: 60px; height: 60px; background-color: #ef4444; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-            <span style="color: white; font-size: 30px;">❌</span>
-          </div>
-          <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Order Cancelled</h2>
-          <p style="color: #666; margin: 0;">Hello ${customerName}, your order has been cancelled.</p>
-        </div>
-
-        <!-- Order Details -->
-        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
-          <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
-          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
-        </div>
-
-        <!-- Body text -->
-        <div style="margin-bottom: 30px; text-align: center; color: #444; font-size: 16px; line-height: 1.6;">
-          <p>If you have already paid for this order, your refund will be automatically processed and credited back to your original payment method or wallet.</p>
-          <p>If you have any questions, please feel free to reach out to us.</p>
-        </div>
-
-        <!-- CTA -->
-        <div style="text-align: center; margin-bottom: 30px;">
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL}/products" style="display: inline-block; background-color: #000; color: #fff; padding: 15px 40px; text-decoration: none; font-size: 14px; letter-spacing: 1px;">
-            Shop Again
-          </a>
-        </div>
-
-        <!-- Footer -->
-        <div style="text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
-          <p style="color: #666; font-size: 14px;">Questions? Contact us at <a href="mailto:support@alaire.in" style="color: #000;">support@alaire.in</a></p>
-          <p style="color: #999; font-size: 12px;">© ${new Date().getFullYear()} Alaire.</p>
+  let trackingHtml = ""
+  if (data.trackingNumber) {
+    trackingHtml = `
+      <div style="padding: 0 40px 32px;">
+        <div style="background-color: #f0f5ff; border: 1px solid #c7d9f5; padding: 24px; border-radius: 2px;">
+          <span style="font-family: -apple-system, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #4a7ab5; display: block; margin-bottom: 16px; font-weight: 600;">Tracking Details</span>
+          <table style="width: 100%; font-family: -apple-system, sans-serif; font-size: 14px;">
+            <tr>
+              <td style="padding: 6px 0; color: #6b7e9e;">Courier</td>
+              <td style="padding: 6px 0; text-align: right; color: #1a1a1a; font-weight: 600;">${escapeHtml(data.courierName || "Standard Delivery")}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6b7e9e;">Tracking No.</td>
+              <td style="padding: 6px 0; text-align: right; color: #1a1a1a; font-weight: 600; font-family: monospace;">${escapeHtml(data.trackingNumber)}</td>
+            </tr>
+            ${data.estimatedDelivery ? `
+            <tr>
+              <td style="padding: 6px 0; color: #6b7e9e;">Est. Delivery</td>
+              <td style="padding: 6px 0; text-align: right; color: #1a1a1a; font-weight: 600;">${escapeHtml(data.estimatedDelivery)}</td>
+            </tr>
+            ` : ""}
+          </table>
         </div>
       </div>
-    </body>
-    </html>
-  `
+    `
+  }
+
+  const html = buildEmail({
+    accentColor: "linear-gradient(90deg, #4a7ab5, #6b9fd4, #4a7ab5)",
+    iconHtml: "&#128230;",
+    headline: "Your Order Has Shipped",
+    subtext: `${customerName}, your package is on its way. We can't wait for you to receive it.`,
+    orderNumber,
+    bodyHtml: `
+      ${trackingHtml}
+      <div style="padding: 0 40px 32px;">
+        <div style="background-color: #faf8f4; border: 1px solid #f0ece4; padding: 24px; border-radius: 2px;">
+          <table style="width: 100%; font-family: -apple-system, sans-serif; font-size: 14px;">
+            <tr>
+              <td style="padding: 8px 0; color: #8a7e6b; vertical-align: top; width: 24px;">01</td>
+              <td style="padding: 8px 0 8px 12px; color: #8a7e6b;">Order received</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #8a7e6b; vertical-align: top;">02</td>
+              <td style="padding: 8px 0 8px 12px; color: #8a7e6b;">Packed and ready</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #4a7ab5; vertical-align: top; font-weight: bold;">03</td>
+              <td style="padding: 8px 0 8px 12px; color: #4a7ab5; font-weight: bold;">Shipped — in transit</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #d1ccc3; vertical-align: top;">04</td>
+              <td style="padding: 8px 0 8px 12px; color: #d1ccc3;">Delivered</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    `,
+    ctaText: "Track Your Package",
+    ctaUrl: `${siteUrl}/account/orders`,
+  })
 
   try {
     await getResend().emails.send({
       from: "Alaire <orders@alaire.in>",
-      to: customerEmail,
-      subject: `Order Cancelled - ${orderNumber}`,
+      to: data.customerEmail,
+      subject: `Your Alaire Order ${orderNumber} Has Shipped`,
+      html,
+    })
+    return true
+  } catch (error) {
+    console.error("Failed to send shipped email:", error)
+    return false
+  }
+}
+
+// ============================================================================
+// Delivered Email
+// ============================================================================
+
+export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promise<boolean> {
+  const customerName = escapeHtml(data.customerName.split(" ")[0])
+  const orderNumber = escapeHtml(data.orderNumber)
+
+  const html = buildEmail({
+    accentColor: "linear-gradient(90deg, #5a8f5a, #7ab87a, #5a8f5a)",
+    iconHtml: "&#10003;",
+    headline: "Your Order Has Arrived",
+    subtext: `${customerName}, your Alaire order has been delivered. We hope you love every piece.`,
+    orderNumber,
+    bodyHtml: `
+      <div style="padding: 0 40px 32px;">
+        <!-- Review Card -->
+        <div style="background-color: #faf8f4; border: 1px solid #f0ece4; padding: 28px; border-radius: 2px; text-align: center;">
+          <span style="font-family: Georgia, serif; font-size: 18px; color: #1a1a1a; display: block; margin-bottom: 8px;">We'd love your feedback</span>
+          <p style="margin: 0 0 20px; font-family: -apple-system, sans-serif; font-size: 14px; color: #8a7e6b; line-height: 1.5;">
+            Your thoughts help us improve and help others discover Alaire. Share your experience?
+          </p>
+          <a href="${siteUrl}/account/orders" style="display: inline-block; background-color: #c4a265; color: #ffffff; padding: 12px 36px; text-decoration: none; font-family: -apple-system, sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;">
+            Write a Review
+          </a>
+        </div>
+      </div>
+
+      <div style="padding: 0 40px 32px;">
+        <span style="font-family: -apple-system, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #8a7e6b; display: block; margin-bottom: 12px; font-weight: 600;">Good to Know</span>
+        <table style="width: 100%; font-family: -apple-system, sans-serif; font-size: 14px;">
+          <tr>
+            <td style="padding: 6px 0; color: #8a7e6b;">&#8226;&nbsp; Returns accepted within 7 days of delivery</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #8a7e6b;">&#8226;&nbsp; Download your invoice from order details</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #8a7e6b;">&#8226;&nbsp; Reach out for any concerns — we're here for you</td>
+          </tr>
+        </table>
+      </div>
+    `,
+    ctaText: "Continue Shopping",
+    ctaUrl: `${siteUrl}/products`,
+  })
+
+  try {
+    await getResend().emails.send({
+      from: "Alaire <orders@alaire.in>",
+      to: data.customerEmail,
+      subject: `Your Alaire Order ${orderNumber} Has Been Delivered`,
+      html,
+    })
+    return true
+  } catch (error) {
+    console.error("Failed to send delivered email:", error)
+    return false
+  }
+}
+
+// ============================================================================
+// Cancelled Email
+// ============================================================================
+
+export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promise<boolean> {
+  const customerName = escapeHtml(data.customerName.split(" ")[0])
+  const orderNumber = escapeHtml(data.orderNumber)
+
+  const html = buildEmail({
+    accentColor: "linear-gradient(90deg, #9e6b6b, #c48a8a, #9e6b6b)",
+    iconHtml: "&#10005;",
+    headline: "Order Cancelled",
+    subtext: `${customerName}, your order has been cancelled as requested.`,
+    orderNumber,
+    bodyHtml: `
+      <div style="padding: 0 40px 32px;">
+        <div style="background-color: #faf8f4; border: 1px solid #f0ece4; padding: 24px; border-radius: 2px;">
+          <p style="margin: 0; font-family: -apple-system, sans-serif; font-size: 14px; color: #1a1a1a; line-height: 1.7;">
+            If you made a payment for this order, your refund will be automatically processed and credited back to your original payment method or wallet within 5–7 business days.
+          </p>
+          <p style="margin: 16px 0 0; font-family: -apple-system, sans-serif; font-size: 14px; color: #8a7e6b; line-height: 1.7;">
+            We're sorry to see this order go. If there's anything we can do differently, please don't hesitate to let us know.
+          </p>
+        </div>
+      </div>
+    `,
+    ctaText: "Shop Again",
+    ctaUrl: `${siteUrl}/products`,
+  })
+
+  try {
+    await getResend().emails.send({
+      from: "Alaire <orders@alaire.in>",
+      to: data.customerEmail,
+      subject: `Order ${orderNumber} Has Been Cancelled`,
       html,
     })
     return true
@@ -175,281 +380,54 @@ export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promi
   }
 }
 
-/**
- * Sends order shipped notification email.
- */
-export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail, trackingNumber, courierName, estimatedDelivery } = data
-  const customerName = escapeHtml(rawCustomerName)
-  const orderNumber = escapeHtml(rawOrderNumber)
+// ============================================================================
+// Refund Email
+// ============================================================================
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9f9f9;">
-      <div style="background-color: #ffffff; padding: 40px 30px;">
-        <!-- Header -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <h1 style="font-size: 32px; font-weight: normal; letter-spacing: 4px; margin: 0;">ALAIRE</h1>
-        </div>
-
-        <!-- Shipped Icon -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <div style="width: 60px; height: 60px; background-color: #3b82f6; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-            <span style="color: white; font-size: 30px;">📦</span>
-          </div>
-          <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Your Order Has Shipped!</h2>
-          <p style="color: #666; margin: 0;">Great news, ${customerName}! Your order is on its way.</p>
-        </div>
-
-        <!-- Order Details -->
-        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
-          <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
-          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
-        </div>
-
-        <!-- Tracking Information -->
-        ${trackingNumber ? `
-        <div style="background-color: #eff6ff; border: 1px solid #3b82f6; padding: 20px; margin-bottom: 30px; border-radius: 8px;">
-          <h3 style="font-size: 16px; margin: 0 0 15px; color: #1d4ed8;">Tracking Information</h3>
-          <table style="width: 100%;">
-            <tr>
-              <td style="padding: 5px 0; color: #666;">Courier Partner:</td>
-              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${escapeHtml(courierName || "Standard Delivery")}</td>
-            </tr>
-            <tr>
-              <td style="padding: 5px 0; color: #666;">Tracking Number:</td>
-              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${escapeHtml(trackingNumber)}</td>
-            </tr>
-            ${estimatedDelivery ? `
-            <tr>
-              <td style="padding: 5px 0; color: #666;">Estimated Delivery:</td>
-              <td style="padding: 5px 0; font-weight: bold; text-align: right;">${escapeHtml(estimatedDelivery)}</td>
-            </tr>
-            ` : ""}
-          </table>
-        </div>
-        ` : ""}
-
-        <!-- CTA -->
-        <div style="text-align: center; margin-bottom: 30px;">
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL}/account/orders" style="display: inline-block; background-color: #000; color: #fff; padding: 15px 40px; text-decoration: none; font-size: 14px; letter-spacing: 1px;">
-            TRACK ORDER
-          </a>
-        </div>
-
-        <!-- What's Next -->
-        <div style="margin-bottom: 30px;">
-          <h3 style="font-size: 16px; margin-bottom: 15px;">What's Next?</h3>
-          <ul style="color: #666; line-height: 1.8; padding-left: 20px;">
-            <li>Your package is being handled with care</li>
-            <li>You'll receive updates as it moves through transit</li>
-            <li>We'll notify you when it's delivered</li>
-          </ul>
-        </div>
-
-        <!-- Footer -->
-        <div style="text-align: center; padding-top: 30px; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 14px; margin: 0 0 10px;">
-            Questions? Contact us at <a href="mailto:support@alaire.in" style="color: #000;">support@alaire.in</a>
-          </p>
-          <p style="color: #999; font-size: 12px; margin: 0;">
-            © ${new Date().getFullYear()} Alaire. All rights reserved.
-          </p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `
-
-  try {
-    await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
-      to: customerEmail,
-      subject: `Your Order ${orderNumber} Has Shipped! 📦`,
-      html,
-    })
-    return true
-  } catch (error) {
-    console.error("Failed to send order shipped email:", error)
-    return false
-  }
-}
-
-/**
- * Sends order delivered notification email.
- */
-export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail } = data
-  const customerName = escapeHtml(rawCustomerName)
-  const orderNumber = escapeHtml(rawOrderNumber)
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9f9f9;">
-      <div style="background-color: #ffffff; padding: 40px 30px;">
-        <!-- Header -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <h1 style="font-size: 32px; font-weight: normal; letter-spacing: 4px; margin: 0;">ALAIRE</h1>
-        </div>
-
-        <!-- Delivered Icon -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <div style="width: 60px; height: 60px; background-color: #22c55e; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-            <span style="color: white; font-size: 30px;">✓</span>
-          </div>
-          <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Order Delivered!</h2>
-          <p style="color: #666; margin: 0;">Your order has been delivered, ${customerName}!</p>
-        </div>
-
-        <!-- Order Details -->
-        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
-          <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
-          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
-        </div>
-
-        <!-- Review Request -->
-        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 20px; margin-bottom: 30px; border-radius: 8px; text-align: center;">
-          <h3 style="font-size: 16px; margin: 0 0 10px; color: #92400e;">How was your experience?</h3>
-          <p style="color: #78350f; margin: 0 0 15px; font-size: 14px;">
-            We'd love to hear your feedback! Leave a review and help other customers.
-          </p>
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL}/account/orders" style="display: inline-block; background-color: #f59e0b; color: #fff; padding: 12px 30px; text-decoration: none; font-size: 14px; border-radius: 4px;">
-            LEAVE A REVIEW
-          </a>
-        </div>
-
-        <!-- Need Help? -->
-        <div style="margin-bottom: 30px;">
-          <h3 style="font-size: 16px; margin-bottom: 15px;">Need Help?</h3>
-          <ul style="color: #666; line-height: 1.8; padding-left: 20px;">
-            <li>Returns accepted within 7 days of delivery</li>
-            <li>Contact support for any issues with your order</li>
-            <li>Download invoice from your order details page</li>
-          </ul>
-        </div>
-
-        <!-- CTA -->
-        <div style="text-align: center; margin-bottom: 30px;">
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL}/products" style="display: inline-block; background-color: #000; color: #fff; padding: 15px 40px; text-decoration: none; font-size: 14px; letter-spacing: 1px;">
-            SHOP MORE
-          </a>
-        </div>
-
-        <!-- Footer -->
-        <div style="text-align: center; padding-top: 30px; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 14px; margin: 0 0 10px;">
-            Thank you for shopping with us!
-          </p>
-          <p style="color: #999; font-size: 12px; margin: 0;">
-            © ${new Date().getFullYear()} Alaire. All rights reserved.
-          </p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `
-
-  try {
-    await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
-      to: customerEmail,
-      subject: `Your Order ${orderNumber} Has Been Delivered! ✓`,
-      html,
-    })
-    return true
-  } catch (error) {
-    console.error("Failed to send order delivered email:", error)
-    return false
-  }
-}
-
-/**
- * Sends order refund notification email.
- */
 export async function sendOrderRefundEmail(data: OrderStatusEmailData): Promise<boolean> {
-  const { orderNumber: rawOrderNumber, customerName: rawCustomerName, customerEmail, refundAmount } = data
-  const customerName = escapeHtml(rawCustomerName)
-  const orderNumber = escapeHtml(rawOrderNumber)
+  const customerName = escapeHtml(data.customerName.split(" ")[0])
+  const orderNumber = escapeHtml(data.orderNumber)
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="font-family: Georgia, 'Times New Roman', serif; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9f9f9;">
-      <div style="background-color: #ffffff; padding: 40px 30px;">
-        <!-- Header -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <h1 style="font-size: 32px; font-weight: normal; letter-spacing: 4px; margin: 0;">ALAIRE</h1>
-        </div>
-
-        <!-- Refund Icon -->
-        <div style="text-align: center; margin-bottom: 40px;">
-          <div style="width: 60px; height: 60px; background-color: #22c55e; border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-            <span style="color: white; font-size: 30px;">💰</span>
-          </div>
-          <h2 style="font-size: 24px; font-weight: normal; margin: 0 0 10px;">Refund Processed</h2>
-          <p style="color: #666; margin: 0;">Your refund has been processed, ${customerName}.</p>
-        </div>
-
-        <!-- Order Details -->
-        <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin-bottom: 30px;">
-          <p style="margin: 0 0 5px; color: #666; font-size: 14px;">Order Number</p>
-          <p style="margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 1px;">${orderNumber}</p>
-        </div>
-
-        ${refundAmount ? `
-        <!-- Refund Amount -->
-        <div style="background-color: #dcfce7; border: 1px solid #22c55e; padding: 20px; margin-bottom: 30px; border-radius: 8px; text-align: center;">
-          <p style="margin: 0 0 5px; color: #166534; font-size: 14px;">Refund Amount</p>
-          <p style="margin: 0; font-size: 28px; font-weight: bold; color: #15803d;">${formatPrice(refundAmount)}</p>
-          <p style="margin: 10px 0 0; color: #166534; font-size: 12px;">
-            Refund will be credited within 5-7 business days
-          </p>
-        </div>
-        ` : ""}
-
-        <!-- Information -->
-        <div style="margin-bottom: 30px;">
-          <h3 style="font-size: 16px; margin-bottom: 15px;">What's Next?</h3>
-          <ul style="color: #666; line-height: 1.8; padding-left: 20px;">
-            <li>Refund will reflect in your original payment method</li>
-            <li>Bank processing may take 5-7 business days</li>
-            <li>For wallet payments, balance is credited instantly</li>
-          </ul>
-        </div>
-
-        <!-- Footer -->
-        <div style="text-align: center; padding-top: 30px; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 14px; margin: 0 0 10px;">
-            Questions? Contact us at <a href="mailto:support@alaire.in" style="color: #000;">support@alaire.in</a>
-          </p>
-          <p style="color: #999; font-size: 12px; margin: 0;">
-            © ${new Date().getFullYear()} Alaire. All rights reserved.
-          </p>
+  const html = buildEmail({
+    accentColor: "linear-gradient(90deg, #5a8f5a, #7ab87a, #5a8f5a)",
+    iconHtml: "&#8377;",
+    headline: "Refund Processed",
+    subtext: `${customerName}, we've processed your refund. Here are the details.`,
+    orderNumber,
+    bodyHtml: `
+      ${data.refundAmount ? `
+      <div style="padding: 0 40px 32px;">
+        <div style="background-color: #f0faf0; border: 1px solid #c7e8c7; padding: 28px; border-radius: 2px; text-align: center;">
+          <span style="font-family: -apple-system, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #5a8f5a; display: block; margin-bottom: 8px; font-weight: 600;">Refund Amount</span>
+          <span style="font-family: Georgia, serif; font-size: 32px; font-weight: bold; color: #2d6b2d;">${formatPrice(data.refundAmount)}</span>
         </div>
       </div>
-    </body>
-    </html>
-  `
+      ` : ""}
+
+      <div style="padding: 0 40px 32px;">
+        <span style="font-family: -apple-system, sans-serif; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #8a7e6b; display: block; margin-bottom: 12px; font-weight: 600;">What to Expect</span>
+        <table style="width: 100%; font-family: -apple-system, sans-serif; font-size: 14px;">
+          <tr>
+            <td style="padding: 6px 0; color: #8a7e6b;">&#8226;&nbsp; Refund credited to your original payment method</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #8a7e6b;">&#8226;&nbsp; Bank processing takes 5–7 business days</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #8a7e6b;">&#8226;&nbsp; Wallet credits are reflected instantly</td>
+          </tr>
+        </table>
+      </div>
+    `,
+    ctaText: "View Order Details",
+    ctaUrl: `${siteUrl}/account/orders`,
+  })
 
   try {
     await getResend().emails.send({
       from: "Alaire <orders@alaire.in>",
-      to: customerEmail,
-      subject: `Refund Processed for Order ${orderNumber}`,
+      to: data.customerEmail,
+      subject: `Refund Processed — Order ${orderNumber}`,
       html,
     })
     return true

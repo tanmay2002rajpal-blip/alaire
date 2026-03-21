@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
 import { blueDartClient } from "@/lib/bluedart/client"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
+import { sendAdminOrderNotification } from "@/lib/emails/admin-notification"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import { verifyPaymentSchema, validateRequest, type VerifyPaymentInput } from "@/lib/validations/api"
 
@@ -191,6 +192,43 @@ export async function POST(request: Request) {
       }
     } catch (emailError) {
       console.error("Order confirmation email failed (non-fatal):", emailError)
+    }
+
+    // Admin notification email (non-blocking)
+    try {
+      const adminShippingAddr = order.shipping_address as {
+        full_name: string
+        phone: string
+        line1: string
+        line2?: string
+        city: string
+        state: string
+        pincode: string
+      }
+
+      if (adminShippingAddr && orderItems.length > 0) {
+        await sendAdminOrderNotification({
+          orderId,
+          orderNumber: order.order_number || orderId.slice(0, 8).toUpperCase(),
+          customerName: adminShippingAddr.full_name,
+          customerEmail: order.email,
+          customerPhone: adminShippingAddr.phone,
+          items: orderItems.map((item: OrderItemData) => ({
+            product_name: item.product_name,
+            variant_name: item.variant_name ?? undefined,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          subtotal: order.subtotal || 0,
+          discount: order.discount_amount || 0,
+          shipping: order.shipping_amount || 0,
+          total: order.total || 0,
+          paymentMethod: "Prepaid (Razorpay)",
+          shippingAddress: adminShippingAddr,
+        })
+      }
+    } catch (adminEmailError) {
+      console.error("Admin notification email failed (non-fatal):", adminEmailError)
     }
 
     // ========================================================================

@@ -90,7 +90,7 @@ export const FOOTER_LINKS = {
 export const PAYMENT_METHODS = ['visa', 'mastercard', 'upi', 'razorpay'] as const
 
 export const SOCIAL_LINKS = {
-  instagram: 'https://instagram.com/alaire.official',
+  instagram: 'https://instagram.com/alaire.in',
   facebook: 'https://facebook.com/alaire.official',
   twitter: 'https://twitter.com/alaire_official',
 } as const

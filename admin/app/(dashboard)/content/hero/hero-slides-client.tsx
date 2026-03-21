@@ -8,6 +8,17 @@ import NextImage from 'next/image'
 
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
+import { ImageUpload } from '@/components/ui/image-upload'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +29,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { deleteHeroSlideAction, toggleHeroSlideAction } from '@/lib/actions/hero-slides'
+import {
+  deleteHeroSlideAction,
+  toggleHeroSlideAction,
+  createHeroSlideAction,
+  updateHeroSlideAction,
+} from '@/lib/actions/hero-slides'
 
 export interface HeroSlide {
   id: string
@@ -45,12 +61,90 @@ interface HeroSlidesClientProps {
   stats: HeroSlideStats
 }
 
+const EMPTY_FORM = {
+  title: '',
+  subtitle: '',
+  description: '',
+  image_url: '',
+  button_text: '',
+  button_link: '',
+  is_active: true,
+}
+
 export function HeroSlidesClient({ slides, stats }: HeroSlidesClientProps) {
   const router = useRouter()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingSlide, setDeletingSlide] = useState<HeroSlide | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  // Form dialog state
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingSlide, setEditingSlide] = useState<HeroSlide | null>(null)
+  const [formData, setFormData] = useState(EMPTY_FORM)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const openCreateDialog = () => {
+    setEditingSlide(null)
+    setFormData(EMPTY_FORM)
+    setFormOpen(true)
+  }
+
+  const openEditDialog = (slide: HeroSlide) => {
+    setEditingSlide(slide)
+    setFormData({
+      title: slide.title,
+      subtitle: slide.subtitle || '',
+      description: slide.description || '',
+      image_url: slide.image_url,
+      button_text: slide.button_text || '',
+      button_link: slide.button_link || '',
+      is_active: slide.is_active,
+    })
+    setFormOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (!formData.title.trim()) {
+      toast.error('Title is required')
+      return
+    }
+    if (!formData.image_url) {
+      toast.error('Image is required')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const input = {
+        title: formData.title.trim(),
+        subtitle: formData.subtitle.trim() || undefined,
+        description: formData.description.trim() || undefined,
+        image_url: formData.image_url,
+        button_text: formData.button_text.trim() || undefined,
+        button_link: formData.button_link.trim() || undefined,
+        is_active: formData.is_active,
+      }
+
+      const result = editingSlide
+        ? await updateHeroSlideAction(editingSlide.id, input)
+        : await createHeroSlideAction(input)
+
+      if (result.success) {
+        toast.success(editingSlide ? 'Slide updated' : 'Slide created')
+        setFormOpen(false)
+        router.refresh()
+      } else {
+        toast.error('Failed to save slide', { description: result.error })
+      }
+    } catch (error) {
+      toast.error('Failed to save slide', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const handleDeleteClick = (slide: HeroSlide) => {
     setDeletingSlide(slide)
@@ -113,7 +207,7 @@ export function HeroSlidesClient({ slides, stats }: HeroSlidesClientProps) {
             Manage homepage hero banner slides
           </p>
         </div>
-        <Button onClick={() => toast.info('Slide creation form coming soon')}>
+        <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
           Add Slide
         </Button>
@@ -158,7 +252,7 @@ export function HeroSlidesClient({ slides, stats }: HeroSlidesClientProps) {
             <p className="text-muted-foreground mb-4 max-w-md">
               Create hero slides to showcase promotions, new arrivals, and special offers on your homepage carousel.
             </p>
-            <Button onClick={() => toast.info('Slide creation form coming soon')}>
+            <Button onClick={openCreateDialog}>
               <Plus className="h-4 w-4 mr-2" />
               Create Your First Slide
             </Button>
@@ -225,7 +319,7 @@ export function HeroSlidesClient({ slides, stats }: HeroSlidesClientProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toast.info('Slide editor coming soon')}
+                        onClick={() => openEditDialog(slide)}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -251,6 +345,115 @@ export function HeroSlidesClient({ slides, stats }: HeroSlidesClientProps) {
           ))}
         </div>
       )}
+
+      {/* Create/Edit Dialog */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingSlide ? 'Edit Hero Slide' : 'Create Hero Slide'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Title */}
+            <div className="space-y-2">
+              <Label htmlFor="slide-title">Title *</Label>
+              <Input
+                id="slide-title"
+                placeholder="e.g. Summer Collection 2026"
+                value={formData.title}
+                onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+              />
+            </div>
+
+            {/* Subtitle */}
+            <div className="space-y-2">
+              <Label htmlFor="slide-subtitle">Subtitle</Label>
+              <Input
+                id="slide-subtitle"
+                placeholder="e.g. Up to 50% off"
+                value={formData.subtitle}
+                onChange={(e) => setFormData((prev) => ({ ...prev, subtitle: e.target.value }))}
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="slide-description">Description</Label>
+              <Textarea
+                id="slide-description"
+                placeholder="Optional description text"
+                value={formData.description}
+                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+              />
+            </div>
+
+            {/* Image Upload */}
+            <div className="space-y-2">
+              <Label>Slide Image *</Label>
+              <ImageUpload
+                value={formData.image_url || ''}
+                onChange={(url) => setFormData((prev) => ({ ...prev, image_url: typeof url === 'string' ? url : url[0] || '' }))}
+                bucket="hero-images"
+                entityId={editingSlide?.id || 'new'}
+                maxFiles={1}
+              />
+            </div>
+
+            {/* Button Text & Link */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="slide-btn-text">Button Text</Label>
+                <Input
+                  id="slide-btn-text"
+                  placeholder="e.g. Shop Now"
+                  value={formData.button_text}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, button_text: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="slide-btn-link">Button Link</Label>
+                <Input
+                  id="slide-btn-link"
+                  placeholder="e.g. /products"
+                  value={formData.button_link}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, button_link: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            {/* Active Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <Label>Active</Label>
+                <p className="text-sm text-muted-foreground">
+                  Show this slide on the homepage
+                </p>
+              </div>
+              <Switch
+                checked={formData.is_active}
+                onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, is_active: checked }))}
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setFormOpen(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={isSaving}>
+                {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {editingSlide ? 'Save Changes' : 'Create Slide'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

@@ -71,7 +71,7 @@ const faqCategories = [
       },
       {
         question: "How do I initiate a return?",
-        answer: "To initiate a return, log into your account, go to 'Orders', select the item you wish to return, and click 'Request Return'. You can also email us at returns@alaire.in with your order details."
+        answer: "To initiate a return, log into your account, go to 'Orders', select the item you wish to return, and click 'Request Return'. You can also email us at tanmay2002rajpal@gmail.com with your order details."
       },
       {
         question: "How long does it take to get a refund?",
