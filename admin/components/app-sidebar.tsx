@@ -50,7 +50,7 @@ const navigation = {
   content: [
     { title: 'Hero Slides', href: '/content/hero', icon: IconPhoto },
     { title: 'Blog Posts', href: '/content/blog', icon: IconFileText },
-    // { title: 'Promotions', href: '/content/promotions', icon: IconSpeakerphone }, // Removed - unused
+    { title: 'Promo Banner', href: '/content/promotions', icon: IconSpeakerphone },
     { title: 'Newsletter', href: '/newsletter', icon: IconMail },
   ],
   analytics: [
