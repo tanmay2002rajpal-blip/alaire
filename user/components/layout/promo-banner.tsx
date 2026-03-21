@@ -26,11 +26,7 @@ export function PromoBanner() {
   }, [])
 
   // Don't render anything until data is loaded
-  if (!loaded) {
-    return (
-      <div className="bg-black h-7" />
-    )
-  }
+  if (!loaded) return null
 
   // If no banner configured or not active, don't show
   if (!bannerData || !bannerData.is_active || !bannerData.text) return null
