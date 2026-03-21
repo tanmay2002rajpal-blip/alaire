@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
-import { Loader2, Tag, X, Wallet } from "lucide-react"
+import { Loader2, Tag, X, Wallet, Clock, Copy, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -48,6 +48,29 @@ export function OrderSummary({
 }: OrderSummaryProps) {
   const [couponInput, setCouponInput] = useState("")
   const [isValidating, setIsValidating] = useState(false)
+  const [copiedCode, setCopiedCode] = useState<string | null>(null)
+
+  interface AvailableCoupon {
+    code: string
+    type: string
+    value: number
+    min_order_amount: number
+    max_discount: number | null
+    is_eligible: boolean
+    is_upcoming: boolean
+    valid_from: string
+    savings: number
+    shortfall: number
+  }
+  const [availableCoupons, setAvailableCoupons] = useState<AvailableCoupon[]>([])
+
+  useEffect(() => {
+    if (subtotal <= 0) return
+    fetch(`/api/coupons/available?subtotal=${subtotal}`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data) => setAvailableCoupons(data))
+      .catch(() => {})
+  }, [subtotal])
 
   const afterDiscount = subtotal - discount + shipping
   const total = Math.max(0, afterDiscount - walletAmountUsed)
@@ -168,6 +191,78 @@ export function OrderSummary({
                 </Button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Available Coupons */}
+        {!couponCode && availableCoupons.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium flex items-center gap-2">
+              <Tag className="h-3.5 w-3.5" />
+              Available Offers
+            </p>
+            <div className="space-y-1.5">
+              {availableCoupons.map((coupon) => (
+                <div
+                  key={coupon.code}
+                  className={`border rounded-lg p-2.5 text-xs ${
+                    coupon.is_eligible
+                      ? "border-green-200 bg-green-50/50 cursor-pointer hover:border-green-300 transition-colors"
+                      : coupon.is_upcoming
+                      ? "border-amber-200 bg-amber-50/50"
+                      : "border-muted bg-muted/30"
+                  }`}
+                  onClick={() => {
+                    if (coupon.is_eligible && onCouponApply) {
+                      setCouponInput(coupon.code)
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-mono font-bold text-xs tracking-wide">
+                      {coupon.code}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigator.clipboard.writeText(coupon.code)
+                        setCopiedCode(coupon.code)
+                        setTimeout(() => setCopiedCode(null), 2000)
+                      }}
+                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                    >
+                      {copiedCode === coupon.code ? (
+                        <Check className="h-3 w-3 text-green-600" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-muted-foreground">
+                    {coupon.type === "percentage"
+                      ? `${coupon.value}% off${coupon.max_discount ? ` (up to ${formatPrice(coupon.max_discount)})` : ""}`
+                      : `${formatPrice(coupon.value)} off`}
+                    {coupon.min_order_amount > 0 && ` on orders over ${formatPrice(coupon.min_order_amount)}`}
+                  </p>
+                  {coupon.is_eligible && coupon.savings > 0 && (
+                    <p className="text-green-700 font-medium mt-0.5">
+                      You save {formatPrice(coupon.savings)}
+                    </p>
+                  )}
+                  {coupon.is_upcoming && (
+                    <p className="text-amber-700 flex items-center gap-1 mt-0.5">
+                      <Clock className="h-3 w-3" />
+                      Available from {new Date(coupon.valid_from).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                    </p>
+                  )}
+                  {!coupon.is_eligible && !coupon.is_upcoming && coupon.shortfall > 0 && (
+                    <p className="text-muted-foreground mt-0.5">
+                      Add {formatPrice(coupon.shortfall)} more to use this code
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
