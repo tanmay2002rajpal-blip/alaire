@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getDb } from "@/lib/db/client"
 
-export const revalidate = 60 // revalidate every 60 seconds
+export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
@@ -10,16 +10,16 @@ export async function GET() {
 
     if (!settings?.value) {
       return NextResponse.json({
-        text: "Free shipping on orders over ₹999",
-        is_active: true,
+        text: "",
+        is_active: false,
       })
     }
 
     return NextResponse.json(settings.value)
   } catch {
     return NextResponse.json({
-      text: "Free shipping on orders over ₹999",
-      is_active: true,
+      text: "",
+      is_active: false,
     })
   }
 }
