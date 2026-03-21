@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useCallback, useState, useEffect, type ReactNode } from "react"
-import { SessionProvider, useSession } from "next-auth/react"
+import { SessionProvider, useSession, signOut } from "next-auth/react"
 
 // ============================================================================
 // localStorage Helpers
@@ -115,6 +115,7 @@ function AuthContextProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     setLocalUser(null)
     clearStoredUser()
+    signOut({ redirectTo: "/" })
   }, [])
 
   const openAuthDialog = useCallback(() => {
