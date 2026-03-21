@@ -23,9 +23,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { LogOut } from "lucide-react"
 import { toast } from "sonner"
+import { useAuth } from "@/components/auth/auth-provider"
 
 export default function SettingsPage() {
+  const { logout } = useAuth()
   const [settings, setSettings] = useState({
     emailNotifications: true,
     orderUpdates: true,
@@ -110,6 +113,22 @@ export default function SettingsPage() {
               onCheckedChange={() => handleToggle("newsletter")}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Logout */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Session</CardTitle>
+          <CardDescription>
+            Sign out of your account on this device
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" onClick={logout}>
+            <LogOut className="h-4 w-4 mr-2" />
+            Log Out
+          </Button>
         </CardContent>
       </Card>
 
