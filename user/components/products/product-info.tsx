@@ -158,8 +158,8 @@ export function ProductInfo({ product }: ProductInfoProps) {
           disabled={!inStock || !allOptionsSelected}
           className="flex-1"
         />
-        <WishlistButton productId={product.id} />
-        <Button variant="outline" size="icon" className="h-12 w-12">
+        <WishlistButton productId={product.id} className="h-14 sm:h-12 md:h-11" />
+        <Button variant="outline" size="icon" className="h-14 w-14 sm:h-12 sm:w-12">
           <Share2 className="h-5 w-5" />
         </Button>
       </div>

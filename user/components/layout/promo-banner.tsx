@@ -32,7 +32,7 @@ export function PromoBanner() {
   if (!bannerData || !bannerData.is_active || !bannerData.text) return null
 
   const content = (
-    <p className="text-xs font-light tracking-wide">
+    <p className="text-[10px] sm:text-xs font-light tracking-wide text-center truncate px-4">
       {bannerData.text}
     </p>
   )
@@ -41,11 +41,11 @@ export function PromoBanner() {
     <div
       className={cn(
         "bg-black text-white",
-        "h-7 flex items-center justify-center"
+        "h-8 sm:h-7 flex items-center justify-center overflow-hidden"
       )}
     >
       {bannerData.link ? (
-        <Link href={bannerData.link} className="hover:opacity-80 transition-opacity">
+        <Link href={bannerData.link} className="hover:opacity-80 transition-opacity w-full flex items-center justify-center">
           {content}
         </Link>
       ) : (
