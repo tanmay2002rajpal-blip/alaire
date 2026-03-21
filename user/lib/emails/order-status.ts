@@ -89,7 +89,7 @@ export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Prom
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@omrajpal.tech>",
+      from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} is Processing ⚙️`,
       html,
@@ -163,7 +163,7 @@ export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promi
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@omrajpal.tech>",
+      from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Order Cancelled - ${orderNumber}`,
       html,
@@ -268,7 +268,7 @@ export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@omrajpal.tech>",
+      from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} Has Shipped! 📦`,
       html,
@@ -361,7 +361,7 @@ export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promi
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@omrajpal.tech>",
+      from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Your Order ${orderNumber} Has Been Delivered! ✓`,
       html,
@@ -447,7 +447,7 @@ export async function sendOrderRefundEmail(data: OrderStatusEmailData): Promise<
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@omrajpal.tech>",
+      from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Refund Processed for Order ${orderNumber}`,
       html,

@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     // Send email using Resend
     if (process.env.RESEND_API_KEY) {
       await resend.emails.send({
-        from: "Alaire <noreply@omrajpal.tech>",
+        from: "Alaire <noreply@alaire.in>",
         to: email,
         subject: "Your login code for Alaire",
         html: `

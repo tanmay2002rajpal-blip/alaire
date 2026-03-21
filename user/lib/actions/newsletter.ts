@@ -43,7 +43,7 @@ export async function subscribeToNewsletter(email: string): Promise<SubscribeRes
   // Send welcome email (don't fail subscription if email fails)
   try {
     await getResend().emails.send({
-      from: "Alaire <noreply@omrajpal.tech>",
+      from: "Alaire <newsletter@alaire.in>",
       to: email.toLowerCase(),
       subject: "Welcome to Alaire",
       html: `

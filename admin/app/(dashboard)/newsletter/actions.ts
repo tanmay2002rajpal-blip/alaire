@@ -35,7 +35,7 @@ export async function sendNewsletterBroadcast(subject: string, htmlContent: stri
     for (let i = 0; i < emails.length; i += BATCH_SIZE) {
       const batch = emails.slice(i, i + BATCH_SIZE)
       await resend.emails.send({
-        from: 'Alaire <noreply@omrajpal.tech>',
+        from: 'Alaire <newsletter@alaire.in>',
         to: batch,
         subject,
         html: htmlContent,

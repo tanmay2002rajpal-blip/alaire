@@ -313,7 +313,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@omrajpal.tech>",
+      from: "Alaire <orders@alaire.in>",
       to: customerEmail,
       subject: `Order Confirmed - ${orderNumber}`,
       html,
