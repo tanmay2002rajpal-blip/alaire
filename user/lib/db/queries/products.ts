@@ -200,6 +200,113 @@ export async function getFeaturedProducts(
   return getProducts({ sort: "newest", limit })
 }
 
+export async function getNewArrivals(
+  categorySlug?: string,
+  limit = 12
+): Promise<ProductWithRelations[]> {
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+  const products = await getProducts({
+    sort: "newest",
+    limit,
+    ...(categorySlug ? { category: categorySlug } : {}),
+  })
+
+  // Filter to last 30 days
+  const recent = products.filter(
+    (p) => p.created_at && new Date(p.created_at) >= thirtyDaysAgo
+  )
+
+  // Fallback: if fewer than 4 recent products, return newest regardless of date
+  return recent.length >= 4 ? recent : products
+}
+
+export async function getBestSellers(
+  _categorySlug?: string,
+  limit = 12
+): Promise<ProductWithRelations[]> {
+  // Note: categorySlug param reserved for future server-side filtering.
+  // Homepage uses client-side filtering, so this is called with undefined.
+  const db = await getDb()
+
+  try {
+    const reviewAgg = await db
+      .collection("reviews")
+      .aggregate([
+        { $match: { is_approved: true } },
+        { $group: { _id: "$product_id", reviewCount: { $sum: 1 } } },
+        { $sort: { reviewCount: -1 } },
+        { $limit: limit * 2 },
+      ])
+      .toArray()
+
+    if (reviewAgg.length === 0) {
+      return getProducts({ sort: "newest", limit })
+    }
+
+    const productIds = reviewAgg.map((r) => {
+      try {
+        return new ObjectId(r._id as string)
+      } catch {
+        return null
+      }
+    }).filter(Boolean) as ObjectId[]
+
+    if (productIds.length === 0) {
+      return getProducts({ sort: "newest", limit })
+    }
+
+    const rawProducts = await db
+      .collection("products")
+      .aggregate([
+        { $match: { _id: { $in: productIds }, is_active: true } },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: "product_variants",
+            localField: "_id",
+            foreignField: "product_id",
+            as: "variants",
+          },
+        },
+        {
+          $lookup: {
+            from: "categories",
+            let: { catId: "$category_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: [{ $toString: "$_id" }, "$$catId"] },
+                },
+              },
+            ],
+            as: "categoryArr",
+          },
+        },
+        {
+          $addFields: {
+            category: { $arrayElemAt: ["$categoryArr", 0] },
+          },
+        },
+        { $project: { categoryArr: 0 } },
+      ])
+      .toArray()
+
+    // Match existing serialization pattern: serialize top-level + nested docs
+    return rawProducts.map((p) => {
+      const serialized = serializeDoc(p)
+      return {
+        ...serialized,
+        variants: serializeDocs(p.variants || []),
+        category: p.category ? serializeDoc(p.category) : null,
+      } as unknown as ProductWithRelations
+    })
+  } catch {
+    return getProducts({ sort: "newest", limit })
+  }
+}
+
 export async function getRelatedProducts(
   productId: string,
   categoryId: string | null,

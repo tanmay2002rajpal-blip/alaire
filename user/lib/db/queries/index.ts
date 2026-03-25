@@ -6,6 +6,8 @@ export {
   getProducts,
   getProductBySlug,
   getFeaturedProducts,
+  getNewArrivals,
+  getBestSellers,
   getRelatedProducts,
   getRecentlyViewed,
 } from "./products"
