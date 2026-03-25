@@ -1,7 +1,6 @@
 import { Metadata } from "next"
 import {
   HeroCarousel,
-  CategoryQuickLinks,
   OnTrendPicks,
   NewArrivals,
   BestSellers,
@@ -56,7 +55,6 @@ export default async function HomePage() {
   return (
     <>
       <HeroCarousel slides={slides} />
-      <CategoryQuickLinks categories={categories} />
       <OnTrendPicks categories={categoriesWithCounts} />
       <NewArrivals products={newArrivals} categories={categories} />
       <BestSellers products={bestSellers} categories={categories} />
