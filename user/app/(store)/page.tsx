@@ -1,60 +1,67 @@
-import type { Metadata } from "next"
+import { Metadata } from "next"
 import {
   HeroCarousel,
-  HeroSection,
-  CategoryGrid,
-  FeaturedProducts,
+  CategoryQuickLinks,
+  OnTrendPicks,
+  NewArrivals,
+  BestSellers,
   NewsletterSection,
   InstagramFeed,
 } from "@/components/home"
-import { getFeaturedProducts, getCategories, getHeroSlides, getHomepageStats } from "@/lib/db/queries"
+import {
+  getNewArrivals,
+  getBestSellers,
+  getCategories,
+  getCategoriesWithCounts,
+  getHeroSlides,
+} from "@/lib/db/queries"
+import { getInstagramFeed } from "@/lib/instagram/api"
 
 export const metadata: Metadata = {
-  title: 'Alaire — Premium Fashion & Lifestyle',
-  description: 'Shop the latest trends in premium fashion, clothing, and accessories at Alaire. Free shipping on orders above ₹999.',
+  title: "Alaire — Curated Fashion",
+  description:
+    "Discover curated fashion pieces that blend timeless elegance with modern design.",
 }
 
 export default async function HomePage() {
-  const [products, categories, heroSlides, stats] = await Promise.all([
-    getFeaturedProducts(8),
+  const [
+    categories,
+    categoriesWithCounts,
+    heroSlides,
+    newArrivals,
+    bestSellers,
+    instagramPosts,
+  ] = await Promise.all([
     getCategories(),
+    getCategoriesWithCounts(),
     getHeroSlides(),
-    getHomepageStats(),
+    getNewArrivals(undefined, 12),
+    getBestSellers(undefined, 12),
+    getInstagramFeed(8).catch(() => []),
   ])
 
-  // Transform hero slides from database format to carousel format
-  const carouselSlides = heroSlides.map((slide) => ({
+  const slides = heroSlides.map((slide) => ({
     id: slide.id,
     image: slide.image_url,
     title: slide.title,
-    subtitle: slide.subtitle,
-    description: slide.description,
+    subtitle: slide.subtitle || "",
+    description: slide.description || "",
     cta: {
-      text: slide.button_text ?? "Shop Now",
-      href: slide.button_link ?? "/products",
+      text: slide.button_text || "Shop Now",
+      href: slide.button_link || "/collection",
     },
     align: "left" as const,
   }))
 
   return (
-    <div className="flex flex-col">
-      {/* Hero Carousel with Lifestyle Imagery */}
-      <HeroCarousel slides={carouselSlides} />
-
-      {/* Stats Section */}
-      <HeroSection stats={stats} />
-
-      {/* Featured Products */}
-      <FeaturedProducts products={products} />
-
-      {/* Categories */}
-      <CategoryGrid categories={categories} />
-
-      {/* Instagram Feed */}
-      <InstagramFeed />
-
-      {/* Newsletter Section */}
+    <>
+      <HeroCarousel slides={slides} />
+      <CategoryQuickLinks categories={categories} />
+      <OnTrendPicks categories={categoriesWithCounts} />
+      <NewArrivals products={newArrivals} categories={categories} />
+      <BestSellers products={bestSellers} categories={categories} />
       <NewsletterSection />
-    </div>
+      <InstagramFeed posts={instagramPosts} />
+    </>
   )
 }
