@@ -7,19 +7,22 @@ import useEmblaCarousel from "embla-carousel-react"
 import gsap from "gsap"
 import { ScrollTrigger } from "gsap/ScrollTrigger"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { CATEGORY_IMAGES } from "@/lib/sample-images"
-import { cn } from "@/lib/utils"
-import type { Category } from "@/types"
+import { cn, formatPrice } from "@/lib/utils"
+import { getSampleProductImage } from "@/lib/sample-images"
+import type { Product, ProductVariant } from "@/types"
 
 gsap.registerPlugin(ScrollTrigger)
 
-type CategoryWithCount = Category & { product_count: number }
-
-interface OnTrendPicksProps {
-  categories: CategoryWithCount[]
+type ProductWithRelations = Product & {
+  variants?: ProductVariant[]
+  category?: { name: string; slug: string } | null
 }
 
-export function OnTrendPicks({ categories }: OnTrendPicksProps) {
+interface OnTrendPicksProps {
+  products: ProductWithRelations[]
+}
+
+export function OnTrendPicks({ products }: OnTrendPicksProps) {
   const sectionRef = useRef<HTMLElement>(null)
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: true,
@@ -47,7 +50,6 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
     }
   }, [emblaApi, onSelect])
 
-  // GSAP entrance animation
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     if (prefersReducedMotion) return
@@ -69,7 +71,7 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
     return () => ctx.revert()
   }, [])
 
-  if (categories.length === 0) return null
+  if (products.length === 0) return null
 
   return (
     <section className="section overflow-hidden" ref={sectionRef}>
@@ -83,23 +85,22 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
       </div>
 
       <div className="relative">
-        {/* Carousel */}
         <div className="overflow-hidden" ref={emblaRef}>
           <div className="flex">
-            {categories.map((category, index) => {
-              const imageUrl =
-                category.image_url ||
-                (CATEGORY_IMAGES as Record<string, string>)[category.slug] ||
-                null
+            {products.map((product, index) => {
+              const imageUrl = product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)
               const isActive = index === selectedIndex
+              const price = product.variants?.[0]?.price ?? product.base_price ?? 0
+              const comparePrice = product.variants?.[0]?.compare_at_price
+              const hasDiscount = comparePrice != null && comparePrice > price
 
               return (
                 <div
-                  key={category.id}
+                  key={product.id}
                   className="min-w-0 flex-shrink-0 basis-[70%] sm:basis-[50%] lg:basis-[40%] px-2 sm:px-3 transition-all duration-500"
                 >
                   <Link
-                    href={`/collection?category=${category.slug}`}
+                    href={`/products/${product.slug}`}
                     className="group block"
                   >
                     <div
@@ -110,22 +111,21 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
                           : "aspect-[3/4] scale-[0.88] opacity-50"
                       )}
                     >
-                      {imageUrl ? (
-                        <Image
-                          src={imageUrl}
-                          alt={category.name}
-                          fill
-                          className={cn(
-                            "object-cover transition-transform duration-700",
-                            isActive && "group-hover:scale-105"
-                          )}
-                          sizes="(max-width: 640px) 70vw, (max-width: 1024px) 50vw, 40vw"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-accent/30 via-accent/10 to-background flex items-center justify-center">
-                          <span className="text-7xl font-serif font-light text-accent/40">
-                            {category.name.charAt(0)}
-                          </span>
+                      <Image
+                        src={imageUrl}
+                        alt={product.name}
+                        fill
+                        className={cn(
+                          "object-cover transition-transform duration-700",
+                          isActive && "group-hover:scale-105"
+                        )}
+                        sizes="(max-width: 640px) 70vw, (max-width: 1024px) 50vw, 40vw"
+                      />
+
+                      {/* Discount badge */}
+                      {hasDiscount && isActive && (
+                        <div className="absolute top-4 left-4 bg-red-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                          -{Math.round(((comparePrice - price) / comparePrice) * 100)}%
                         </div>
                       )}
 
@@ -137,12 +137,24 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
                         "absolute inset-x-0 bottom-0 p-5 sm:p-6 lg:p-8 transition-all duration-500",
                         isActive ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
                       )}>
-                        <p className="text-white/60 text-xs font-medium tracking-[0.2em] uppercase mb-1">
-                          {category.product_count} Products
-                        </p>
-                        <h3 className="text-white font-serif text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-tight">
-                          {category.name}
+                        {product.category && (
+                          <p className="text-white/50 text-xs font-medium tracking-[0.2em] uppercase mb-1">
+                            {product.category.name}
+                          </p>
+                        )}
+                        <h3 className="text-white font-serif text-xl sm:text-2xl lg:text-3xl font-semibold tracking-tight">
+                          {product.name}
                         </h3>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-white font-medium text-lg">
+                            {formatPrice(price)}
+                          </span>
+                          {hasDiscount && (
+                            <span className="text-white/40 line-through text-sm">
+                              {formatPrice(comparePrice)}
+                            </span>
+                          )}
+                        </div>
                         <div className="mt-3 flex items-center gap-2 text-white/80 text-sm font-light tracking-wide group-hover:text-white transition-colors">
                           <span>Shop Now</span>
                           <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
@@ -157,19 +169,19 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
         </div>
 
         {/* Navigation arrows */}
-        {categories.length > 1 && (
+        {products.length > 1 && (
           <>
             <button
               onClick={scrollPrev}
               className="absolute left-2 sm:left-4 lg:left-8 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 backdrop-blur-sm shadow-lg transition-all hover:bg-white hover:scale-110"
-              aria-label="Previous category"
+              aria-label="Previous product"
             >
               <ChevronLeft className="h-5 w-5 text-foreground" />
             </button>
             <button
               onClick={scrollNext}
               className="absolute right-2 sm:right-4 lg:right-8 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/90 backdrop-blur-sm shadow-lg transition-all hover:bg-white hover:scale-110"
-              aria-label="Next category"
+              aria-label="Next product"
             >
               <ChevronRight className="h-5 w-5 text-foreground" />
             </button>
@@ -182,7 +194,7 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
             {String(selectedIndex + 1).padStart(2, "0")}
           </span>
           <div className="flex gap-1.5">
-            {categories.map((_, index) => (
+            {products.map((_, index) => (
               <button
                 key={index}
                 onClick={() => emblaApi?.scrollTo(index)}
@@ -197,7 +209,7 @@ export function OnTrendPicks({ categories }: OnTrendPicksProps) {
             ))}
           </div>
           <span className="text-sm text-muted-foreground tabular-nums">
-            {String(categories.length).padStart(2, "0")}
+            {String(products.length).padStart(2, "0")}
           </span>
         </div>
       </div>

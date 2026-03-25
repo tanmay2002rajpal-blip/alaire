@@ -11,7 +11,6 @@ import {
   getNewArrivals,
   getBestSellers,
   getCategories,
-  getCategoriesWithCounts,
   getHeroSlides,
 } from "@/lib/db/queries"
 import { getInstagramFeed } from "@/lib/instagram/api"
@@ -25,14 +24,12 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const [
     categories,
-    categoriesWithCounts,
     heroSlides,
     newArrivals,
     bestSellers,
     instagramPosts,
   ] = await Promise.all([
     getCategories(),
-    getCategoriesWithCounts(),
     getHeroSlides(),
     getNewArrivals(undefined, 12),
     getBestSellers(undefined, 12),
@@ -55,7 +52,7 @@ export default async function HomePage() {
   return (
     <>
       <HeroCarousel slides={slides} />
-      <OnTrendPicks categories={categoriesWithCounts} />
+      <OnTrendPicks products={newArrivals} />
       <NewArrivals products={newArrivals} categories={categories} />
       <BestSellers products={bestSellers} categories={categories} />
       <NewsletterSection />

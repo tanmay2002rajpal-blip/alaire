@@ -1,5 +1,4 @@
 export { HeroCarousel } from "./hero-carousel"
-export { CategoryQuickLinks } from "./category-quick-links"
 export { OnTrendPicks } from "./on-trend-picks"
 export { NewArrivals } from "./new-arrivals"
 export { BestSellers } from "./best-sellers"
