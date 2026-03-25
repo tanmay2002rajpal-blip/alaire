@@ -164,7 +164,7 @@ export function HeroCarousel({ slides }: HeroCarouselProps) {
   return (
     <section
       ref={containerRef}
-      className="relative h-screen w-full overflow-hidden bg-[#0A0A0A]"
+      className="relative h-[70vh] md:h-screen w-full overflow-hidden bg-[#0A0A0A]"
     >
       {/* Subtle grain texture */}
       <div
@@ -205,7 +205,7 @@ export function HeroCarousel({ slides }: HeroCarouselProps) {
           </div>
 
           {/* Content - minimal, bottom-aligned */}
-          <div className="relative z-10 flex h-full items-end pb-32 md:pb-40">
+          <div className="relative z-10 flex h-full items-start pt-24 md:items-end md:pt-0 md:pb-40">
             <div className="container">
               <div className="max-w-xl">
                 {/* Title - refined typography */}
