@@ -1,10 +1,15 @@
 "use client"
 
+import { useEffect, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import gsap from "gsap"
+import { ScrollTrigger } from "gsap/ScrollTrigger"
 import { EmblaCarousel } from "@/components/ui/embla-carousel"
 import { CATEGORY_IMAGES } from "@/lib/sample-images"
 import type { Category } from "@/types"
+
+gsap.registerPlugin(ScrollTrigger)
 
 type CategoryWithCount = Category & { product_count: number }
 
@@ -13,16 +18,39 @@ interface OnTrendPicksProps {
 }
 
 export function OnTrendPicks({ categories }: OnTrendPicksProps) {
+  const sectionRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (prefersReducedMotion) return
+
+    const ctx = gsap.context(() => {
+      gsap.from("[data-animate]", {
+        y: 30,
+        opacity: 0,
+        duration: 0.8,
+        stagger: 0.1,
+        ease: "power2.out",
+        scrollTrigger: {
+          trigger: sectionRef.current,
+          start: "top 85%",
+          once: true,
+        },
+      })
+    }, sectionRef)
+    return () => ctx.revert()
+  }, [])
+
   if (categories.length === 0) return null
 
   return (
-    <section className="section">
+    <section className="section" ref={sectionRef}>
       <div className="container">
         <div className="text-center mb-8 lg:mb-12">
-          <h2 className="font-serif text-3xl lg:text-4xl font-semibold tracking-tight">
+          <h2 data-animate className="font-serif text-3xl lg:text-4xl font-semibold tracking-tight">
             On-Trend <span className="font-light italic">Picks</span>
           </h2>
-          <p className="mt-2 text-muted-foreground">
+          <p data-animate className="mt-2 text-muted-foreground">
             Explore Our Collections
           </p>
         </div>
