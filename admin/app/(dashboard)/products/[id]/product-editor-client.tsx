@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { Loader2, ArrowLeft, Trash2, Save } from 'lucide-react'
+import { Loader2, ArrowLeft, Trash2, Save, Eye, EyeOff } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -291,9 +291,20 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              {isNew ? 'Create Product' : 'Edit Product'}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold tracking-tight">
+                {isNew ? 'Create Product' : 'Edit Product'}
+              </h1>
+              {!isNew && (
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  watchIsActive
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                }`}>
+                  {watchIsActive ? 'Published' : 'Draft'}
+                </span>
+              )}
+            </div>
             <p className="text-muted-foreground">
               {isNew
                 ? 'Add a new product to your catalog'
@@ -321,6 +332,31 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
               )}
             </Button>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setValue('is_active', !watchIsActive)
+              handleSubmit(onSubmit)()
+            }}
+            disabled={isSubmitting || isDeleting}
+            className={watchIsActive
+              ? 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20'
+              : 'border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950/20'
+            }
+          >
+            {watchIsActive ? (
+              <>
+                <EyeOff className="h-4 w-4 mr-2" />
+                Unpublish
+              </>
+            ) : (
+              <>
+                <Eye className="h-4 w-4 mr-2" />
+                Publish
+              </>
+            )}
+          </Button>
           <Button
             onClick={handleSubmit(onSubmit)}
             disabled={isSubmitting || isDeleting}
