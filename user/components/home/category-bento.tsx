@@ -5,8 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import gsap from "gsap"
 import { ScrollTrigger } from "gsap/ScrollTrigger"
-import { ArrowUpRight } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { ArrowRight } from "lucide-react"
 import { CATEGORY_IMAGES } from "@/lib/sample-images"
 import type { Category } from "@/types"
 
@@ -36,14 +35,14 @@ export function CategoryBento({ categories }: CategoryBentoProps) {
           once: true,
         },
       })
-      gsap.from(".bento-tile", {
-        y: 40,
+      gsap.from(".cat-card", {
+        y: 30,
         opacity: 0,
-        duration: 0.6,
-        stagger: 0.08,
+        duration: 0.5,
+        stagger: 0.06,
         ease: "power2.out",
         scrollTrigger: {
-          trigger: ".bento-grid",
+          trigger: ".cat-strip",
           start: "top 85%",
           once: true,
         },
@@ -54,9 +53,6 @@ export function CategoryBento({ categories }: CategoryBentoProps) {
 
   if (categories.length === 0) return null
 
-  // Pad to at least 4 for the layout
-  const items = categories.slice(0, 6)
-
   const getImage = (cat: Category) =>
     cat.image_url ||
     (CATEGORY_IMAGES as Record<string, string>)[cat.slug] ||
@@ -65,91 +61,78 @@ export function CategoryBento({ categories }: CategoryBentoProps) {
   return (
     <section className="section" ref={sectionRef}>
       <div className="container">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8 lg:mb-12">
+        <div className="flex items-end justify-between gap-4 mb-6 lg:mb-10">
           <div>
             <h2 data-animate className="font-serif text-3xl lg:text-5xl font-semibold tracking-tight">
               Shop by <span className="font-light italic">Category</span>
             </h2>
             <p data-animate className="mt-2 text-muted-foreground">
-              Find exactly what you're looking for
+              Find exactly what you&apos;re looking for
             </p>
           </div>
           <Link
             href="/categories"
             data-animate
-            className="hidden sm:flex items-center gap-1 text-sm font-medium text-accent hover:text-accent/80 transition-colors"
+            className="hidden sm:flex items-center gap-1 text-sm font-medium text-accent hover:text-accent/80 transition-colors shrink-0"
           >
-            All Categories <ArrowUpRight className="h-4 w-4" />
+            View All <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
+      </div>
 
-        {/* Bento Grid - asymmetric layout */}
-        <div className="bento-grid grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 auto-rows-[180px] sm:auto-rows-[200px] lg:auto-rows-[220px]">
-          {items.map((cat, index) => {
-            const imageUrl = getImage(cat)
-            // First item spans 2 rows, second spans 2 cols on desktop
-            const spanClass = cn(
-              index === 0 && "row-span-2",
-              index === 1 && "lg:col-span-2",
-              index === items.length - 1 && items.length > 4 && "lg:col-span-2",
-            )
+      {/* Horizontal scroll on mobile, centered grid on desktop */}
+      <div className="cat-strip flex gap-3 sm:gap-4 overflow-x-auto no-scrollbar snap-x snap-mandatory px-[max(1rem,calc((100vw-1400px)/2+1rem))] pb-2 lg:grid lg:grid-cols-3 xl:grid-cols-4 lg:overflow-visible lg:snap-none lg:px-[max(1rem,calc((100vw-1400px)/2+1rem))]">
+        {categories.map((cat) => {
+          const imageUrl = getImage(cat)
 
-            return (
-              <Link
-                key={cat.id}
-                href={`/collection?category=${cat.slug}`}
-                className={cn("bento-tile group relative overflow-hidden rounded-2xl", spanClass)}
-              >
+          return (
+            <Link
+              key={cat.id}
+              href={`/collection?category=${cat.slug}`}
+              className="cat-card group snap-start shrink-0 w-[140px] sm:w-[180px] lg:w-auto"
+            >
+              <div className="relative aspect-[3/4] rounded-2xl overflow-hidden">
                 {imageUrl ? (
                   <Image
                     src={imageUrl}
                     alt={cat.name}
                     fill
-                    className="object-cover transition-transform duration-700 group-hover:scale-110"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 25vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-110"
+                    sizes="(max-width: 640px) 140px, (max-width: 1024px) 180px, 25vw"
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-gradient-to-br from-accent/30 via-accent/10 to-muted flex items-center justify-center">
-                    <span className="text-6xl font-serif font-light text-accent/30">
+                  <div className="absolute inset-0 bg-gradient-to-br from-accent/20 via-muted to-accent/5 flex items-center justify-center">
+                    <span className="text-5xl font-serif font-light text-accent/30">
                       {cat.name.charAt(0)}
                     </span>
                   </div>
                 )}
 
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
-                {/* Content */}
-                <div className="absolute inset-0 p-4 sm:p-5 flex flex-col justify-end">
-                  <h3 className="text-white font-semibold text-lg sm:text-xl tracking-tight">
+                {/* Name */}
+                <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
+                  <h3 className="text-white font-semibold text-sm sm:text-base tracking-tight text-center">
                     {cat.name}
                   </h3>
-                  {cat.description && (
-                    <p className="text-white/60 text-xs sm:text-sm mt-1 line-clamp-1">
-                      {cat.description}
-                    </p>
-                  )}
-                  <div className="mt-2 flex items-center gap-1 text-white/70 text-xs font-medium tracking-wide group-hover:text-white transition-colors">
-                    <span>Explore</span>
-                    <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                  </div>
                 </div>
 
-                {/* Hover border glow */}
-                <div className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-white/20 transition-colors" />
-              </Link>
-            )
-          })}
-        </div>
+                {/* Hover ring */}
+                <div className="absolute inset-0 rounded-2xl ring-2 ring-transparent group-hover:ring-white/30 transition-all" />
+              </div>
+            </Link>
+          )
+        })}
+      </div>
 
-        <div className="mt-6 text-center sm:hidden">
-          <Link
-            href="/categories"
-            className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:text-accent/80 transition-colors"
-          >
-            All Categories <ArrowUpRight className="h-4 w-4" />
-          </Link>
-        </div>
+      <div className="container mt-5 text-center sm:hidden">
+        <Link
+          href="/categories"
+          className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:text-accent/80 transition-colors"
+        >
+          All Categories <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
     </section>
   )
