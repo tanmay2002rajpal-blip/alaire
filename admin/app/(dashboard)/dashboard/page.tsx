@@ -5,6 +5,7 @@ import {
   getRecentOrders,
   getRevenueChart,
 } from '@/lib/queries/dashboard';
+import { getBestSellerProducts } from '@/lib/queries/analytics';
 import {
   Card,
   CardContent,
@@ -49,10 +50,11 @@ const getStatusBadgeVariant = (
 
 export default async function DashboardPage() {
   // Fetch all dashboard data in parallel
-  const [stats, recentOrders, revenueData] = await Promise.all([
+  const [stats, recentOrders, revenueData, topProducts] = await Promise.all([
     getDashboardStats(),
     getRecentOrders(5),
     getRevenueChart(7),
+    getBestSellerProducts(5),
   ]);
 
   // Calculate revenue change percentage
@@ -187,6 +189,58 @@ export default async function DashboardPage() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Top Selling Products */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Top Selling Products</CardTitle>
+              <CardDescription className="mt-1">
+                Best performers by units sold
+              </CardDescription>
+            </div>
+            <Link
+              href="/analytics/best-sellers"
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              View full report
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {topProducts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Package className="h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">
+                No sales data yet. Top products will appear once orders are completed.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {topProducts.map((product, index) => (
+                <div
+                  key={product.id}
+                  className="flex items-center gap-4 py-2 border-b last:border-0"
+                >
+                  <span className="text-lg font-bold text-muted-foreground w-6 shrink-0 text-center">
+                    {index + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {product.category_name ?? 'Uncategorized'}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold">{product.total_units} units</p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
