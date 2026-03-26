@@ -3,7 +3,9 @@
  * Provides sales metrics, trends, and reports.
  */
 
+import { ObjectId } from 'mongodb'
 import { getOrdersCollection, getOrderItemsCollection, getProductsCollection, getCategoriesCollection, getUsersCollection } from '@/lib/db/collections'
+import { getDb } from '@/lib/db/client'
 
 export interface SalesStats {
   totalRevenue: number
@@ -332,4 +334,162 @@ export async function getSalesByPaymentMethod(): Promise<{ method: string; count
     method: method === "cod" ? "Cash on Delivery" : "Online Payment",
     ...data,
   }))
+}
+
+export async function getBestSellerProducts(limit = 10): Promise<{
+  id: string
+  name: string
+  slug: string
+  images: string[]
+  category_name: string | null
+  total_units: number
+  total_revenue: number
+  variant_count: number
+}[]> {
+  const db = await getDb()
+
+  const pipeline = [
+    // Join with orders to get completed orders only
+    {
+      $match: {
+        status: { $in: ["delivered", "shipped", "confirmed", "processing"] }
+      }
+    },
+    // Unwind order items
+    {
+      $lookup: {
+        from: "order_items",
+        localField: "_id",
+        foreignField: "order_id",
+        as: "items"
+      }
+    },
+    { $unwind: "$items" },
+    // Group by product
+    {
+      $group: {
+        _id: "$items.product_id",
+        total_units: { $sum: "$items.quantity" },
+        total_revenue: { $sum: { $multiply: ["$items.price_at_purchase", "$items.quantity"] } }
+      }
+    },
+    { $sort: { total_units: -1 } },
+    { $limit: limit },
+  ]
+
+  const salesData = await db.collection("orders").aggregate(pipeline).toArray()
+
+  if (salesData.length === 0) return []
+
+  // Fetch product details for these IDs
+  const productIds = salesData.map(s => {
+    try { return new ObjectId(s._id as string) } catch { return null }
+  }).filter(Boolean)
+
+  const products = await db.collection("products").aggregate([
+    { $match: { _id: { $in: productIds } } },
+    {
+      $lookup: {
+        from: "categories",
+        let: { catId: "$category_id" },
+        pipeline: [
+          { $match: { $expr: { $eq: [{ $toString: "$_id" }, "$$catId"] } } }
+        ],
+        as: "categoryArr"
+      }
+    },
+    {
+      $lookup: {
+        from: "product_variants",
+        localField: "_id",
+        foreignField: "product_id",
+        as: "variants"
+      }
+    },
+    {
+      $addFields: {
+        category: { $arrayElemAt: ["$categoryArr", 0] }
+      }
+    }
+  ]).toArray()
+
+  // Merge sales data with product details
+  return salesData.map(sale => {
+    const product = products.find(p => p._id.toString() === (sale._id as string))
+    if (!product) return null
+    return {
+      id: product._id.toString(),
+      name: product.name,
+      slug: product.slug,
+      images: product.images || [],
+      category_name: product.category?.name || null,
+      total_units: sale.total_units,
+      total_revenue: sale.total_revenue,
+      variant_count: (product.variants || []).length,
+    }
+  }).filter(Boolean) as any[]
+}
+
+export async function getProductVariantSales(productId: string): Promise<{
+  variant_id: string
+  variant_name: string
+  options: Record<string, string>
+  units_sold: number
+  revenue: number
+  stock_remaining: number
+  price: number
+}[]> {
+  const db = await getDb()
+
+  // Get all variants for this product
+  const variants = await db.collection("product_variants")
+    .find({ product_id: productId })
+    .toArray()
+
+  if (variants.length === 0) return []
+
+  // Get sales data per variant from order_items
+  const variantSales = await db.collection("orders").aggregate([
+    {
+      $match: {
+        status: { $in: ["delivered", "shipped", "confirmed", "processing"] }
+      }
+    },
+    {
+      $lookup: {
+        from: "order_items",
+        localField: "_id",
+        foreignField: "order_id",
+        as: "items"
+      }
+    },
+    { $unwind: "$items" },
+    {
+      $match: {
+        "items.product_id": productId
+      }
+    },
+    {
+      $group: {
+        _id: "$items.variant_id",
+        units_sold: { $sum: "$items.quantity" },
+        revenue: { $sum: { $multiply: ["$items.price_at_purchase", "$items.quantity"] } }
+      }
+    },
+    { $sort: { units_sold: -1 } }
+  ]).toArray()
+
+  // Merge variant details with sales data
+  return variants.map(variant => {
+    const sales = variantSales.find(s => (s._id as string) === variant._id.toString())
+    return {
+      variant_id: variant._id.toString(),
+      variant_name: variant.name,
+      options: variant.options || {},
+      units_sold: sales?.units_sold || 0,
+      revenue: sales?.revenue || 0,
+      stock_remaining: variant.stock_quantity || 0,
+      price: variant.price || 0,
+    }
+  }).sort((a, b) => b.units_sold - a.units_sold)
 }
