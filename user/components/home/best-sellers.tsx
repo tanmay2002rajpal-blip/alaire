@@ -103,7 +103,7 @@ export function BestSellers({ products }: BestSellersProps) {
               href={`/products/${product.slug}`}
               className="rank-card group snap-start shrink-0 w-[280px] sm:w-[320px] lg:w-[360px]"
             >
-              <div className="relative bg-white/5 rounded-2xl overflow-hidden border border-white/10 hover:border-white/20 transition-all">
+              <div className="relative rounded-2xl overflow-hidden transition-all">
                 {/* Product image */}
                 <div className="relative aspect-[4/5] overflow-hidden">
                   <Image
