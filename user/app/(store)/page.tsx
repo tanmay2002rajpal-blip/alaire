@@ -2,10 +2,12 @@ import { Metadata } from "next"
 import {
   HeroCarousel,
   OnTrendPicks,
+  CategoryBento,
   NewArrivals,
+  LifestyleBanner,
   BestSellers,
-  NewsletterSection,
   InstagramFeed,
+  NewsletterSection,
 } from "@/components/home"
 import {
   getNewArrivals,
@@ -53,10 +55,12 @@ export default async function HomePage() {
     <>
       <HeroCarousel slides={slides} />
       <OnTrendPicks products={newArrivals} />
+      <CategoryBento categories={categories} />
       <NewArrivals products={newArrivals} categories={categories} />
-      <BestSellers products={bestSellers} categories={categories} />
-      <NewsletterSection />
+      <LifestyleBanner />
+      <BestSellers products={bestSellers} />
       <InstagramFeed posts={instagramPosts} />
+      <NewsletterSection />
     </>
   )
 }
