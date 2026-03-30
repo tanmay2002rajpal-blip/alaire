@@ -57,12 +57,14 @@ export interface CheckoutFormProps {
   discount?: number
   /** Shipping cost calculated from Blue Dart */
   shippingCost?: number
+  /** Estimated delivery days from Blue Dart transit time */
+  estimatedDays?: number
   /** Wallet balance amount used for this order */
   walletAmountUsed?: number
   /** Applied coupon code */
   couponCode?: string
   /** Callback when shipping cost changes based on pincode */
-  onShippingChange?: (cost: number) => void
+  onShippingChange?: (cost: number, days?: number) => void
   /** Callback when checkout is successful, receives the order ID */
   onSuccess: (orderId: string) => void
 }
@@ -102,7 +104,7 @@ export interface ShippingAddressCardProps {
   /** Handler for serviceability data changes */
   onServiceabilityChange: (data: PincodeData | null) => void
   /** Handler for shipping cost changes */
-  onShippingChange?: (cost: number) => void
+  onShippingChange?: (cost: number, days?: number) => void
 }
 
 /**

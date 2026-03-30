@@ -141,7 +141,24 @@ export function PincodeChecker({
         </div>
       )}
 
-      {/* Removed strict success and error states as it is now just an auto-fill */}
+      {/* Estimated Delivery Info */}
+      {!isChecking && hasChecked && serviceabilityData?.serviceable && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+          <div className="flex items-center gap-2">
+            <Truck className="h-4 w-4 text-green-600" />
+            <p className="text-sm text-green-700">
+              <span className="font-medium">
+                Delivery in {formatEstimatedDays(serviceabilityData.estimatedDays)}
+              </span>
+              {serviceabilityData.city !== "Unknown" && (
+                <span className="text-green-600">
+                  {" "}to {serviceabilityData.city}, {serviceabilityData.state}
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

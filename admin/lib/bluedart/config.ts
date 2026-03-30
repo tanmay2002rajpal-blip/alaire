@@ -18,6 +18,8 @@
 export interface BlueDartConfig {
   loginId: string
   licenseKey: string
+  clientId?: string
+  clientSecret?: string
   apiType: string
   version: string
   customerName: string
@@ -76,7 +78,7 @@ export function validateBlueDartConfig(): BlueDartConfigValidation {
   const errors: string[] = []
   const warnings: string[] = []
 
-  // Required credentials
+  // Required credentials (Profile body)
   const loginId = process.env.BLUEDART_LOGIN_ID?.trim()
   const licenseKey = process.env.BLUEDART_LICENSE_KEY?.trim()
 
@@ -89,6 +91,16 @@ export function validateBlueDartConfig(): BlueDartConfigValidation {
   if (!licenseKey) {
     errors.push(
       'BLUEDART_LICENSE_KEY is not set. Get your License Key from Blue Dart API Gateway portal.'
+    )
+  }
+
+  // APIGEE token auth credentials
+  const clientId = process.env.BLUEDART_CLIENT_ID?.trim()
+  const clientSecret = process.env.BLUEDART_CLIENT_SECRET?.trim()
+
+  if (!clientId || !clientSecret) {
+    warnings.push(
+      'BLUEDART_CLIENT_ID and BLUEDART_CLIENT_SECRET not set. These are required for APIGEE JWT token generation. Falling back to BLUEDART_LICENSE_KEY as static token.'
     )
   }
 
@@ -168,6 +180,8 @@ export function validateBlueDartConfig(): BlueDartConfigValidation {
     config: {
       loginId: loginId!,
       licenseKey: licenseKey!,
+      clientId: clientId || undefined,
+      clientSecret: clientSecret || undefined,
       apiType,
       version,
       customerName,

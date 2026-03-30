@@ -220,9 +220,32 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
             </Card>
           )}
 
-          {/* Tracking (if shipped) */}
-          {(order.status === "shipped" || order.status === "delivered") &&
-            order.awb_number && (
+          {/* Estimated Delivery */}
+          {order.estimated_delivery_days && order.estimated_delivery_days > 0 &&
+            order.status !== "delivered" && order.status !== "cancelled" && (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Estimated delivery in</span>
+                    <span className="font-medium">
+                      {order.estimated_delivery_days <= 3
+                        ? `${order.estimated_delivery_days} business day${order.estimated_delivery_days > 1 ? "s" : ""}`
+                        : order.estimated_delivery_days <= 5
+                        ? "3-5 business days"
+                        : "5-7 business days"}
+                    </span>
+                  </div>
+                  {order.courier_name && !order.awb_number && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Courier: {order.courier_name}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+          {/* Tracking (if AWB number exists) */}
+          {order.awb_number && (
               <OrderTracking
                 awbNumber={order.awb_number}
                 courierName={order.courier_name ?? undefined}

@@ -36,6 +36,7 @@ export default function CheckoutPage() {
 
   // Shipping state (from pincode checker)
   const [shippingCost, setShippingCost] = useState(0)
+  const [estimatedDays, setEstimatedDays] = useState(0)
 
 
   useEffect(() => {
@@ -125,8 +126,9 @@ export default function CheckoutPage() {
     setUseWallet(use)
   }
 
-  const handleShippingChange = (cost: number) => {
+  const handleShippingChange = (cost: number, days?: number) => {
     setShippingCost(cost)
+    if (days !== undefined) setEstimatedDays(days)
   }
 
   return (
@@ -171,6 +173,7 @@ export default function CheckoutPage() {
               subtotal={subtotal}
               discount={discount}
               shippingCost={shippingCost}
+              estimatedDays={estimatedDays}
               walletAmountUsed={walletAmountUsed}
               couponCode={couponCode}
               onShippingChange={handleShippingChange}
@@ -189,6 +192,7 @@ export default function CheckoutPage() {
               subtotal={subtotal}
               discount={discount}
               shipping={shippingCost}
+              estimatedDays={estimatedDays}
               walletBalance={walletBalance}
               useWallet={useWallet}
               walletAmountUsed={walletAmountUsed}

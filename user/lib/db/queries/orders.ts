@@ -123,6 +123,7 @@ export async function getOrderConfirmation(
   shipping_cost: number
   total: number
   payment_method: string
+  estimated_delivery_days: number | null
   created_at: string
   items: OrderItem[]
   shipping_address: ShippingAddress
@@ -153,6 +154,7 @@ export async function getOrderConfirmation(
         shipping_cost: { $ifNull: ["$shipping_cost", { $ifNull: ["$shipping_amount", 0] }] },
         total: 1,
         payment_method: 1,
+        estimated_delivery_days: { $ifNull: ["$estimated_delivery_days", null] },
         created_at: 1,
         shipping_address: 1,
         items: 1,

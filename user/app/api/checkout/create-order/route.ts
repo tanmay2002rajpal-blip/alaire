@@ -63,6 +63,7 @@ export async function POST(request: Request) {
       items,
       subtotal,
       shippingCost = 0,
+      estimatedDays,
       shippingAddress,
       email,
       discountCode,
@@ -271,6 +272,7 @@ export async function POST(request: Request) {
       shipping_address: shippingAddress,
       razorpay_order_id: razorpayOrderId,
       wallet_amount_used: walletAmountUsed || 0,
+      estimated_delivery_days: estimatedDays || null,
       payment_method: paymentMethod,
       status: paymentMethod === "cod" ? "confirmed" : "pending",
       created_at: new Date(),
@@ -433,7 +435,8 @@ export async function POST(request: Request) {
         const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ""
         const originArea = process.env.BLUEDART_ORIGIN_AREA || ""
         const warehousePincode = "125001"
-        const pickupDate = new Date().toISOString().split("T")[0]
+        // BlueDart expects /Date(epoch_ms)/ format
+        const pickupDate = `/Date(${Date.now()})/`
         const pickupTime = "1400"
 
         const waybillResult = await blueDartClient.generateWaybill({
@@ -456,13 +459,15 @@ export async function POST(request: Request) {
           Services: {
             ProductCode: "A",
             ProductType: 1,
-            SubProductCode: "C",
+            SubProductCode: "C", // COD
             PieceCount: "1",
             ActualWeight: "0.5",
             CreditReferenceNo: orderNumber,
             DeclaredValue: String(calculatedSubtotal),
+            CollectableAmount: total, // COD collectable amount
             PickupDate: pickupDate,
             PickupTime: pickupTime,
+            RegisterPickup: true, // Auto-register pickup with waybill
           },
         })
 
@@ -477,19 +482,6 @@ export async function POST(request: Request) {
               },
             }
           )
-
-          await blueDartClient.registerPickup({
-            PickupDate: pickupDate,
-            PickupTime: pickupTime,
-            CustomerCode: customerCode,
-            OriginArea: originArea,
-            CustomerName: customerName,
-            CustomerMobile: "",
-            CustomerAddress1: "",
-            CustomerPincode: warehousePincode,
-            PackageCount: 1,
-            ProductCode: "A",
-          })
         }
       } catch (shippingError) {
         console.error("Blue Dart shipment creation error (non-fatal):", shippingError)

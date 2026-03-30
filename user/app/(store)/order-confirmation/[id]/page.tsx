@@ -190,7 +190,15 @@ export default async function OrderConfirmationPage({
             <div className="mt-2 flex items-center gap-2">
               <Truck className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                Estimated delivery in 5-7 business days
+                {order.estimated_delivery_days && order.estimated_delivery_days > 0
+                  ? `Estimated delivery in ${
+                      order.estimated_delivery_days <= 3
+                        ? `${order.estimated_delivery_days} business day${order.estimated_delivery_days > 1 ? "s" : ""}`
+                        : order.estimated_delivery_days <= 5
+                        ? "3-5 business days"
+                        : "5-7 business days"
+                    }`
+                  : "Estimated delivery in 5-7 business days"}
               </p>
             </div>
           </CardContent>

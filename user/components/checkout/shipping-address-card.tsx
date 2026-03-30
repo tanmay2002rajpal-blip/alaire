@@ -88,8 +88,8 @@ export function ShippingAddressCard({
     onServiceabilityChange(data)
 
     if (data) {
-      // Update shipping cost based on serviceability
-      onShippingChange?.(data.shippingCost)
+      // Update shipping cost and estimated days based on serviceability
+      onShippingChange?.(data.shippingCost, data.estimatedDays)
 
       // Auto-populate pincode if serviceable
       if (data.serviceable) {

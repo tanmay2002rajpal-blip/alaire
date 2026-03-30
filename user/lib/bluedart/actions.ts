@@ -250,8 +250,12 @@ export async function createShipment(orderData: {
           ActualWeight: String(orderData.weight),
           CreditReferenceNo: orderData.orderId,
           DeclaredValue: String(orderData.declaredValue),
-          PickupDate: orderData.pickupDate,
+          // Convert to /Date(epoch_ms)/ format if not already
+          PickupDate: orderData.pickupDate.startsWith('/Date(')
+            ? orderData.pickupDate
+            : `/Date(${new Date(orderData.pickupDate).getTime()})/`,
           PickupTime: orderData.pickupTime,
+          RegisterPickup: true,
         },
       })
 
@@ -309,7 +313,9 @@ export async function createShipment(orderData: {
     let pickupResponse
     try {
       pickupResponse = await blueDartClient.registerPickup({
-        PickupDate: orderData.pickupDate,
+        PickupDate: orderData.pickupDate.startsWith('/Date(')
+          ? orderData.pickupDate
+          : `/Date(${new Date(orderData.pickupDate).getTime()})/`,
         PickupTime: orderData.pickupTime,
         CustomerCode: customerCode,
         OriginArea: originArea,

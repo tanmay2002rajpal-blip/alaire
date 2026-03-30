@@ -64,11 +64,12 @@ export function useCheckout({
   items,
   subtotal,
   shippingCost = 0,
+  estimatedDays = 0,
   couponCode,
   onSuccess,
 }: Pick<
   CheckoutFormProps,
-  "items" | "subtotal" | "shippingCost" | "couponCode"
+  "items" | "subtotal" | "shippingCost" | "estimatedDays" | "couponCode"
 > & { onSuccess: (orderId: string) => void }) {
   // ============================================================================
   // State Management
@@ -252,6 +253,7 @@ export function useCheckout({
             items,
             subtotal,
             shippingCost,
+            estimatedDays,
             discountCode: couponCode,
             paymentMethod,
             userId: user?.id,
@@ -306,6 +308,7 @@ export function useCheckout({
       items,
       subtotal,
       shippingCost,
+      estimatedDays,
       couponCode,
       paymentMethod,
       validateForm,

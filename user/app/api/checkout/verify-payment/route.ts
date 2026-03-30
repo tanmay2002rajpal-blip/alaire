@@ -269,7 +269,8 @@ export async function POST(request: Request) {
         const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ""
         const originArea = process.env.BLUEDART_ORIGIN_AREA || ""
         const warehousePincode = "125001"
-        const pickupDate = new Date().toISOString().split("T")[0]
+        // BlueDart expects /Date(epoch_ms)/ format
+        const pickupDate = `/Date(${Date.now()})/`
         const pickupTime = "1400"
 
         const waybillResult = await blueDartClient.generateWaybill({
@@ -292,13 +293,14 @@ export async function POST(request: Request) {
           Services: {
             ProductCode: "A",
             ProductType: 1,
-            SubProductCode: "P",
+            SubProductCode: "P", // Prepaid
             PieceCount: "1",
             ActualWeight: "0.5",
             CreditReferenceNo: order.order_number || orderId,
             DeclaredValue: String(order.subtotal),
             PickupDate: pickupDate,
             PickupTime: pickupTime,
+            RegisterPickup: true, // Auto-register pickup
           },
         })
 
@@ -313,19 +315,6 @@ export async function POST(request: Request) {
               },
             }
           )
-
-          await blueDartClient.registerPickup({
-            PickupDate: pickupDate,
-            PickupTime: pickupTime,
-            CustomerCode: customerCode,
-            OriginArea: originArea,
-            CustomerName: customerName,
-            CustomerMobile: "",
-            CustomerAddress1: "",
-            CustomerPincode: warehousePincode,
-            PackageCount: 1,
-            ProductCode: "A",
-          })
         }
       }
     } catch (shippingError) {

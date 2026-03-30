@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
-import { Loader2, Tag, X, Wallet, Clock, Copy, Check } from "lucide-react"
+import { Loader2, Tag, X, Wallet, Clock, Copy, Check, Truck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -24,6 +24,7 @@ interface OrderSummaryProps {
   subtotal: number
   discount?: number
   shipping?: number
+  estimatedDays?: number
   walletBalance?: number
   useWallet?: boolean
   walletAmountUsed?: number
@@ -38,6 +39,7 @@ export function OrderSummary({
   subtotal,
   discount = 0,
   shipping = 0,
+  estimatedDays,
   walletBalance = 0,
   useWallet = false,
   walletAmountUsed = 0,
@@ -309,6 +311,19 @@ export function OrderSummary({
               {shipping > 0 ? formatPrice(shipping) : "Free"}
             </span>
           </div>
+          {estimatedDays && estimatedDays > 0 && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Truck className="h-3.5 w-3.5" />
+              <span>
+                Estimated delivery in{" "}
+                {estimatedDays <= 3
+                  ? `${estimatedDays} business day${estimatedDays > 1 ? "s" : ""}`
+                  : estimatedDays <= 5
+                  ? "3-5 business days"
+                  : `5-7 business days`}
+              </span>
+            </div>
+          )}
           {walletAmountUsed > 0 && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Wallet Applied</span>

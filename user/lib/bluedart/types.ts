@@ -72,15 +72,17 @@ export interface WaybillShipper {
 }
 
 export interface WaybillServices {
-  ProductCode: string // 'A' = Air, 'E' = Express
-  ProductType: number // 1 = Dutiable, 2 = Non-Dutiable
+  ProductCode: string // 'A' = Air, 'E' = Express, 'D' = Docs
+  ProductType: number // 0 = Docs, 1 = Dutiable (Non-Docs)
   SubProductCode: string // 'P' = Prepaid, 'C' = COD
   PieceCount: string
   ActualWeight: string
   CreditReferenceNo: string
   DeclaredValue: string
-  PickupDate: string
-  PickupTime: string
+  CollectableAmount?: number // Mandatory for COD, amount in INR
+  PickupDate: string // Format: /Date(epoch_ms)/ e.g. /Date(1683376344000)/
+  PickupTime: string // Format: HHMM e.g. "1400"
+  RegisterPickup?: boolean // Auto-register pickup with waybill
   InvoiceNo?: string
 }
 

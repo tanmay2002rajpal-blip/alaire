@@ -103,6 +103,7 @@ export const createOrderSchema = z.object({
   items: z.array(cartItemSchema).min(1, "Cart is empty").max(50, "Too many items"),
   subtotal: z.number().nonnegative().max(10000000, "Subtotal too high"),
   shippingCost: z.number().nonnegative().max(10000, "Shipping cost too high").optional(),
+  estimatedDays: z.number().nonnegative().max(30).optional(),
   shippingAddress: shippingAddressSchema,
   email: emailSchema,
   discountCode: z

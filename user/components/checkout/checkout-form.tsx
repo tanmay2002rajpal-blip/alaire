@@ -61,6 +61,7 @@ export function CheckoutForm({
   subtotal,
   discount: _discount = 0, // eslint-disable-line @typescript-eslint/no-unused-vars
   shippingCost = 0,
+  estimatedDays = 0,
   couponCode,
   onShippingChange,
   onSuccess,
@@ -93,6 +94,7 @@ export function CheckoutForm({
     items,
     subtotal,
     shippingCost,
+    estimatedDays,
     couponCode,
     onSuccess,
   })

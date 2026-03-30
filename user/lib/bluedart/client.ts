@@ -15,7 +15,15 @@ import type {
 // Constants
 // ============================================================================
 
-const BASE_URL = 'https://apigateway.bluedart.com/in/transportation'
+const BASE_URL = process.env.BLUEDART_SANDBOX === 'true'
+  ? 'https://apigateway-sandbox.bluedart.com/in/transportation'
+  : 'https://apigateway.bluedart.com/in/transportation'
+const TOKEN_URL = `${BASE_URL}/token/v1/login`
+
+// Refresh token 5 minutes before expiry
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000
+// Default token lifetime: 24 hours (BlueDart JWT typical expiry)
+const DEFAULT_TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000
 
 /**
  * Static mapping of common Indian pincodes to city/state.
@@ -58,8 +66,12 @@ const PINCODE_PREFIX_MAP: Record<string, { city: string; state: string }> = {
 // ============================================================================
 
 class BlueDartClient {
+  private cachedToken: string | null = null
+  private tokenExpiresAt: number = 0
+
   /**
    * Builds the standard Blue Dart profile object from env vars.
+   * LoginID and LicenceKey are sent in the request body (Profile section).
    */
   private getProfile(): BlueDartProfile {
     const loginId = process.env.BLUEDART_LOGIN_ID
@@ -82,12 +94,108 @@ class BlueDartClient {
   }
 
   /**
-   * Returns standard headers for Blue Dart API calls.
+   * Checks if APIGEE token-based auth is configured (ClientID + clientSecret).
    */
-  private getHeaders(): Record<string, string> {
+  private isTokenAuthConfigured(): boolean {
+    return !!(
+      process.env.BLUEDART_CLIENT_ID?.trim() &&
+      process.env.BLUEDART_CLIENT_SECRET?.trim()
+    )
+  }
+
+  /**
+   * Generates a JWT token from BlueDart APIGEE Authentication API.
+   * Endpoint: GET /token/v1/login
+   * Headers: ClientID (API Key), clientSecret (API Secret)
+   * Returns: { JWTToken: "..." }
+   */
+  private async generateToken(): Promise<string> {
+    const clientId = process.env.BLUEDART_CLIENT_ID?.trim()
+    const clientSecret = process.env.BLUEDART_CLIENT_SECRET?.trim()
+
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        'Blue Dart APIGEE credentials not configured. Please set BLUEDART_CLIENT_ID and BLUEDART_CLIENT_SECRET environment variables.'
+      )
+    }
+
+    const response = await fetch(TOKEN_URL, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+        ClientID: clientId,
+        clientSecret: clientSecret,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(
+        `Blue Dart token generation failed: ${response.status} ${error}`
+      )
+    }
+
+    const data = await response.json()
+
+    if (!data.JWTToken) {
+      throw new Error(
+        'Blue Dart token generation failed: No JWTToken in response'
+      )
+    }
+
+    return data.JWTToken
+  }
+
+  /**
+   * Gets a valid JWT token, generating a new one if needed.
+   * Caches the token and refreshes before expiry.
+   */
+  private async getToken(): Promise<string> {
+    const now = Date.now()
+
+    if (this.cachedToken && now < this.tokenExpiresAt - TOKEN_REFRESH_BUFFER_MS) {
+      return this.cachedToken
+    }
+
+    const token = await this.generateToken()
+    this.cachedToken = token
+    // Parse JWT expiry if possible, otherwise use default lifetime
+    try {
+      const payload = JSON.parse(
+        Buffer.from(token.split('.')[1], 'base64').toString()
+      )
+      if (payload.exp) {
+        this.tokenExpiresAt = payload.exp * 1000
+      } else {
+        this.tokenExpiresAt = now + DEFAULT_TOKEN_LIFETIME_MS
+      }
+    } catch {
+      this.tokenExpiresAt = now + DEFAULT_TOKEN_LIFETIME_MS
+    }
+
+    return token
+  }
+
+  /**
+   * Returns standard headers for Blue Dart API calls.
+   * Uses dynamically generated JWT token if APIGEE credentials are configured,
+   * otherwise falls back to BLUEDART_LICENSE_KEY as static token.
+   */
+  private async getHeaders(): Promise<Record<string, string>> {
+    if (this.isTokenAuthConfigured()) {
+      const token = await this.getToken()
+      return {
+        'Content-Type': 'application/json',
+        JWTToken: token,
+      }
+    }
+
+    // Fallback: use BLUEDART_LICENSE_KEY as static token (legacy behavior)
     const licenceKey = process.env.BLUEDART_LICENSE_KEY
     if (!licenceKey) {
-      throw new Error('BLUEDART_LICENSE_KEY not configured.')
+      throw new Error(
+        'Blue Dart not configured. Set BLUEDART_CLIENT_ID + BLUEDART_CLIENT_SECRET for APIGEE auth, or BLUEDART_LICENSE_KEY as static token.'
+      )
     }
     return {
       'Content-Type': 'application/json',
@@ -108,12 +216,13 @@ class BlueDartClient {
     destPincode: string
   ): Promise<ServiceabilityResponse> {
     const profile = this.getProfile()
+    const headers = await this.getHeaders()
 
     const response = await fetch(
       `${BASE_URL}/finder/v1/GetServicesforPincode`,
       {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers,
         body: JSON.stringify({
           pinCode: destPincode,
           profile,
@@ -142,12 +251,13 @@ class BlueDartClient {
     request: WaybillRequest['Request']
   ): Promise<WaybillResponse> {
     const profile = this.getProfile()
+    const headers = await this.getHeaders()
 
     const response = await fetch(
       `${BASE_URL}/waybill/v1/GenerateWayBill`,
       {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers,
         body: JSON.stringify({
           Request: request,
           Profile: profile,
@@ -179,11 +289,13 @@ class BlueDartClient {
       'values.WaybillNo': waybillNumber,
     })
 
+    const headers = await this.getHeaders()
+
     const response = await fetch(
       `${BASE_URL}/tracking/v1?${params}`,
       {
         method: 'GET',
-        headers: this.getHeaders(),
+        headers,
       }
     )
 
@@ -208,12 +320,13 @@ class BlueDartClient {
     request: PickupRequest['Request']
   ): Promise<PickupResponse> {
     const profile = this.getProfile()
+    const headers = await this.getHeaders()
 
     const response = await fetch(
       `${BASE_URL}/pickup/v1/RegisterPickup`,
       {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers,
         body: JSON.stringify({
           Request: request,
           Profile: profile,
@@ -240,12 +353,13 @@ class BlueDartClient {
    */
   async cancelPickup(tokenNumber: string): Promise<CancelPickupResponse> {
     const profile = this.getProfile()
+    const headers = await this.getHeaders()
 
     const response = await fetch(
       `${BASE_URL}/cancel-pickup/v1/CancelPickup`,
       {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers,
         body: JSON.stringify({
           Request: { TokenNumber: tokenNumber },
           Profile: profile,
@@ -277,12 +391,13 @@ class BlueDartClient {
     subProductCode: string = 'P'
   ): Promise<TransitTimeResponse> {
     const profile = this.getProfile()
+    const headers = await this.getHeaders()
 
     const response = await fetch(
       `${BASE_URL}/time-finder/v1/GetDomesticTransitTimeForPinCodeandProduct`,
       {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers,
         body: JSON.stringify({
           pPinCodeFrom: originPincode,
           pPinCodeTo: destPincode,
