@@ -55,7 +55,7 @@ export function NewArrivals({ products, categories }: NewArrivalsProps) {
   if (products.length === 0) return null
 
   return (
-    <section className="section" ref={sectionRef}>
+    <section className="section overflow-hidden" ref={sectionRef}>
       <div className="container">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8 lg:mb-12">
           <div>

@@ -276,8 +276,8 @@ export async function POST(request: Request) {
           ? process.env.BLUEDART_SANDBOX_ORIGIN_AREA?.trim() || process.env.BLUEDART_ORIGIN_AREA || ""
           : process.env.BLUEDART_ORIGIN_AREA || ""
         const warehousePincode = isSandbox
-          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_PINCODE?.trim() || "125001"
-          : "125001"
+          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_PINCODE?.trim() || process.env.BLUEDART_WAREHOUSE_PINCODE?.trim() || "125001"
+          : process.env.BLUEDART_WAREHOUSE_PINCODE?.trim() || "125001"
         const warehouseAddress = isSandbox
           ? process.env.BLUEDART_SANDBOX_WAREHOUSE_ADDRESS?.trim() || process.env.BLUEDART_WAREHOUSE_ADDRESS?.trim() || ""
           : process.env.BLUEDART_WAREHOUSE_ADDRESS?.trim() || ""

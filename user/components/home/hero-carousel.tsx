@@ -33,22 +33,15 @@ export function HeroCarousel({ slides }: HeroCarouselProps) {
   const autoplayRef = useRef<NodeJS.Timeout | null>(null)
 
 
-  // Animate slide content - refined, minimal transitions
+  // Animate the inner content of a slide (image/title/subtitle/CTA only).
+  // Slide-level opacity/zIndex is handled by goToSlide so that a true
+  // simultaneous crossfade works — the old approach reset all slides to
+  // opacity 0 here, which fought with the crossfade tweens below.
   const animateSlideIn = useCallback((index: number) => {
     const slide = slideRefs.current[index]
     if (!slide) return
 
     const tl = gsap.timeline()
-
-    // Reset all slides
-    slideRefs.current.forEach((s, i) => {
-      if (s && i !== index) {
-        gsap.set(s, { opacity: 0, zIndex: 0 })
-      }
-    })
-
-    // Animate current slide
-    gsap.set(slide, { opacity: 1, zIndex: 1 })
 
     // Image - subtle Ken Burns effect
     tl.fromTo(
@@ -93,31 +86,48 @@ export function HeroCarousel({ slides }: HeroCarouselProps) {
     return tl
   }, [])
 
-  // Go to specific slide - smooth crossfade
+  // Go to a specific slide — true simultaneous crossfade.
+  // The previous implementation faded the current slide to 0 FIRST and only
+  // started the next slide's animation in onComplete, leaving ~1s of dark
+  // background between slides. Now the incoming slide is placed above the
+  // current one (z-index 2) and fades in while the old one fades out.
   const goToSlide = useCallback((index: number) => {
     if (isAnimating || index === currentSlide) return
     setIsAnimating(true)
 
-    // Animate out current slide - elegant fade
     const currentSlideEl = slideRefs.current[currentSlide]
-    if (currentSlideEl) {
-      gsap.to(currentSlideEl.querySelectorAll(".slide-title, .slide-subtitle, .slide-cta"), {
-        opacity: 0,
-        duration: 0.6,
-        ease: "power2.in",
-      })
-
-      gsap.to(currentSlideEl, {
-        opacity: 0,
-        duration: 0.8,
-        delay: 0.2,
-        onComplete: () => {
-          setCurrentSlide(index)
-          animateSlideIn(index)
-          setTimeout(() => setIsAnimating(false), 1800)
-        },
-      })
+    const nextSlideEl = slideRefs.current[index]
+    if (!currentSlideEl || !nextSlideEl) {
+      setIsAnimating(false)
+      return
     }
+
+    // Prepare next slide above current, starting invisible
+    gsap.set(nextSlideEl, { opacity: 0, zIndex: 2 })
+
+    // Kick off the content animations for the incoming slide
+    animateSlideIn(index)
+
+    // Fade the incoming slide up while the old one fades out — both happen
+    // at the same time, so the viewer always sees a slide on screen.
+    gsap.to(nextSlideEl, {
+      opacity: 1,
+      duration: 1.2,
+      ease: "power2.inOut",
+    })
+
+    gsap.to(currentSlideEl, {
+      opacity: 0,
+      duration: 1.2,
+      ease: "power2.inOut",
+      onComplete: () => {
+        // Normalize z-indexes once the crossfade completes
+        gsap.set(currentSlideEl, { zIndex: 0 })
+        gsap.set(nextSlideEl, { zIndex: 1 })
+        setCurrentSlide(index)
+        setIsAnimating(false)
+      },
+    })
   }, [currentSlide, isAnimating, animateSlideIn])
 
   // Next/prev controls

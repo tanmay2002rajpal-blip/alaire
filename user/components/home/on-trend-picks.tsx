@@ -28,6 +28,7 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
     loop: true,
     align: "center",
     skipSnaps: false,
+    containScroll: false,
   })
   const [selectedIndex, setSelectedIndex] = useState(0)
 
@@ -49,6 +50,71 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
       emblaApi.off("reInit", onSelect)
     }
   }, [emblaApi, onSelect])
+
+  // Scroll-progress-driven scale/opacity tween. This is the canonical Embla
+  // pattern for smooth continuous animations that stay in sync with scroll.
+  // We compute each slide's visual distance from center and apply scale +
+  // opacity based on that distance, including proper handling of cloned
+  // slides during the infinite loop (so the wrap is seamless).
+  useEffect(() => {
+    if (!emblaApi) return
+
+    const snapCount = emblaApi.scrollSnapList().length
+    if (snapCount === 0) return
+
+    // Normalize: diffToTarget is a fraction of total scroll (0..1).
+    // With N slides, adjacent slides are 1/N apart. Multiply by N so
+    // "1 slide away" maps to 1.0 and we can use an intuitive scale factor.
+
+    const tweenScale = () => {
+      const engine = emblaApi.internalEngine()
+      const scrollProgress = emblaApi.scrollProgress()
+
+      emblaApi.scrollSnapList().forEach((scrollSnap, snapIndex) => {
+        let diffToTarget = scrollSnap - scrollProgress
+        const slidesInSnap = engine.slideRegistry[snapIndex]
+
+        slidesInSnap.forEach((slideIndex: number) => {
+          // Adjust distance for cloned loop slides so the tween stays
+          // continuous across the wrap point.
+          if (engine.options.loop) {
+            engine.slideLooper.loopPoints.forEach((loopItem: { target: () => number; index: number }) => {
+              const target = loopItem.target()
+              if (slideIndex === loopItem.index && target !== 0) {
+                const sign = Math.sign(target)
+                if (sign === -1) diffToTarget = scrollSnap - (1 + scrollProgress)
+                if (sign === 1) diffToTarget = scrollSnap + (1 - scrollProgress)
+              }
+            })
+          }
+
+          // Normalize so 1.0 = one slide away from center
+          const normalizedDiff = Math.abs(diffToTarget) * snapCount
+          const clamped = Math.min(normalizedDiff, 2) // cap at 2 slides away
+          const scale = 1 - clamped * 0.12            // 1.0 center → 0.76 at 2 away
+          const opacity = 1 - clamped * 0.35          // 1.0 center → 0.30 at 2 away
+
+          const slideNode = emblaApi.slideNodes()[slideIndex]
+          const card = slideNode?.querySelector<HTMLElement>("[data-slide-card]")
+          if (card) {
+            card.style.transform = `scale(${Math.max(0.76, scale)})`
+            card.style.opacity = String(Math.max(0.3, opacity))
+          }
+        })
+      })
+    }
+
+    tweenScale()
+    emblaApi.on("reInit", tweenScale)
+    emblaApi.on("scroll", tweenScale)
+    emblaApi.on("slideFocus", tweenScale)
+
+    return () => {
+      emblaApi.off("reInit", tweenScale)
+      emblaApi.off("scroll", tweenScale)
+      emblaApi.off("slideFocus", tweenScale)
+    }
+  }, [emblaApi])
 
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -97,18 +163,20 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
               return (
                 <div
                   key={product.id}
-                  className="min-w-0 flex-shrink-0 basis-[70%] sm:basis-[50%] lg:basis-[40%] px-2 sm:px-3 transition-all duration-500"
+                  className="min-w-0 flex-shrink-0 basis-[70%] sm:basis-[50%] lg:basis-[40%] px-2 sm:px-3"
                 >
                   <Link
                     href={`/products/${product.slug}`}
                     className="group block"
                   >
                     <div
+                      data-slide-card
                       className={cn(
-                        "relative overflow-hidden rounded-2xl transition-all duration-500",
-                        isActive
-                          ? "aspect-[3/4] scale-100 opacity-100 shadow-2xl"
-                          : "aspect-[3/4] scale-[0.88] opacity-50"
+                        "relative aspect-[3/4] overflow-hidden rounded-2xl shadow-2xl will-change-transform",
+                        // The transform/opacity are driven by the Embla scroll
+                        // tween in the parent component. Keep a short CSS
+                        // transition only as a fallback for non-scroll updates.
+                        "transition-[transform,opacity] duration-200 ease-out"
                       )}
                     >
                       <Image
