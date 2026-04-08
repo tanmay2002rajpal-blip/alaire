@@ -108,12 +108,23 @@ export interface WaybillRequest {
 export interface WaybillResponse {
   GenerateWayBillResult?: {
     IsError: boolean
-    ErrorMessage: string[] | null
+    IsErrorInPU?: boolean
+    ErrorMessage?: string[] | null
     AWBNo: string
+    AWBPrintContent?: string | null
+    AvailableAmountForBooking?: number
+    AvailableBalance?: number
+    CCRCRDREF?: string
     DestinationArea: string
     DestinationLocation: string
-    ABORIG: string
-    ClusterCode: string
+    ClusterCode?: string
+    MPSDetails?: Array<{ MPSNumber: string; MPSRefNumber: string | null }>
+    MPSLabelPrintContent?: string | null
+    ShipmentPickupDate?: string
+    /** Populated when RegisterPickup=true — inline pickup token */
+    TokenNumber?: string
+    Status?: Array<{ StatusCode: string; StatusInformation: string }>
+    TransactionAmount?: number
   }
 }
 
@@ -121,34 +132,35 @@ export interface WaybillResponse {
 // Tracking
 // ============================================================================
 
-export interface TrackingRequest {
-  handler: string
-  action: string
-  values: {
-    WaybillNo: string
-  }
+/**
+ * Tracking response from `custawbquery` action with `format=json`.
+ * ShipmentData is an object (not array). It contains either an Error string
+ * or a Shipment array with scan details.
+ */
+export interface TrackingScanDetail {
+  ScanDateTime: string
+  ScanType: string
+  Scan: string
+  ScannedLocation: string
+  StatusCode?: string
+  StatusDateTime?: string
+  Instructions?: string
+}
+
+export interface TrackingShipment {
+  WaybillNo?: string
+  Status?: string
+  StatusType?: string
+  Origin?: string
+  Destination?: string
+  Scans?: Array<{ ScanDetail: TrackingScanDetail }>
 }
 
 export interface TrackingResponse {
-  ShipmentData?: Array<{
-    Shipment?: {
-      Status: string
-      StatusType: string
-      Origin: string
-      Destination: string
-      Scans?: Array<{
-        ScanDetail: {
-          ScanDateTime: string
-          ScanType: string
-          Scan: string
-          ScannedLocation: string
-          StatusCode: string
-          StatusDateTime: string
-          Instructions: string
-        }
-      }>
-    }
-  }>
+  ShipmentData?: {
+    Error?: string
+    Shipment?: TrackingShipment[] | TrackingShipment
+  }
 }
 
 // ============================================================================
@@ -207,16 +219,28 @@ export interface TransitTimeRequest {
   pPinCodeTo: string
   pProductCode: string
   pSubProductCode: string
+  pPickupDate: string // /Date(epoch_ms)/
+  pPickupTime: string // HH:MM (NOT HHMM)
   profile: BlueDartProfile
 }
 
+/**
+ * Response shape (note: no TransitDays field — compute from AdditionalDays
+ * plus a product-specific base).
+ */
 export interface TransitTimeResponse {
   GetDomesticTransitTimeForPinCodeandProductResult?: {
     IsError: boolean
-    ErrorMessage: string | null
-    OriginArea: string
-    DestinationArea: string
-    TransitDays: number
-    ExpectedDateDelivery: string
+    ErrorMessage: string
+    Area?: string
+    ServiceCenter?: string
+    CityDesc_Origin?: string
+    CityDesc_Destination?: string
+    AdditionalDays: number
+    ApexAdditionalDays: number
+    GroundAdditionalDays: number
+    ExpectedDateDelivery: string // may be empty
+    ExpectedDatePOD: string
+    EDLMessage?: string
   }
 }

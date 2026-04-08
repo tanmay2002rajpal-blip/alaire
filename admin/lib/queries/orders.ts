@@ -268,7 +268,11 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
     razorpay_payment_id: orderData.razorpay_payment_id || null,
     awb_number: (orderData as any).awb_number || null,
     courier_name: (orderData as any).courier_name || null,
-    bluedart_waybill_no: (orderData as any).bluedart_waybill_no || null,
+    // Normalize: the checkout flow writes awb_number / courier_name, while
+    // older code paths used bluedart_waybill_no. Fall back so the admin UI
+    // consistently finds the AWB regardless of which field is populated.
+    bluedart_waybill_no:
+      (orderData as any).bluedart_waybill_no || (orderData as any).awb_number || null,
     bluedart_awb_pdf: (orderData as any).bluedart_awb_pdf || null,
     created_at: createdAt,
     customer: {

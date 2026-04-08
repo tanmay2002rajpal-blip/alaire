@@ -265,12 +265,27 @@ export async function POST(request: Request) {
       }
 
       if (shippingAddress && orderItems.length > 0) {
-        const customerName = process.env.BLUEDART_CUSTOMER_NAME || ""
-        const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ""
-        const originArea = process.env.BLUEDART_ORIGIN_AREA || ""
-        const warehousePincode = "125001"
-        // BlueDart expects /Date(epoch_ms)/ format
-        const pickupDate = `/Date(${Date.now()})/`
+        const isSandbox = process.env.BLUEDART_SANDBOX === "true"
+        const customerName = isSandbox
+          ? process.env.BLUEDART_SANDBOX_CUSTOMER_NAME?.trim() || process.env.BLUEDART_CUSTOMER_NAME || ""
+          : process.env.BLUEDART_CUSTOMER_NAME || ""
+        const customerCode = isSandbox
+          ? process.env.BLUEDART_SANDBOX_CUSTOMER_CODE?.trim() || process.env.BLUEDART_CUSTOMER_CODE || ""
+          : process.env.BLUEDART_CUSTOMER_CODE || ""
+        const originArea = isSandbox
+          ? process.env.BLUEDART_SANDBOX_ORIGIN_AREA?.trim() || process.env.BLUEDART_ORIGIN_AREA || ""
+          : process.env.BLUEDART_ORIGIN_AREA || ""
+        const warehousePincode = isSandbox
+          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_PINCODE?.trim() || "125001"
+          : "125001"
+        const warehouseAddress = isSandbox
+          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_ADDRESS?.trim() || process.env.BLUEDART_WAREHOUSE_ADDRESS?.trim() || ""
+          : process.env.BLUEDART_WAREHOUSE_ADDRESS?.trim() || ""
+        const warehouseMobile = isSandbox
+          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_MOBILE?.trim() || process.env.BLUEDART_WAREHOUSE_MOBILE?.trim() || ""
+          : process.env.BLUEDART_WAREHOUSE_MOBILE?.trim() || ""
+        // Pickup must be in the future — schedule for tomorrow
+        const pickupDate = `/Date(${Date.now() + 24 * 60 * 60 * 1000})/`
         const pickupTime = "1400"
 
         const waybillResult = await blueDartClient.generateWaybill({
@@ -285,9 +300,9 @@ export async function POST(request: Request) {
             CustomerName: customerName,
             CustomerCode: customerCode,
             OriginArea: originArea,
-            CustomerAddress1: "",
+            CustomerAddress1: warehouseAddress,
             CustomerPincode: warehousePincode,
-            CustomerMobile: "",
+            CustomerMobile: warehouseMobile,
             Sender: customerName,
           },
           Services: {

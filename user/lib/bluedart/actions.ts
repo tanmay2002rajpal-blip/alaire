@@ -101,7 +101,10 @@ export async function checkPincodeServiceability(
       }
     }
 
-    // Get transit time for a more accurate estimate
+    // Get transit time for a more accurate estimate.
+    // Blue Dart's response doesn't include a "TransitDays" field — it returns
+    // AdditionalDays (over a product base) plus an ExpectedDateDelivery string.
+    // Base transit for Air (A): ~2 days; Ground (S): ~4 days.
     let transitDays = DEFAULT_ESTIMATED_DAYS
     try {
       const transitResponse = await blueDartClient.getTransitTime(
@@ -110,8 +113,22 @@ export async function checkPincodeServiceability(
       )
       const transitResult =
         transitResponse.GetDomesticTransitTimeForPinCodeandProductResult
-      if (transitResult && !transitResult.IsError && transitResult.TransitDays) {
-        transitDays = transitResult.TransitDays
+      if (transitResult && !transitResult.IsError) {
+        // Prefer ExpectedDateDelivery if BD populated it
+        if (transitResult.ExpectedDateDelivery) {
+          const match = transitResult.ExpectedDateDelivery.match(/Date\((\d+)/)
+          if (match) {
+            const delivery = new Date(parseInt(match[1], 10))
+            const now = new Date()
+            const diff = Math.ceil(
+              (delivery.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)
+            )
+            if (diff > 0) transitDays = diff
+          }
+        } else {
+          // Fallback: base 2 (Air) + additional days reported by BD
+          transitDays = 2 + (transitResult.AdditionalDays || 0)
+        }
       }
     } catch {
       // Use default if transit time lookup fails
@@ -212,9 +229,16 @@ export async function createShipment(orderData: {
       }
     }
 
-    const customerName = process.env.BLUEDART_CUSTOMER_NAME || ''
-    const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ''
-    const originArea = process.env.BLUEDART_ORIGIN_AREA || ''
+    const isSandbox = process.env.BLUEDART_SANDBOX === 'true'
+    const customerName = isSandbox
+      ? process.env.BLUEDART_SANDBOX_CUSTOMER_NAME?.trim() || process.env.BLUEDART_CUSTOMER_NAME || ''
+      : process.env.BLUEDART_CUSTOMER_NAME || ''
+    const customerCode = isSandbox
+      ? process.env.BLUEDART_SANDBOX_CUSTOMER_CODE?.trim() || process.env.BLUEDART_CUSTOMER_CODE || ''
+      : process.env.BLUEDART_CUSTOMER_CODE || ''
+    const originArea = isSandbox
+      ? process.env.BLUEDART_SANDBOX_ORIGIN_AREA?.trim() || process.env.BLUEDART_ORIGIN_AREA || ''
+      : process.env.BLUEDART_ORIGIN_AREA || ''
 
     // Generate waybill with timing
     const waybillStartTime = Date.now()
@@ -303,44 +327,16 @@ export async function createShipment(orderData: {
       }
     }
 
-    // Register pickup with timing
-    const pickupStartTime = Date.now()
+    // Pickup is already registered inline when RegisterPickup=true on the
+    // waybill request above — Blue Dart returns the TokenNumber directly in
+    // GenerateWayBillResult. No second call needed.
+    const pickupToken = waybillResult.TokenNumber || undefined
     diagnostic.apiCalls.pickup = {
-      requestedAt: new Date().toISOString(),
-      success: false,
+      requestedAt: diagnostic.apiCalls.waybill.requestedAt,
+      completedAt: diagnostic.apiCalls.waybill.completedAt,
+      durationMs: 0,
+      success: !!pickupToken,
     }
-
-    let pickupResponse
-    try {
-      pickupResponse = await blueDartClient.registerPickup({
-        PickupDate: orderData.pickupDate.startsWith('/Date(')
-          ? orderData.pickupDate
-          : `/Date(${new Date(orderData.pickupDate).getTime()})/`,
-        PickupTime: orderData.pickupTime,
-        CustomerCode: customerCode,
-        OriginArea: originArea,
-        CustomerName: customerName,
-        CustomerMobile: '',
-        CustomerAddress1: '',
-        CustomerPincode: DEFAULT_WAREHOUSE_PINCODE,
-        PackageCount: orderData.pieceCount || 1,
-        ProductCode: orderData.productCode || 'A',
-      })
-
-      diagnostic.apiCalls.pickup.completedAt = new Date().toISOString()
-      diagnostic.apiCalls.pickup.durationMs = Date.now() - pickupStartTime
-      diagnostic.apiCalls.pickup.success = true
-    } catch (pickupError) {
-      diagnostic.apiCalls.pickup.completedAt = new Date().toISOString()
-      diagnostic.apiCalls.pickup.durationMs = Date.now() - pickupStartTime
-      diagnostic.apiCalls.pickup.error =
-        pickupError instanceof Error ? pickupError.message : 'Unknown error'
-
-      // Pickup failure is not critical - we still have the waybill
-      console.warn('Pickup registration failed:', pickupError)
-    }
-
-    const pickupResult = pickupResponse?.RegisterPickupResult
 
     // Success
     diagnostic.response = {
@@ -348,7 +344,7 @@ export async function createShipment(orderData: {
       awbNumber: waybillResult.AWBNo,
       destinationArea: waybillResult.DestinationArea,
       destinationLocation: waybillResult.DestinationLocation,
-      pickupToken: pickupResult?.TokenNumber || undefined,
+      pickupToken,
     }
     await saveDiagnostic(diagnostic)
 
@@ -357,7 +353,7 @@ export async function createShipment(orderData: {
       awbNumber: waybillResult.AWBNo,
       destinationArea: waybillResult.DestinationArea,
       destinationLocation: waybillResult.DestinationLocation,
-      pickupToken: pickupResult?.TokenNumber || undefined,
+      pickupToken,
     }
   } catch (error) {
     console.error('Blue Dart shipment creation error:', error)
@@ -401,17 +397,30 @@ export async function getOrderTracking(
       awbNumber.trim()
     )
 
-    const shipmentData = trackingResponse.ShipmentData?.[0]?.Shipment
-    if (!shipmentData || !shipmentData.Scans || shipmentData.Scans.length === 0) {
+    // The custawbquery JSON endpoint returns an object, not an array.
+    // Shape: { ShipmentData: { Error?: string, Shipment?: Shipment | Shipment[] } }
+    const data = trackingResponse.ShipmentData
+    if (!data || data.Error) {
       return {
         success: false,
         error:
+          data?.Error ||
           'No tracking information found for this waybill number. Please verify the tracking number or try again later.',
       }
     }
 
+    // Shipment can be either a single object or an array
+    const shipment = Array.isArray(data.Shipment) ? data.Shipment[0] : data.Shipment
+    if (!shipment || !shipment.Scans || shipment.Scans.length === 0) {
+      return {
+        success: false,
+        error:
+          'No tracking information available yet for this waybill number.',
+      }
+    }
+
     // Map Blue Dart scan details to TrackingActivity format
-    const activities: TrackingActivity[] = shipmentData.Scans.map((scan) => ({
+    const activities: TrackingActivity[] = shipment.Scans.map((scan) => ({
       date: scan.ScanDetail.ScanDateTime,
       status: scan.ScanDetail.ScanType,
       activity: scan.ScanDetail.Instructions || scan.ScanDetail.Scan,
@@ -421,7 +430,7 @@ export async function getOrderTracking(
     return {
       success: true,
       data: activities,
-      status: shipmentData.Status,
+      status: shipment.Status,
     }
   } catch (error) {
     console.error('Order tracking error:', error)

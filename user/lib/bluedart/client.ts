@@ -72,10 +72,19 @@ class BlueDartClient {
   /**
    * Builds the standard Blue Dart profile object from env vars.
    * LoginID and LicenceKey are sent in the request body (Profile section).
+   *
+   * In sandbox mode, prefers BLUEDART_SANDBOX_LOGIN_ID / BLUEDART_SANDBOX_LICENSE_KEY
+   * when set — production credentials get rejected by the sandbox backend with
+   * "UserDoesNotExists" / "License Mismatch" because it's a different tenant.
    */
   private getProfile(): BlueDartProfile {
-    const loginId = process.env.BLUEDART_LOGIN_ID
-    const licenceKey = process.env.BLUEDART_LICENSE_KEY
+    const isSandbox = process.env.BLUEDART_SANDBOX === 'true'
+    const loginId = isSandbox
+      ? process.env.BLUEDART_SANDBOX_LOGIN_ID?.trim() || process.env.BLUEDART_LOGIN_ID
+      : process.env.BLUEDART_LOGIN_ID
+    const licenceKey = isSandbox
+      ? process.env.BLUEDART_SANDBOX_LICENSE_KEY?.trim() || process.env.BLUEDART_LICENSE_KEY
+      : process.env.BLUEDART_LICENSE_KEY
     const apiType = process.env.BLUEDART_API_TYPE || 'S'
     const version = process.env.BLUEDART_VERSION || '1.3'
 
@@ -246,6 +255,12 @@ class BlueDartClient {
 
   /**
    * Generates a waybill (AWB) for a shipment.
+   *
+   * Blue Dart's .NET backend throws "Object reference not set to an instance
+   * of an object" when optional string/array fields are omitted entirely.
+   * This method pads the incoming minimal request with empty defaults for
+   * every field the backend touches, matching the full payload shape from
+   * Blue Dart's Waybill Generation PDF sample.
    */
   async generateWaybill(
     request: WaybillRequest['Request']
@@ -253,15 +268,116 @@ class BlueDartClient {
     const profile = this.getProfile()
     const headers = await this.getHeaders()
 
+    // Pad consignee with all fields BD's backend dereferences
+    const consigneeDefaults = {
+      ConsigneeAddress1: '',
+      ConsigneeAddress2: '',
+      ConsigneeAddress3: '',
+      ConsigneeAddressType: 'R',
+      ConsigneeAttention: '',
+      ConsigneeEmailID: '',
+      ConsigneeGSTNumber: '',
+      ConsigneeLatitude: '',
+      ConsigneeLongitude: '',
+      ConsigneeMaskedContactNumber: '',
+      ConsigneeMobile: '',
+      ConsigneeName: '',
+      ConsigneePincode: '',
+      ConsigneeTelephone: '',
+    }
+    const consignee = { ...consigneeDefaults, ...request.Consignee }
+
+    // Pad shipper similarly
+    const shipperDefaults = {
+      CustomerAddress1: '',
+      CustomerAddress2: '',
+      CustomerAddress3: '',
+      CustomerCode: '',
+      CustomerEmailID: '',
+      CustomerGSTNumber: '',
+      CustomerLatitude: '',
+      CustomerLongitude: '',
+      CustomerMaskedContactNumber: '',
+      CustomerMobile: '',
+      CustomerName: '',
+      CustomerPincode: '',
+      CustomerTelephone: '',
+      IsToPayCustomer: false,
+      OriginArea: '',
+      Sender: '',
+      VendorCode: '',
+    }
+    const shipper = { ...shipperDefaults, ...request.Shipper }
+
+    // Pad services - arrays/objects are especially error-prone if missing
+    const servicesDefaults = {
+      AWBNo: '',
+      ActualWeight: 0,
+      CollectableAmount: 0,
+      Commodity: {},
+      CreditReferenceNo: '',
+      DeclaredValue: 0,
+      Dimensions: [],
+      PDFOutputNotRequired: true,
+      PackType: '',
+      PickupDate: '',
+      PickupTime: '',
+      PieceCount: 1,
+      ProductCode: 'A',
+      ProductType: 0,
+      RegisterPickup: false,
+      SpecialInstruction: '',
+      SubProductCode: '',
+      OTPBasedDelivery: 0,
+      OTPCode: '',
+      itemdtl: [],
+      noOfDCGiven: 0,
+    }
+    const services = { ...servicesDefaults, ...request.Services }
+
+    // CreditReferenceNo max length is 20 chars (BD enforces). MongoDB ObjectIds
+    // are 24 chars, so we truncate from the end to preserve the random+counter
+    // portion (more unique than the timestamp prefix).
+    if (services.CreditReferenceNo && services.CreditReferenceNo.length > 20) {
+      services.CreditReferenceNo = services.CreditReferenceNo.slice(-20)
+    }
+
+    // Returnadds is required by BD backend even if not used
+    const returnaddsDefaults = {
+      ManifestNumber: '',
+      ReturnAddress1: shipper.CustomerAddress1,
+      ReturnAddress2: shipper.CustomerAddress2,
+      ReturnAddress3: shipper.CustomerAddress3,
+      ReturnContact: shipper.CustomerName,
+      ReturnEmailID: '',
+      ReturnLatitude: '',
+      ReturnLongitude: '',
+      ReturnMaskedContactNumber: '',
+      ReturnMobile: shipper.CustomerMobile,
+      ReturnPincode: shipper.CustomerPincode,
+      ReturnTelephone: '',
+    }
+    const returnadds = {
+      ...returnaddsDefaults,
+      ...(request as { Returnadds?: Record<string, unknown> }).Returnadds,
+    }
+
+    const payload = {
+      Request: {
+        Consignee: consignee,
+        Returnadds: returnadds,
+        Services: services,
+        Shipper: shipper,
+      },
+      Profile: profile,
+    }
+
     const response = await fetch(
       `${BASE_URL}/waybill/v1/GenerateWayBill`,
       {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          Request: request,
-          Profile: profile,
-        }),
+        body: JSON.stringify(payload),
       }
     )
 
@@ -281,15 +397,25 @@ class BlueDartClient {
 
   /**
    * Tracks a shipment using its waybill number.
+   *
+   * Uses the `custawbquery` action which returns JSON. The alternative
+   * `cuaborig` action returns XML and requires a different auth model.
+   * loginid / lickey are passed as query params alongside the JWT header.
    */
   async trackShipment(waybillNumber: string): Promise<TrackingResponse> {
+    const profile = this.getProfile()
+    const headers = await this.getHeaders()
+
     const params = new URLSearchParams({
       handler: 'tnt',
-      action: 'cuaborig',
-      'values.WaybillNo': waybillNumber,
+      action: 'custawbquery',
+      loginid: profile.LoginID,
+      lickey: profile.LicenceKey,
+      numbers: waybillNumber,
+      scan: 'true',
+      format: 'json',
+      verbose: '2',
     })
-
-    const headers = await this.getHeaders()
 
     const response = await fetch(
       `${BASE_URL}/tracking/v1?${params}`,
@@ -314,7 +440,15 @@ class BlueDartClient {
   // ==========================================================================
 
   /**
-   * Registers a pickup request with Blue Dart.
+   * Registers a pickup request with Blue Dart (standalone).
+   *
+   * NOTE: This is NOT used by the standard shipment flow — setting
+   * `RegisterPickup: true` on `generateWaybill()` registers the pickup inline
+   * and returns the token in `GenerateWayBillResult.TokenNumber`. Use that.
+   *
+   * The standalone endpoint currently returns 500 on the BD sandbox with the
+   * documented schema. Kept for future use if/when the exact request shape is
+   * clarified with Blue Dart support.
    */
   async registerPickup(
     request: PickupRequest['Request']
@@ -322,13 +456,51 @@ class BlueDartClient {
     const profile = this.getProfile()
     const headers = await this.getHeaders()
 
+    const defaults = {
+      AWBNo: '',
+      AreaCode: '',
+      ContactPersonName: '',
+      CustomerAddress1: '',
+      CustomerAddress2: '',
+      CustomerAddress3: '',
+      CustomerCode: '',
+      CustomerName: '',
+      CustomerPincode: '',
+      CustomerTelephoneNumber: '',
+      DoxNDox: 1,
+      EmailID: '',
+      IsForcePickup: false,
+      IsReversePickup: false,
+      MobileTelNo: '',
+      NumberofPieces: 1,
+      OfficeCloseTime: '',
+      OriginArea: '',
+      PackType: '',
+      ParcelCount: 1,
+      PickupDate: '',
+      PickupTime: '',
+      ProductCode: 'A',
+      ReferenceNo: '',
+      Remarks: '',
+      RouteCode: '',
+      ShipmentPickupByLabel: '',
+      ShipmentPickupPoint: '',
+      SpecialInstructions: '',
+      SubProducts: '',
+      VolumeWeight: 0,
+      WeightofShipment: 0,
+      isToPayShipper: false,
+      servInstr: '',
+    }
+    const padded = { ...defaults, ...request }
+
     const response = await fetch(
       `${BASE_URL}/pickup/v1/RegisterPickup`,
       {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          Request: request,
+          Request: padded,
           Profile: profile,
         }),
       }
@@ -350,6 +522,11 @@ class BlueDartClient {
 
   /**
    * Cancels a previously registered pickup.
+   *
+   * NOTE: Currently returns 500 on the BD sandbox against both inline and
+   * standalone pickup tokens. The exact request shape needs clarification
+   * from Blue Dart support. Not used by any code path today — kept for
+   * future implementation.
    */
   async cancelPickup(tokenNumber: string): Promise<CancelPickupResponse> {
     const profile = this.getProfile()
@@ -383,18 +560,33 @@ class BlueDartClient {
 
   /**
    * Gets estimated transit time between two pincodes.
+   *
+   * Endpoint: POST /transit/v1/GetDomesticTransitTimeForPinCodeandProduct
+   * Required: pPinCodeFrom, pPinCodeTo, pProductCode, pSubProductCode,
+   *           pPickupDate (/Date(ms)/), pPickupTime (HH:MM - NOT HHMM), profile
+   *
+   * Response contains AdditionalDays, ExpectedDateDelivery, Area, ServiceCenter.
+   * There is no "TransitDays" field — callers must compute effective days.
    */
   async getTransitTime(
     originPincode: string,
     destPincode: string,
     productCode: string = 'A',
-    subProductCode: string = 'P'
+    subProductCode: string = 'P',
+    pickupDate?: Date
   ): Promise<TransitTimeResponse> {
     const profile = this.getProfile()
     const headers = await this.getHeaders()
 
+    // Default to tomorrow at noon if no pickup date provided
+    const pu = pickupDate ?? new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const pPickupDate = `/Date(${pu.getTime()})/`
+    const hh = String(pu.getHours()).padStart(2, '0')
+    const mm = String(pu.getMinutes()).padStart(2, '0')
+    const pPickupTime = `${hh}:${mm}` // HH:MM format (NOT HHMM — BD rejects it)
+
     const response = await fetch(
-      `${BASE_URL}/time-finder/v1/GetDomesticTransitTimeForPinCodeandProduct`,
+      `${BASE_URL}/transit/v1/GetDomesticTransitTimeForPinCodeandProduct`,
       {
         method: 'POST',
         headers,
@@ -403,6 +595,8 @@ class BlueDartClient {
           pPinCodeTo: destPincode,
           pProductCode: productCode,
           pSubProductCode: subProductCode,
+          pPickupDate,
+          pPickupTime,
           profile,
         }),
       }
