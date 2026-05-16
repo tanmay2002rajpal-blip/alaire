@@ -167,7 +167,7 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
               return (
                 <div
                   key={`${product.id}-${product._colorVariant?.color || index}`}
-                  className="min-w-0 flex-shrink-0 basis-[33.33%] sm:basis-[28%] lg:basis-[20%] px-1.5 sm:px-2"
+                  className="min-w-0 flex-shrink-0 basis-[38%] sm:basis-[30%] lg:basis-[22%] px-2 sm:px-3"
                 >
                   <Link
                     href={productUrl}
