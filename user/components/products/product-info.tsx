@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Share2, ChevronDown, Package, Sparkles, Ruler, ShieldCheck } from "lucide-react"
+import { Share2, ChevronDown, Package, Sparkles, Ruler, ShieldCheck, Check } from "lucide-react"
 import { AnimatedQuantity } from "@/components/ui/animated-quantity"
 import { Button } from "@/components/ui/button"
 import { WishlistButton } from "@/components/wishlist"
@@ -99,6 +99,7 @@ function parseDescription(desc: string) {
 
 export function ProductInfo({ product, onColorChange, initialColor }: ProductInfoProps) {
   const [quantity, setQuantity] = useState(1)
+  const [copied, setCopied] = useState(false)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
     product.options?.forEach((option) => {
@@ -247,8 +248,22 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
           className="flex-1"
         />
         <WishlistButton productId={product.id} className="h-14 sm:h-12 md:h-11" />
-        <Button variant="outline" size="icon" className="h-14 w-14 sm:h-12 sm:w-12 md:h-11 md:w-11">
-          <Share2 className="h-5 w-5 sm:h-4 sm:w-4" />
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-14 w-14 sm:h-12 sm:w-12 md:h-11 md:w-11"
+          onClick={async () => {
+            const url = window.location.href
+            if (navigator.share) {
+              await navigator.share({ title: product.name, url })
+            } else {
+              await navigator.clipboard.writeText(url)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 2000)
+            }
+          }}
+        >
+          {copied ? <Check className="h-4 w-4 text-green-600" /> : <Share2 className="h-5 w-5 sm:h-4 sm:w-4" />}
         </Button>
       </div>
 
