@@ -92,7 +92,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
       {/* Description */}
       {product.description && (
-        <p className="text-muted-foreground leading-relaxed">{product.description}</p>
+        <div className="text-muted-foreground leading-relaxed whitespace-pre-line">{product.description}</div>
       )}
 
       <Separator />

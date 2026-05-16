@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -437,10 +438,14 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                   <Textarea
                     id="description"
                     {...register('description')}
-                    placeholder="Describe your product..."
-                    rows={5}
+                    placeholder="Enter product description with features, materials, care instructions..."
+                    rows={12}
+                    className="min-h-[200px] resize-y"
                     disabled={isSubmitting}
                   />
+                  <p className="text-sm text-muted-foreground">
+                    Use line breaks to separate paragraphs. Use * for bullet points.
+                  </p>
                   {errors.description && (
                     <p className="text-sm text-destructive">{errors.description.message}</p>
                   )}
@@ -494,7 +499,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
               <CardHeader>
                 <CardTitle>Product Images</CardTitle>
                 <CardDescription>
-                  Upload up to 5 images. The first image will be the primary image.
+                  Upload up to 20 images. The first image will be the primary image. Drag to reorder.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -502,7 +507,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                   value={watchImages}
                   onChange={(urls) => setValue('images', Array.isArray(urls) ? urls : [urls])}
                   multiple
-                  maxFiles={5}
+                  maxFiles={20}
                   bucket="product-images"
                   entityId={product?.id || 'new'}
                   disabled={isSubmitting}
@@ -580,16 +585,16 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                   <h3 className="font-semibold">
                     {editingVariantIndex !== null ? 'Edit Variant' : 'Add Variant'}
                   </h3>
-                  <div className="grid gap-4 md:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
-                      <Label htmlFor="variant_name">Name</Label>
+                      <Label htmlFor="variant_name">Name <span className="text-destructive">*</span></Label>
                       <Input
                         id="variant_name"
                         value={currentVariant.name}
                         onChange={(e) =>
                           setCurrentVariant({ ...currentVariant, name: e.target.value })
                         }
-                        placeholder="e.g., Large Black"
+                        placeholder="e.g., S / Maroon"
                         disabled={isSubmitting}
                       />
                     </div>
@@ -601,29 +606,12 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                         onChange={(e) =>
                           setCurrentVariant({ ...currentVariant, sku: e.target.value || null })
                         }
-                        placeholder="e.g., LJ-L-BLK"
+                        placeholder="e.g., ALR-TRK-M-MAR"
                         disabled={isSubmitting}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="variant_price">Price</Label>
-                      <Input
-                        id="variant_price"
-                        type="number"
-                        step="0.01"
-                        value={currentVariant.price}
-                        onChange={(e) =>
-                          setCurrentVariant({
-                            ...currentVariant,
-                            price: parseFloat(e.target.value) || 0,
-                          })
-                        }
-                        placeholder="0.00"
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="variant_stock">Stock</Label>
+                      <Label htmlFor="variant_stock">Stock Quantity</Label>
                       <Input
                         id="variant_stock"
                         type="number"
@@ -638,6 +626,57 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                         disabled={isSubmitting}
                       />
                     </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="variant_price">Price (₹) <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="variant_price"
+                        type="number"
+                        step="1"
+                        value={currentVariant.price}
+                        onChange={(e) =>
+                          setCurrentVariant({
+                            ...currentVariant,
+                            price: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="499"
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="variant_compare_price">Compare at Price (₹)</Label>
+                      <Input
+                        id="variant_compare_price"
+                        type="number"
+                        step="1"
+                        value={currentVariant.compare_at_price || ''}
+                        onChange={(e) =>
+                          setCurrentVariant({
+                            ...currentVariant,
+                            compare_at_price: e.target.value ? parseFloat(e.target.value) : null,
+                          })
+                        }
+                        placeholder="799 (original price for strikethrough)"
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Variant Image</Label>
+                    <ImageUpload
+                      value={currentVariant.image_url || ''}
+                      onChange={(url) =>
+                        setCurrentVariant({
+                          ...currentVariant,
+                          image_url: Array.isArray(url) ? url[0] || null : url || null,
+                        })
+                      }
+                      bucket="product-images"
+                      entityId={product?.id || 'new'}
+                      disabled={isSubmitting}
+                    />
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -665,32 +704,51 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                 {/* Variants List */}
                 {variants.length > 0 ? (
                   <div className="space-y-2">
-                    <h3 className="font-semibold">Existing Variants</h3>
+                    <h3 className="font-semibold">Existing Variants ({variants.length})</h3>
                     <div className="space-y-2">
                       {variants.map((variant, index) => (
                         <div
                           key={index}
                           className="flex items-center justify-between rounded-lg border p-3"
                         >
-                          <div className="grid grid-cols-4 gap-4 flex-1">
-                            <div>
-                              <p className="text-sm font-medium">{variant.name}</p>
-                              <p className="text-xs text-muted-foreground">Name</p>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">{variant.sku || '-'}</p>
-                              <p className="text-xs text-muted-foreground">SKU</p>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">${variant.price.toFixed(2)}</p>
-                              <p className="text-xs text-muted-foreground">Price</p>
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">{variant.stock_quantity}</p>
-                              <p className="text-xs text-muted-foreground">Stock</p>
+                          <div className="flex items-center gap-3 flex-1">
+                            {variant.image_url && (
+                              <div className="relative h-12 w-12 rounded overflow-hidden bg-muted flex-shrink-0">
+                                <Image
+                                  src={variant.image_url}
+                                  alt={variant.name}
+                                  fill
+                                  className="object-cover"
+                                />
+                              </div>
+                            )}
+                            <div className="grid grid-cols-4 gap-4 flex-1">
+                              <div>
+                                <p className="text-sm font-medium">{variant.name}</p>
+                                <p className="text-xs text-muted-foreground">{variant.sku || 'No SKU'}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">₹{variant.price.toFixed(0)}</p>
+                                {variant.compare_at_price && (
+                                  <p className="text-xs text-muted-foreground line-through">₹{variant.compare_at_price.toFixed(0)}</p>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{variant.stock_quantity} units</p>
+                                <p className="text-xs text-muted-foreground">Stock</p>
+                              </div>
+                              <div>
+                                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  variant.is_active
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                                }`}>
+                                  {variant.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 ml-2">
                             <Button
                               type="button"
                               variant="outline"

@@ -57,7 +57,12 @@ export function VariantSelector({
                 const isColor = option.name.toLowerCase() === "color"
 
                 if (isColor) {
-                  // Color swatches
+                  const hexFromVariant = variants.find(v => {
+                    const vo = v.options as Record<string, string>
+                    return (vo.color ?? vo.Color) === value && vo.color_hex
+                  })?.options as Record<string, string> | undefined
+                  const colorHex = hexFromVariant?.color_hex || getColorValue(value)
+
                   return (
                     <button
                       key={value}
@@ -71,7 +76,7 @@ export function VariantSelector({
                         !isAvailable && "opacity-30 cursor-not-allowed"
                       )}
                       style={{
-                        backgroundColor: getColorValue(value),
+                        backgroundColor: colorHex,
                       }}
                       title={value}
                     >
@@ -125,12 +130,15 @@ function getColorValue(colorName: string): string {
     grey: "#6b7280",
     brown: "#78350f",
     navy: "#1e3a5a",
+    "navy blue": "#1B2A4A",
     beige: "#d4c4a8",
     khaki: "#c3b091",
     olive: "#808000",
     tan: "#d2b48c",
     charcoal: "#36454f",
     camel: "#c19a6b",
+    maroon: "#722F37",
+    teal: "#2E6B7B",
   }
 
   return colors[colorName.toLowerCase()] || "#e5e7eb"
