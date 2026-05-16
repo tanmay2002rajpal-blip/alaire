@@ -90,21 +90,6 @@ export async function canUserReview(
 
   if (existingReview) return false
 
-  // Check if user has purchased this product
-  const orderItems = await db
-    .collection("order_items")
-    .find({ product_id: productId })
-    .toArray()
-
-  if (orderItems.length === 0) return false
-
-  const orderObjectIds = orderItems.map((oi) => oi.order_id).filter((id: unknown) => id instanceof ObjectId ? true : typeof id === "string" && ObjectId.isValid(id)).map((id: unknown) => id instanceof ObjectId ? id : new ObjectId(id as string))
-
-  const purchase = await db.collection("orders").findOne({
-    _id: { $in: orderObjectIds },
-    user_id: userId,
-    status: { $in: ["delivered", "shipped", "processing", "confirmed"] },
-  })
-
-  return !!purchase
+  // Any logged-in user can review
+  return true
 }

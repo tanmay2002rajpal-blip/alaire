@@ -41,7 +41,7 @@ export async function submitReview(input: SubmitReviewInput): Promise<SubmitRevi
 
   const eligible = await canUserReview(session.user.id, input.productId)
   if (!eligible) {
-    return { success: false, error: "You must purchase this product to leave a review" }
+    return { success: false, error: "You have already reviewed this product" }
   }
 
   const db = await getDb()
@@ -52,7 +52,7 @@ export async function submitReview(input: SubmitReviewInput): Promise<SubmitRevi
     rating: input.rating,
     title: input.title?.trim() || null,
     content: input.content.trim(),
-    is_verified_purchase: true,
+    is_verified_purchase: false,
     is_approved: true,
     created_at: new Date(),
   })
