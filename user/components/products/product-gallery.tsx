@@ -103,13 +103,13 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
 
   return (
     <>
-      <div className="flex flex-col-reverse gap-3 md:flex-row">
-        {/* Thumbnails — max 4 visible, scrollable */}
+      <div className="flex flex-col gap-3 md:flex-row">
+        {/* Thumbnails — on mobile: horizontal row below image. On desktop: vertical left column */}
         {displayImages.length > 1 && (
-          <div className="relative flex md:flex-col gap-2">
+          <div className="relative flex md:flex-col gap-2 order-2 md:order-1">
             <div
               ref={thumbContainerRef}
-              className="flex gap-2 overflow-x-auto md:flex-col md:overflow-y-auto md:overflow-x-hidden md:max-h-[350px] sm:md:max-h-[420px] md:max-h-[500px] scrollbar-hide"
+              className="flex gap-2 overflow-x-auto md:flex-col md:overflow-y-auto md:overflow-x-hidden md:max-h-[500px] scrollbar-hide"
             >
               {displayImages.map((image, index) => (
                 <button
@@ -132,17 +132,11 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                 </button>
               ))}
             </div>
-            {/* Overflow indicator */}
-            {displayImages.length > MAX_VISIBLE_THUMBS && (
-              <div className="hidden md:flex items-center justify-center text-xs text-muted-foreground pt-1">
-                +{displayImages.length - MAX_VISIBLE_THUMBS} more
-              </div>
-            )}
           </div>
         )}
 
         {/* Main Image */}
-        <div className="relative flex-1 overflow-hidden rounded-lg bg-[#f5f5f5] group h-[350px] sm:h-[420px] md:h-[500px]">
+        <div className="relative overflow-hidden rounded-lg bg-[#f5f5f5] group h-[350px] sm:h-[420px] md:h-[500px] md:flex-1 order-1 md:order-2">
           <div
             ref={mainImageRef}
             className="relative h-full w-full cursor-zoom-in"
