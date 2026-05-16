@@ -16,6 +16,7 @@ gsap.registerPlugin(ScrollTrigger)
 type ProductWithRelations = Product & {
   variants?: ProductVariant[]
   category?: { name: string; slug: string } | null
+  _colorVariant?: { color: string; image: string; colorHex: string }
 }
 
 interface OnTrendPicksProps {
@@ -154,19 +155,22 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
         <div className="overflow-hidden" ref={emblaRef}>
           <div className="flex">
             {products.map((product, index) => {
-              const imageUrl = product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)
+              const imageUrl = product._colorVariant?.image || product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)
               const isActive = index === selectedIndex
               const price = product.variants?.[0]?.price ?? product.base_price ?? 0
               const comparePrice = product.variants?.[0]?.compare_at_price
               const hasDiscount = comparePrice != null && comparePrice > price
+              const productUrl = product._colorVariant
+                ? `/products/${product.slug}?color=${encodeURIComponent(product._colorVariant.color)}`
+                : `/products/${product.slug}`
 
               return (
                 <div
-                  key={product.id}
+                  key={`${product.id}-${product._colorVariant?.color || index}`}
                   className="min-w-0 flex-shrink-0 basis-[70%] sm:basis-[50%] lg:basis-[40%] px-2 sm:px-3"
                 >
                   <Link
-                    href={`/products/${product.slug}`}
+                    href={productUrl}
                     className="group block"
                   >
                     <div
@@ -213,6 +217,9 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
                         <h3 className="text-white font-serif text-xl sm:text-2xl lg:text-3xl font-semibold tracking-tight">
                           {product.name}
                         </h3>
+                        {product._colorVariant && (
+                          <p className="text-white/60 text-sm mt-0.5">{product._colorVariant.color}</p>
+                        )}
                         <div className="mt-2 flex items-center gap-2">
                           <span className="text-white font-medium text-lg">
                             {formatPrice(price)}

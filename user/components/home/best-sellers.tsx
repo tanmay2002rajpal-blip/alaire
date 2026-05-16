@@ -15,6 +15,7 @@ gsap.registerPlugin(ScrollTrigger)
 type ProductWithRelations = Product & {
   variants?: ProductVariant[]
   category?: { name: string; slug: string } | null
+  _colorVariant?: { color: string; image: string; colorHex: string }
 }
 
 interface BestSellersProps {
@@ -92,15 +93,18 @@ export function BestSellers({ products }: BestSellersProps) {
       {/* Horizontal scroll with snap */}
       <div className="rank-scroll flex gap-4 sm:gap-5 overflow-x-auto no-scrollbar snap-x snap-mandatory px-[max(1rem,calc((100vw-1400px)/2+1rem))]  pb-4">
         {topProducts.map((product, index) => {
-          const imageUrl = product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)
+          const imageUrl = product._colorVariant?.image || product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)
           const price = product.variants?.[0]?.price ?? product.base_price ?? 0
           const comparePrice = product.variants?.[0]?.compare_at_price
           const hasDiscount = comparePrice != null && comparePrice > price
+          const productUrl = product._colorVariant
+            ? `/products/${product.slug}?color=${encodeURIComponent(product._colorVariant.color)}`
+            : `/products/${product.slug}`
 
           return (
             <Link
-              key={product.id}
-              href={`/products/${product.slug}`}
+              key={`${product.id}-${product._colorVariant?.color || index}`}
+              href={productUrl}
               className="rank-card group snap-start shrink-0 w-[280px] sm:w-[320px] lg:w-[360px]"
             >
               <div className="relative rounded-2xl overflow-hidden transition-all">
@@ -147,6 +151,9 @@ export function BestSellers({ products }: BestSellersProps) {
                   <h3 className="mt-1 text-white font-medium text-base sm:text-lg tracking-tight group-hover:text-accent transition-colors">
                     {product.name}
                   </h3>
+                  {product._colorVariant && (
+                    <p className="text-white/50 text-xs mt-0.5">{product._colorVariant.color}</p>
+                  )}
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-white font-semibold">
                       {formatPrice(price)}
