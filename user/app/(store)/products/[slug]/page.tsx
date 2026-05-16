@@ -71,27 +71,27 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   return (
     <div className="container py-8">
       {/* Breadcrumb */}
-      <nav className="mb-8 flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/" className="hover:text-foreground">
+      <nav className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground overflow-x-auto whitespace-nowrap scrollbar-hide pb-1">
+        <Link href="/" className="hover:text-foreground shrink-0">
           Home
         </Link>
-        <ChevronRight className="h-4 w-4" />
-        <Link href="/products" className="hover:text-foreground">
+        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+        <Link href="/products" className="hover:text-foreground shrink-0">
           Products
         </Link>
         {product.category && (
           <>
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
             <Link
               href={`/categories/${product.category.slug}`}
-              className="hover:text-foreground"
+              className="hover:text-foreground shrink-0"
             >
               {product.category.name}
             </Link>
           </>
         )}
-        <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground">{product.name}</span>
+        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+        <span className="text-foreground truncate max-w-[200px] sm:max-w-none">{product.name}</span>
       </nav>
 
       {/* Product Content */}

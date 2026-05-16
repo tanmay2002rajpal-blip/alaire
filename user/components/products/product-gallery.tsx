@@ -116,7 +116,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
                   key={`${image}-${index}`}
                   onClick={() => handleThumbnailClick(index)}
                   className={cn(
-                    "relative w-[72px] h-[72px] md:w-20 md:h-20 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-200",
+                    "relative w-[60px] h-[60px] sm:w-[72px] sm:h-[72px] md:w-20 md:h-20 shrink-0 overflow-hidden rounded-md border-2 transition-all duration-200",
                     selectedIndex === index
                       ? "border-foreground"
                       : "border-transparent opacity-60 hover:opacity-100 hover:border-muted-foreground/40"
