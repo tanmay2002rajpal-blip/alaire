@@ -141,8 +141,8 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
           </div>
         )}
 
-        {/* Main Image — square aspect ratio */}
-        <div className="relative aspect-square flex-1 overflow-hidden rounded-lg bg-muted group">
+        {/* Main Image */}
+        <div className="relative aspect-[4/5] max-h-[600px] flex-1 overflow-hidden rounded-lg bg-muted group">
           <div
             ref={mainImageRef}
             className="relative h-full w-full cursor-zoom-in"
@@ -157,7 +157,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
               className={cn(
-                "object-contain transition-transform duration-300",
+                "object-cover transition-transform duration-300",
                 isZooming && "scale-150"
               )}
               style={

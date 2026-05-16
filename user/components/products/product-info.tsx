@@ -244,8 +244,8 @@ export function ProductInfo({ product, onColorChange }: ProductInfoProps) {
           className="flex-1"
         />
         <WishlistButton productId={product.id} className="h-14 sm:h-12 md:h-11" />
-        <Button variant="outline" size="icon" className="h-14 w-14 sm:h-12 sm:w-12">
-          <Share2 className="h-5 w-5" />
+        <Button variant="outline" size="icon" className="h-14 w-14 sm:h-12 sm:w-12 md:h-11 md:w-11">
+          <Share2 className="h-5 w-5 sm:h-4 sm:w-4" />
         </Button>
       </div>
 
