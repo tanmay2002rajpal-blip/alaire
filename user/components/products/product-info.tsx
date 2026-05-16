@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Share2 } from "lucide-react"
+import { useState, useMemo, useEffect } from "react"
+import { Share2, ChevronDown, Package, Sparkles, Ruler, ShieldCheck } from "lucide-react"
 import { AnimatedQuantity } from "@/components/ui/animated-quantity"
 import { Button } from "@/components/ui/button"
 import { WishlistButton } from "@/components/wishlist"
@@ -10,6 +10,7 @@ import { VariantSelector } from "./variant-selector"
 import { AddToCartButton } from "./add-to-cart-button"
 import { formatPrice, calculateDiscount } from "@/lib/utils"
 import { getSampleProductImage } from "@/lib/sample-images"
+import { cn } from "@/lib/utils"
 import type { Product, ProductVariant, ProductOption } from "@/types"
 
 interface ProductInfoProps {
@@ -18,12 +19,86 @@ interface ProductInfoProps {
     options: ProductOption[]
     category?: { name: string; slug: string } | null
   }
+  onColorChange?: (color: string) => void
 }
 
-export function ProductInfo({ product }: ProductInfoProps) {
+function CollapsibleSection({
+  title,
+  icon: Icon,
+  defaultOpen = false,
+  children,
+}: {
+  title: string
+  icon: React.ElementType
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+
+  return (
+    <div className="border-b last:border-b-0">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between py-4 text-left hover:text-foreground transition-colors"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold">
+          <Icon className="h-4 w-4" />
+          {title}
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform duration-200",
+            isOpen && "rotate-180"
+          )}
+        />
+      </button>
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-300",
+          isOpen ? "max-h-[600px] pb-4" : "max-h-0"
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function parseDescription(desc: string) {
+  const lines = desc.split("\n").map((l) => l.trim()).filter(Boolean)
+
+  let mainDescription = ""
+  const features: string[] = []
+  let inFeatures = false
+
+  for (const line of lines) {
+    if (line.toLowerCase().startsWith("features") && line.includes(":")) {
+      inFeatures = true
+      continue
+    }
+    if (inFeatures || line.startsWith("•") || line.startsWith("*") || line.startsWith("-")) {
+      const clean = line.replace(/^[•*\-]\s*/, "").trim()
+      if (clean) features.push(clean)
+      inFeatures = true
+    } else if (
+      line.toLowerCase().startsWith("designed for") ||
+      line.toLowerCase().startsWith("experience") ||
+      line.toLowerCase().startsWith("the specially") ||
+      line.toLowerCase().startsWith("made from") ||
+      !inFeatures
+    ) {
+      if (line === lines[0] && line.includes("ALAIRE")) continue
+      if (mainDescription) mainDescription += "\n\n"
+      mainDescription += line
+    }
+  }
+
+  return { mainDescription, features }
+}
+
+export function ProductInfo({ product, onColorChange }: ProductInfoProps) {
   const [quantity, setQuantity] = useState(1)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() => {
-    // Initialize with first available option values
     const initial: Record<string, string> = {}
     product.options?.forEach((option) => {
       if (option.values.length > 0) {
@@ -33,10 +108,8 @@ export function ProductInfo({ product }: ProductInfoProps) {
     return initial
   })
 
-  // Find the selected variant based on selected options
   const selectedVariant = useMemo(() => {
     if (!product.variants || product.variants.length === 0) return null
-
     return product.variants.find((variant) => {
       const variantOptions = variant.options as Record<string, string>
       return Object.entries(selectedOptions).every(
@@ -49,7 +122,6 @@ export function ProductInfo({ product }: ProductInfoProps) {
   const compareAtPrice = selectedVariant?.compare_at_price
   const discount = compareAtPrice ? calculateDiscount(compareAtPrice, price) : null
 
-  // Stock status
   const stockQuantity = selectedVariant?.stock_quantity ?? 0
   const inStock = selectedVariant ? stockQuantity > 0 : true
   const lowStock = stockQuantity > 0 && stockQuantity <= 5
@@ -58,15 +130,28 @@ export function ProductInfo({ product }: ProductInfoProps) {
     Object.keys(selectedOptions).length === product.options?.length
 
   const handleOptionChange = (optionName: string, value: string) => {
-    setSelectedOptions((prev) => ({
-      ...prev,
-      [optionName]: value,
-    }))
+    setSelectedOptions((prev) => ({ ...prev, [optionName]: value }))
+    if (optionName.toLowerCase() === "color" && onColorChange) {
+      onColorChange(value)
+    }
   }
 
+  // Notify parent of initial color
+  useEffect(() => {
+    const colorOption = product.options?.find((o) => o.name.toLowerCase() === "color")
+    if (colorOption && colorOption.values.length > 0 && onColorChange) {
+      onColorChange(colorOption.values[0])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const { mainDescription, features } = useMemo(
+    () => parseDescription(product.description || ""),
+    [product.description]
+  )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Category */}
       {product.category && (
         <p className="text-sm text-muted-foreground">{product.category.name}</p>
@@ -90,10 +175,10 @@ export function ProductInfo({ product }: ProductInfoProps) {
         )}
       </div>
 
-      {/* Description */}
-      {product.description && (
-        <div className="text-muted-foreground leading-relaxed whitespace-pre-line">{product.description}</div>
-      )}
+      {/* Short tagline */}
+      <p className="text-sm text-muted-foreground">
+        Ultra-soft micro modal fabric with M-shaped ergonomic support. Comfort that lasts all day.
+      </p>
 
       <Separator />
 
@@ -168,6 +253,70 @@ export function ProductInfo({ product }: ProductInfoProps) {
       {selectedVariant?.sku && (
         <p className="text-xs text-muted-foreground">SKU: {selectedVariant.sku}</p>
       )}
+
+      <Separator />
+
+      {/* Collapsible Product Sections */}
+      <div className="border-t">
+        <CollapsibleSection title="Product Description" icon={Package} defaultOpen>
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+            {mainDescription}
+          </p>
+        </CollapsibleSection>
+
+        {features.length > 0 && (
+          <CollapsibleSection title="Features" icon={Sparkles} defaultOpen>
+            <ul className="space-y-2">
+              {features.map((feature, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
+                  {feature}
+                </li>
+              ))}
+            </ul>
+          </CollapsibleSection>
+        )}
+
+        <CollapsibleSection title="Product Details" icon={Ruler}>
+          <div className="grid grid-cols-2 gap-y-3 text-sm">
+            <div className="text-muted-foreground">Material</div>
+            <div className="font-medium">Micro Modal</div>
+            <div className="text-muted-foreground">Fit</div>
+            <div className="font-medium">Modern body-hugging fit</div>
+            <div className="text-muted-foreground">Waistband</div>
+            <div className="font-medium">Soft stretch elastic with ALAIRE branding</div>
+            <div className="text-muted-foreground">Support</div>
+            <div className="font-medium">Ergonomic M-shaped pouch</div>
+            <div className="text-muted-foreground">Pattern</div>
+            <div className="font-medium">Solid</div>
+            <div className="text-muted-foreground">Pack of</div>
+            <div className="font-medium">1</div>
+            <div className="text-muted-foreground">Ideal For</div>
+            <div className="font-medium">Men</div>
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Care Instructions" icon={ShieldCheck}>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li className="flex items-start gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
+              Machine wash cold with similar colours
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
+              Do not bleach
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
+              Tumble dry low
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
+              Do not iron on print
+            </li>
+          </ul>
+        </CollapsibleSection>
+      </div>
     </div>
   )
 }

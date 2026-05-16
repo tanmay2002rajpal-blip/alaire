@@ -3,8 +3,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { ChevronRight } from "lucide-react"
 import {
-  ProductGallery,
-  ProductInfo,
+  ProductPageClient,
   ProductTabs,
   ProductGrid,
 } from "@/components/products"
@@ -94,22 +93,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
       </nav>
 
       {/* Product Content */}
-      <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-        {/* Gallery */}
-        <ProductGallery
-          images={product.images ?? []}
-          productName={product.name}
-        />
-
-        {/* Info */}
-        <ProductInfo
-          product={{
-            ...product,
-            options: ((product as { options?: ProductOption[] }).options) ?? [],
-            category: product.category,
-          }}
-        />
-      </div>
+      <ProductPageClient
+        product={{
+          ...product,
+          options: ((product as { options?: ProductOption[] }).options) ?? [],
+          category: product.category,
+        }}
+      />
 
       {/* Product Details Tabs */}
       {((product as unknown as { details?: ProductDetail[] }).details)?.length ? (
