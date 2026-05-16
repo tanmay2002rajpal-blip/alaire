@@ -29,6 +29,8 @@ export function BestSellers({ products }: BestSellersProps) {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     if (prefersReducedMotion) return
 
+    const isMobile = window.innerWidth < 768
+
     const ctx = gsap.context(() => {
       gsap.from("[data-animate]", {
         y: 30,
@@ -42,18 +44,20 @@ export function BestSellers({ products }: BestSellersProps) {
           once: true,
         },
       })
-      gsap.from(".rank-card", {
-        x: 60,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.1,
-        ease: "power2.out",
-        scrollTrigger: {
-          trigger: ".rank-scroll",
-          start: "top 85%",
-          once: true,
-        },
-      })
+      if (!isMobile) {
+        gsap.from(".rank-card", {
+          x: 60,
+          opacity: 0,
+          duration: 0.6,
+          stagger: 0.1,
+          ease: "power2.out",
+          scrollTrigger: {
+            trigger: ".rank-scroll",
+            start: "top 85%",
+            once: true,
+          },
+        })
+      }
     }, sectionRef)
     return () => ctx.revert()
   }, [])

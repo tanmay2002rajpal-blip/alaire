@@ -233,7 +233,7 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
       <Separator />
 
       {/* Actions */}
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-3">
         <AddToCartButton
           productId={product.id}
           variantId={selectedVariant?.id}
@@ -245,13 +245,13 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
           maxQuantity={selectedVariant?.stock_quantity ?? 10}
           quantity={quantity}
           disabled={!inStock || !allOptionsSelected}
-          className="flex-1"
+          className="w-full sm:flex-1"
         />
-        <WishlistButton productId={product.id} className="h-14 sm:h-12 md:h-11" />
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-14 w-14 sm:h-12 sm:w-12 md:h-11 md:w-11"
+        <div className="flex gap-3">
+          <WishlistButton productId={product.id} className="h-14 flex-1 sm:flex-none sm:h-12 md:h-11" />
+          <Button
+            variant="outline"
+            className="h-14 w-14 sm:h-12 sm:w-12 md:h-11 md:w-11 shrink-0"
           onClick={async () => {
             const url = window.location.href
             if (navigator.share) {
@@ -265,6 +265,7 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
         >
           {copied ? <Check className="h-4 w-4 text-green-600" /> : <Share2 className="h-5 w-5 sm:h-4 sm:w-4" />}
         </Button>
+        </div>
       </div>
 
       {/* SKU */}
