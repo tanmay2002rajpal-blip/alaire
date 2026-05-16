@@ -33,7 +33,11 @@ export function LenisProvider({ children }: LenisProviderProps) {
   const [lenis, setLenis] = useState<Lenis | null>(null)
 
   useEffect(() => {
-    // Initialize Lenis with luxury-feel settings
+    // Skip Lenis on mobile/touch devices — native scroll performs better
+    const isMobile = window.matchMedia("(max-width: 768px)").matches
+      || "ontouchstart" in window
+    if (isMobile) return
+
     const lenisInstance = new Lenis({
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -41,7 +45,7 @@ export function LenisProvider({ children }: LenisProviderProps) {
       gestureOrientation: "vertical",
       smoothWheel: true,
       wheelMultiplier: 1,
-      touchMultiplier: 2,
+      touchMultiplier: 1,
       infinite: false,
     })
 

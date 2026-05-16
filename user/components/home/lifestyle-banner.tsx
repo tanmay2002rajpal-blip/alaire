@@ -88,7 +88,7 @@ export function LifestyleBanner() {
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
             <Link
-              href="/about"
+              href="/contact"
               className="inline-flex items-center gap-2 text-white/60 text-sm font-medium hover:text-white transition-colors px-2 py-3"
             >
               Our Story
