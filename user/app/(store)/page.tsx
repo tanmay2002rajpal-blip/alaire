@@ -47,7 +47,7 @@ export default async function HomePage() {
     description: slide.description || "",
     cta: {
       text: slide.button_text || "Shop Now",
-      href: slide.button_link || "/collection",
+      href: slide.button_link || "/products",
     },
     align: "left" as const,
   }))

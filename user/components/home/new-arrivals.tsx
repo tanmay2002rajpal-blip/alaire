@@ -77,7 +77,7 @@ export function NewArrivals({ products, categories }: NewArrivalsProps) {
               className="hidden sm:flex"
             />
             <Link
-              href="/collection"
+              href="/products"
               className="hidden sm:flex items-center gap-1 text-sm font-medium text-accent hover:text-accent/80 transition-colors shrink-0"
             >
               View All <ArrowRight className="h-4 w-4" />
@@ -115,7 +115,7 @@ export function NewArrivals({ products, categories }: NewArrivalsProps) {
 
         <div className="mt-6 text-center sm:hidden">
           <Link
-            href="/collection"
+            href="/products"
             className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:text-accent/80 transition-colors"
           >
             View All Products <ArrowRight className="h-4 w-4" />

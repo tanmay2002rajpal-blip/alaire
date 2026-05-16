@@ -81,7 +81,7 @@ export function BestSellers({ products }: BestSellersProps) {
             </p>
           </div>
           <Link
-            href="/collection"
+            href="/products"
             data-animate
             className="hidden sm:flex items-center gap-1 text-sm font-medium text-accent hover:text-white transition-colors"
           >
@@ -173,7 +173,7 @@ export function BestSellers({ products }: BestSellersProps) {
 
       <div className="container mt-6 text-center sm:hidden">
         <Link
-          href="/collection"
+          href="/products"
           className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:text-white transition-colors"
         >
           View All Products <ArrowRight className="h-4 w-4" />
