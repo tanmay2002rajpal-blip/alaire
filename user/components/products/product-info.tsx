@@ -20,6 +20,7 @@ interface ProductInfoProps {
     category?: { name: string; slug: string } | null
   }
   onColorChange?: (color: string) => void
+  initialColor?: string
 }
 
 function CollapsibleSection({
@@ -96,12 +97,14 @@ function parseDescription(desc: string) {
   return { mainDescription, features }
 }
 
-export function ProductInfo({ product, onColorChange }: ProductInfoProps) {
+export function ProductInfo({ product, onColorChange, initialColor }: ProductInfoProps) {
   const [quantity, setQuantity] = useState(1)
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
     product.options?.forEach((option) => {
-      if (option.values.length > 0) {
+      if (option.name.toLowerCase() === "color" && initialColor && option.values.includes(initialColor)) {
+        initial[option.name] = initialColor
+      } else if (option.values.length > 0) {
         initial[option.name] = option.values[0]
       }
     })

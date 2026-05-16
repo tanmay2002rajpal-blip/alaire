@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { getCategoryBySlug, getProducts, getCategories } from "@/lib/db/queries"
+import { expandProductsByColor } from "@/lib/expand-by-color"
 import { CategoryHero } from "@/components/categories"
 import { ProductGrid, ProductFilters } from "@/components/products"
 
@@ -47,13 +48,14 @@ export default async function CategoryPage({
     ? Number(resolvedSearchParams.priceMax)
     : undefined
 
-  const products = await getProducts({
+  const rawProducts = await getProducts({
     category: slug,
     sort: sort as "newest" | "price_asc" | "price_desc" | "name_asc",
     priceMin,
     priceMax,
   })
 
+  const products = expandProductsByColor(rawProducts)
   const categories = await getCategories()
 
   return (

@@ -51,8 +51,8 @@ export function LifestyleBanner() {
         <div className="relative h-[300px] sm:h-[400px] lg:h-auto overflow-hidden">
           <div className="lifestyle-image absolute inset-0">
             <Image
-              src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80"
-              alt="Alaire lifestyle"
+              src="https://res.cloudinary.com/drknn3ujj/image/upload/v1778937268/alaire/hero-slides/store-2.jpg"
+              alt="ALAIRE — Comfort is not a luxury"
               fill
               className="object-cover"
               sizes="(max-width: 1024px) 100vw, 50vw"
@@ -68,16 +68,16 @@ export function LifestyleBanner() {
             The Alaire Difference
           </p>
           <h2 className="mt-4 font-serif text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight leading-[1.1]">
-            Crafted for those
+            Comfort is not
             <br />
-            who <span className="font-light italic">appreciate</span>
+            a <span className="font-light italic">luxury.</span>
             <br />
-            the details.
+            It&apos;s the standard.
           </h2>
           <p className="mt-6 text-white/60 text-sm sm:text-base leading-relaxed max-w-md">
-            Every piece in our collection is thoughtfully curated — premium materials,
-            timeless design, and uncompromising quality. Because the way you dress
-            should feel as good as it looks.
+            Ultra-soft micro modal fabric. Ergonomic M-shaped support. Breathable,
+            moisture-wicking, and designed to move with you — from morning to night.
+            Every detail engineered for all-day comfort.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
             <Link
@@ -99,15 +99,15 @@ export function LifestyleBanner() {
           <div className="mt-10 pt-8 border-t border-white/10 grid grid-cols-3 gap-4">
             <div>
               <p className="text-2xl sm:text-3xl font-serif font-semibold">100%</p>
-              <p className="text-white/40 text-xs mt-1">Premium Quality</p>
+              <p className="text-white/40 text-xs mt-1">Micro Modal</p>
             </div>
             <div>
-              <p className="text-2xl sm:text-3xl font-serif font-semibold">500+</p>
-              <p className="text-white/40 text-xs mt-1">Happy Customers</p>
+              <p className="text-2xl sm:text-3xl font-serif font-semibold">5</p>
+              <p className="text-white/40 text-xs mt-1">Premium Colours</p>
             </div>
             <div>
-              <p className="text-2xl sm:text-3xl font-serif font-semibold">50+</p>
-              <p className="text-white/40 text-xs mt-1">Curated Styles</p>
+              <p className="text-2xl sm:text-3xl font-serif font-semibold">All Day</p>
+              <p className="text-white/40 text-xs mt-1">Comfort</p>
             </div>
           </div>
         </div>

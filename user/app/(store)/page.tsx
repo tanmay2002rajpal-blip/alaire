@@ -15,6 +15,7 @@ import {
   getCategories,
   getHeroSlides,
 } from "@/lib/db/queries"
+import { expandProductsByColor } from "@/lib/expand-by-color"
 import { getInstagramFeed } from "@/lib/instagram/api"
 
 export const metadata: Metadata = {
@@ -54,11 +55,11 @@ export default async function HomePage() {
   return (
     <>
       <HeroCarousel slides={slides} />
-      <OnTrendPicks products={newArrivals} />
+      <OnTrendPicks products={expandProductsByColor(newArrivals)} />
       <CategoryBento categories={categories} />
-      <NewArrivals products={newArrivals} categories={categories} />
+      <NewArrivals products={expandProductsByColor(newArrivals)} categories={categories} />
       <LifestyleBanner />
-      <BestSellers products={bestSellers} />
+      <BestSellers products={expandProductsByColor(bestSellers)} />
       <InstagramFeed posts={instagramPosts} />
       <NewsletterSection />
     </>

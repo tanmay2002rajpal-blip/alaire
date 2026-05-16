@@ -17,6 +17,7 @@ import type { ProductOption, ProductDetail } from "@/types"
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ color?: string }>
 }
 
 export async function generateMetadata({
@@ -40,8 +41,9 @@ export async function generateMetadata({
   }
 }
 
-export default async function ProductPage({ params }: ProductPageProps) {
+export default async function ProductPage({ params, searchParams }: ProductPageProps) {
   const { slug } = await params
+  const { color: initialColor } = await searchParams
   const product = await getProductBySlug(slug)
 
   if (!product) {
@@ -99,6 +101,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
           options: ((product as { options?: ProductOption[] }).options) ?? [],
           category: product.category,
         }}
+        initialColor={initialColor}
       />
 
       {/* Product Details Tabs */}

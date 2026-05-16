@@ -15,6 +15,11 @@ interface ProductCardProps {
   product: Product & {
     variants?: ProductVariant[]
     category?: { name: string; slug: string } | null
+    _colorVariant?: {
+      color: string
+      image: string
+      colorHex: string
+    }
   }
   className?: string
 }
@@ -39,17 +44,21 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const isOutOfStock = product.variants && product.variants.length > 0 && totalStock === 0
   const isLowStock = totalStock > 0 && totalStock <= 5
 
-  // Get the first image or use sample image based on product name
+  // Get image — prefer color variant image if available
   const imageUrl = useMemo(() => {
+    if (product._colorVariant?.image) return product._colorVariant.image
     const dbImage = product.images?.[0]
-    // Use sample image if no image or if it's a placeholder URL
     if (!dbImage || dbImage.includes("placehold") || dbImage.includes("placeholder")) {
       return getSampleProductImage(product.name, product.category?.slug)
     }
     return dbImage
-  }, [product.images, product.name, product.category?.slug])
+  }, [product.images, product.name, product.category?.slug, product._colorVariant])
 
   const isWishlisted = isInWishlist(product.id)
+
+  const productUrl = product._colorVariant
+    ? `/products/${product.slug}?color=${encodeURIComponent(product._colorVariant.color)}`
+    : `/products/${product.slug}`
 
   // Get variant count for display
   const variantCount = product.variants?.length ?? 0
@@ -113,7 +122,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
       onMouseLeave={handleMouseLeave}
     >
       {/* Image Container */}
-      <Link href={`/products/${product.slug}`} className="block">
+      <Link href={productUrl} className="block">
         <div
           ref={imageRef}
           className="relative aspect-[3/4] overflow-hidden bg-muted/50"
@@ -217,19 +226,27 @@ export function ProductCard({ product, className }: ProductCardProps) {
         {/* Name */}
         <h3 className="font-serif text-lg font-medium leading-tight tracking-tight">
           <Link
-            href={`/products/${product.slug}`}
+            href={productUrl}
             className="hover:text-muted-foreground transition-colors"
           >
             {product.name}
           </Link>
         </h3>
 
-        {/* Variant Count */}
-        {variantCount > 1 && (
+        {/* Color name or variant count */}
+        {product._colorVariant ? (
+          <div className="flex items-center gap-1.5">
+            <span
+              className="h-3 w-3 rounded-full border border-border"
+              style={{ backgroundColor: product._colorVariant.colorHex || undefined }}
+            />
+            <p className="text-xs text-muted-foreground">{product._colorVariant.color}</p>
+          </div>
+        ) : variantCount > 1 ? (
           <p className="text-xs text-muted-foreground">
             {variantCount} variants available
           </p>
-        )}
+        ) : null}
 
         {/* Price */}
         <div className="flex items-baseline gap-2">

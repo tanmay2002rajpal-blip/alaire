@@ -2,6 +2,7 @@ import { Suspense } from "react"
 import type { Metadata } from "next"
 import { ProductGrid, ProductFilters } from "@/components/products"
 import { getProducts, getCategories } from "@/lib/db/queries"
+import { expandProductsByColor } from "@/lib/expand-by-color"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export const metadata: Metadata = {
@@ -48,7 +49,9 @@ async function ProductsContent({
     filter: params.filter as "sale" | undefined,
   })
 
-  return <ProductGrid products={products} />
+  const expanded = expandProductsByColor(products)
+
+  return <ProductGrid products={expanded} />
 }
 
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {

@@ -11,6 +11,7 @@ interface ProductPageClientProps {
     options: ProductOption[]
     category?: { name: string; slug: string } | null
   }
+  initialColor?: string
 }
 
 const IMAGES_PER_COLOR = 4
@@ -39,11 +40,13 @@ function getImagesForColor(allImages: string[], color: string): string[] {
   return allImages.slice(0, IMAGES_PER_COLOR)
 }
 
-export function ProductPageClient({ product }: ProductPageClientProps) {
+export function ProductPageClient({ product, initialColor }: ProductPageClientProps) {
   const colorOption = product.options?.find(
     (o) => o.name.toLowerCase() === "color"
   )
-  const defaultColor = colorOption?.values[0] || ""
+  const defaultColor = initialColor && colorOption?.values.includes(initialColor)
+    ? initialColor
+    : colorOption?.values[0] || ""
 
   const [selectedColor, setSelectedColor] = useState(defaultColor)
 
@@ -67,6 +70,7 @@ export function ProductPageClient({ product }: ProductPageClientProps) {
       <ProductInfo
         product={product}
         onColorChange={handleColorChange}
+        initialColor={defaultColor}
       />
     </div>
   )
