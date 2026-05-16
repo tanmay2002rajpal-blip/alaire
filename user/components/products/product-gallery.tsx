@@ -106,10 +106,10 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
       <div className="flex flex-col-reverse gap-3 md:flex-row">
         {/* Thumbnails — max 4 visible, scrollable */}
         {displayImages.length > 1 && (
-          <div className="relative flex md:flex-col gap-2 md:gap-2">
+          <div className="relative flex md:flex-col gap-2">
             <div
               ref={thumbContainerRef}
-              className="flex gap-2 overflow-x-auto md:flex-col md:overflow-y-auto md:overflow-x-hidden md:max-h-[calc(4*5rem+3*0.5rem)] scrollbar-hide"
+              className="flex gap-2 overflow-x-auto md:flex-col md:overflow-y-auto md:overflow-x-hidden md:max-h-[350px] sm:md:max-h-[420px] md:max-h-[500px] scrollbar-hide"
             >
               {displayImages.map((image, index) => (
                 <button
@@ -142,7 +142,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
         )}
 
         {/* Main Image */}
-        <div className="relative aspect-[4/5] max-h-[600px] flex-1 overflow-hidden rounded-lg bg-muted group">
+        <div className="relative flex-1 overflow-hidden rounded-lg bg-[#f5f5f5] group h-[350px] sm:h-[420px] md:h-[500px]">
           <div
             ref={mainImageRef}
             className="relative h-full w-full cursor-zoom-in"
@@ -157,7 +157,7 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
               className={cn(
-                "object-cover transition-transform duration-300",
+                "object-contain transition-transform duration-300",
                 isZooming && "scale-150"
               )}
               style={
