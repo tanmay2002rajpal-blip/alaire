@@ -30,10 +30,18 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const { isInWishlist, toggleWishlist } = useWishlist()
   const { addItem } = useCart()
 
-  // Get the first variant for pricing, or use base_price
-  const firstVariant = product.variants?.[0]
-  const price = firstVariant?.price ?? product.base_price ?? 0
-  const compareAtPrice = firstVariant?.compare_at_price
+  // Find the matching variant for the displayed color, or fall back to first
+  const colorVariant = useMemo(() => {
+    if (!product._colorVariant || !product.variants?.length) return product.variants?.[0]
+    const colorName = product._colorVariant.color
+    return product.variants.find((v) => {
+      const opts = v.options as Record<string, string>
+      return (opts?.color || opts?.Color) === colorName
+    }) || product.variants[0]
+  }, [product.variants, product._colorVariant])
+
+  const price = colorVariant?.price ?? product.base_price ?? 0
+  const compareAtPrice = colorVariant?.compare_at_price
   const discount = compareAtPrice ? calculateDiscount(compareAtPrice, price) : null
 
   // Calculate total stock across all variants
@@ -100,14 +108,14 @@ export function ProductCard({ product, className }: ProductCardProps) {
     e.stopPropagation()
     addItem({
       productId: product.id,
-      variantId: firstVariant?.id,
+      variantId: colorVariant?.id,
       name: product.name,
-      variantName: firstVariant?.name,
+      variantName: colorVariant?.name,
       price: price,
       compareAtPrice: compareAtPrice ?? undefined,
       quantity: 1,
       image: imageUrl,
-      maxQuantity: firstVariant?.stock_quantity ?? 10,
+      maxQuantity: colorVariant?.stock_quantity ?? 10,
     })
   }
 
