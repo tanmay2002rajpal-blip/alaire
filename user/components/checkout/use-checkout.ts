@@ -66,10 +66,11 @@ export function useCheckout({
   shippingCost = 0,
   estimatedDays = 0,
   couponCode,
+  onVerifyingPayment,
   onSuccess,
 }: Pick<
   CheckoutFormProps,
-  "items" | "subtotal" | "shippingCost" | "estimatedDays" | "couponCode"
+  "items" | "subtotal" | "shippingCost" | "estimatedDays" | "couponCode" | "onVerifyingPayment"
 > & { onSuccess: (orderId: string) => void }) {
   // ============================================================================
   // State Management
@@ -196,6 +197,8 @@ export function useCheckout({
         description: `Order #${orderId}`,
         order_id: razorpayOrderId,
         handler: async (response) => {
+          onVerifyingPayment?.()
+
           const verifyResponse = await fetch("/api/checkout/verify-payment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -216,6 +219,15 @@ export function useCheckout({
             toast.error("Payment verification failed")
           }
         },
+        modal: {
+          ondismiss: () => {
+            fetch("/api/checkout/cancel-pending", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId }),
+            }).catch(() => {})
+          },
+        },
         prefill: {
           name: formData.fullName,
           email: formData.email,
@@ -231,10 +243,15 @@ export function useCheckout({
         toast.error("Payment failed", {
           description: response.error.description,
         })
+        fetch("/api/checkout/cancel-pending", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId }),
+        }).catch(() => {})
       })
       razorpay.open()
     },
-    [formData, onSuccess]
+    [formData, onSuccess, onVerifyingPayment]
   )
 
   const handleSubmit = useCallback(

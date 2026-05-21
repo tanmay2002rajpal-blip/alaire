@@ -24,11 +24,20 @@ export function CartItem({ item }: CartItemProps) {
     return getSampleProductImage(item.name)
   }, [item.image, item.name])
 
+  const productUrl = useMemo(() => {
+    const slug = item.slug || item.productId
+    const base = `/products/${slug}`
+    if (!item.variantName) return base
+    const parts = item.variantName.split(" / ")
+    const color = parts.length > 1 ? parts[parts.length - 1] : null
+    return color ? `${base}?color=${encodeURIComponent(color)}` : base
+  }, [item.slug, item.productId, item.variantName])
+
   return (
     <div className="group flex gap-4 py-5 transition-colors hover:bg-muted/30 -mx-4 px-4 rounded-lg">
       {/* Image */}
       <Link
-        href={`/products/${item.productId}`}
+        href={productUrl}
         className="relative aspect-square h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted/50 transition-transform hover:scale-105"
       >
         <Image
@@ -45,7 +54,7 @@ export function CartItem({ item }: CartItemProps) {
         <div className="flex justify-between gap-2">
           <div>
             <Link
-              href={`/products/${item.productId}`}
+              href={productUrl}
               className="font-medium transition-colors hover:text-muted-foreground"
             >
               {item.name}

@@ -88,7 +88,7 @@ export function CategoryBento({ categories }: CategoryBentoProps) {
           return (
             <Link
               key={cat.id}
-              href={`/collection?category=${cat.slug}`}
+              href={`/categories/${cat.slug}`}
               className="cat-card group snap-start shrink-0 w-[140px] sm:w-[180px] lg:w-auto"
             >
               <div className="relative aspect-[3/4] rounded-2xl overflow-hidden">

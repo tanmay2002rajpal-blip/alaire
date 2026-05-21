@@ -308,25 +308,30 @@ export async function POST(request: Request) {
           Services: {
             ProductCode: "A",
             ProductType: 1,
-            SubProductCode: "P", // Prepaid
+            SubProductCode: "P",
             PieceCount: "1",
             ActualWeight: "0.5",
+            PDFOutputNotRequired: false,
             CreditReferenceNo: order.order_number || orderId,
             DeclaredValue: String(order.subtotal),
             PickupDate: pickupDate,
             PickupTime: pickupTime,
-            RegisterPickup: true, // Auto-register pickup
+            RegisterPickup: true,
           },
         })
 
         const awbNo = waybillResult.GenerateWayBillResult?.AWBNo
+        const pickupToken = waybillResult.GenerateWayBillResult?.TokenNumber
+        const labelPdf = waybillResult.GenerateWayBillResult?.AWBPrintContent
         if (awbNo) {
           await db.collection("orders").updateOne(
             { _id: new ObjectId(orderId) },
             {
               $set: {
                 awb_number: awbNo,
+                pickup_token: pickupToken || null,
                 courier_name: "Blue Dart",
+                shipping_label_pdf: labelPdf || null,
               },
             }
           )

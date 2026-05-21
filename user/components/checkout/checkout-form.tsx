@@ -64,6 +64,7 @@ export function CheckoutForm({
   estimatedDays = 0,
   couponCode,
   onShippingChange,
+  onVerifyingPayment,
   onSuccess,
 }: CheckoutFormProps) {
   // ============================================================================
@@ -96,6 +97,7 @@ export function CheckoutForm({
     shippingCost,
     estimatedDays,
     couponCode,
+    onVerifyingPayment,
     onSuccess,
   })
 

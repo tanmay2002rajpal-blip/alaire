@@ -1,7 +1,7 @@
 'use server'
 
 import { ObjectId } from 'mongodb'
-import { getOrdersCollection, getOrderStatusHistoryCollection, getUsersCollection, getActivityLogCollection } from '@/lib/db/collections'
+import { getOrdersCollection, getOrderStatusHistoryCollection, getUsersCollection, getActivityLogCollection, getOrderItemsCollection, getProductVariantsCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { revalidatePath } from 'next/cache'
 import { getSession } from '@/lib/auth/jwt'
@@ -63,6 +63,80 @@ export async function updateOrderStatusAction(
       created_by: adminId ? toObjectId(adminId) : null,
       created_at: new Date(),
     })
+
+    // On cancellation: cancel BlueDart shipment + restore stock
+    if (status === 'cancelled') {
+      const cancelOrder = await ordersCol.findOne(
+        { _id: oid },
+        { projection: { awb_number: 1, pickup_token: 1 } }
+      )
+
+      // Cancel BlueDart pickup via user app API
+      if (cancelOrder?.awb_number) {
+        try {
+          const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3000'
+          const adminSecret = process.env.ADMIN_API_SECRET
+          const cancelRes = await fetch(`${userAppUrl}/api/orders/cancel-shipment`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Admin-Secret': adminSecret || '',
+            },
+            body: JSON.stringify({ orderId }),
+          })
+          const cancelData = await cancelRes.json()
+          if (!cancelData.pickupCancelled) {
+            console.warn('BlueDart pickup cancellation issue:', cancelData.pickupError)
+          }
+        } catch (cancelError) {
+          console.error('BlueDart cancellation failed (non-fatal):', cancelError)
+        }
+      }
+
+      // Restore stock for cancelled order items
+      try {
+        const orderItemsCol = await getOrderItemsCollection()
+        const variantsCol = await getProductVariantsCollection()
+        const cancelledItems = await orderItemsCol.find({ order_id: oid }).toArray()
+
+        for (const item of cancelledItems) {
+          if (item.variant_id) {
+            await variantsCol.updateOne(
+              { _id: typeof item.variant_id === 'string' ? toObjectId(item.variant_id) : item.variant_id },
+              { $inc: { stock_quantity: item.quantity } }
+            )
+          }
+        }
+      } catch (stockError) {
+        console.error('Stock restoration failed (non-fatal):', stockError)
+      }
+
+      // Auto-refund Razorpay payment + wallet balance
+      try {
+        const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3000'
+        const adminSecret = process.env.ADMIN_API_SECRET
+        const refundRes = await fetch(`${userAppUrl}/api/orders/refund`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Secret': adminSecret || '',
+          },
+          body: JSON.stringify({ orderId }),
+        })
+        const refundData = await refundRes.json()
+        if (refundData.razorpayRefund) {
+          console.log('Razorpay refund issued:', refundData.razorpayRefund.id, '₹' + refundData.razorpayRefund.amount)
+        }
+        if (refundData.razorpayError) {
+          console.warn('Razorpay refund issue:', refundData.razorpayError)
+        }
+        if (refundData.walletRefunded) {
+          console.log('Wallet refunded: ₹' + refundData.walletRefunded)
+        }
+      } catch (refundError) {
+        console.error('Auto-refund failed (non-fatal):', refundError)
+      }
+    }
 
     // Fetch order details for email notification
     const order = await ordersCol.findOne(

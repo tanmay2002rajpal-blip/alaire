@@ -318,7 +318,7 @@ class BlueDartClient {
       CreditReferenceNo: '',
       DeclaredValue: 0,
       Dimensions: [],
-      PDFOutputNotRequired: true,
+      PDFOutputNotRequired: false,
       PackType: '',
       PickupDate: '',
       PickupTime: '',

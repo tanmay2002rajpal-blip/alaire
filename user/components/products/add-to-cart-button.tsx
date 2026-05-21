@@ -8,6 +8,7 @@ import { useCart } from "@/hooks"
 
 interface AddToCartButtonProps {
   productId: string
+  slug?: string
   variantId?: string
   productName: string
   variantName?: string
@@ -22,6 +23,7 @@ interface AddToCartButtonProps {
 
 export function AddToCartButton({
   productId,
+  slug,
   variantId,
   productName,
   variantName,
@@ -44,6 +46,7 @@ export function AddToCartButton({
     try {
       addItem({
         productId,
+        slug,
         variantId,
         name: productName,
         variantName,

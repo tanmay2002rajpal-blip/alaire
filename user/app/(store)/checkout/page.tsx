@@ -177,6 +177,9 @@ export default function CheckoutPage() {
               walletAmountUsed={walletAmountUsed}
               couponCode={couponCode}
               onShippingChange={handleShippingChange}
+              onVerifyingPayment={() => {
+                setIsOrderProcessing(true)
+              }}
               onSuccess={(orderId) => {
                 setIsOrderProcessing(true)
                 clearCart()

@@ -97,6 +97,21 @@ function parseDescription(desc: string) {
   return { mainDescription, features }
 }
 
+function getColorImage(
+  images: string[] | undefined,
+  selectedOptions: Record<string, string>,
+  productName: string,
+  categorySlug?: string | null
+): string {
+  const color = selectedOptions["Color"] || selectedOptions["color"]
+  if (color && images && images.length > 0) {
+    const slug = color.toLowerCase().replace(/\s+/g, "-")
+    const match = images.find((url) => url.toLowerCase().includes(`/${slug}-`) || url.toLowerCase().includes(`/${slug}.`))
+    if (match) return match
+  }
+  return images?.[0] || getSampleProductImage(productName, categorySlug ?? undefined)
+}
+
 export function ProductInfo({ product, onColorChange, initialColor }: ProductInfoProps) {
   const [quantity, setQuantity] = useState(1)
   const [copied, setCopied] = useState(false)
@@ -140,11 +155,12 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
     }
   }
 
-  // Notify parent of initial color
+  // Notify parent of initial color (use selected, not always first)
   useEffect(() => {
     const colorOption = product.options?.find((o) => o.name.toLowerCase() === "color")
-    if (colorOption && colorOption.values.length > 0 && onColorChange) {
-      onColorChange(colorOption.values[0])
+    if (colorOption && onColorChange) {
+      const selected = selectedOptions[colorOption.name] || colorOption.values[0]
+      onColorChange(selected)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -236,12 +252,13 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
       <div className="space-y-3 sm:space-y-0 sm:flex sm:flex-row sm:gap-3">
         <AddToCartButton
           productId={product.id}
+          slug={product.slug}
           variantId={selectedVariant?.id}
           productName={product.name}
           variantName={selectedVariant ? Object.values(selectedOptions).join(" / ") : undefined}
           price={price}
           compareAtPrice={compareAtPrice ?? undefined}
-          image={product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)}
+          image={getColorImage(product.images, selectedOptions, product.name, product.category?.slug)}
           maxQuantity={selectedVariant?.stock_quantity ?? 10}
           quantity={quantity}
           disabled={!inStock || !allOptionsSelected}

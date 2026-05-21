@@ -83,6 +83,7 @@ export interface WaybillServices {
   PickupDate: string // Format: /Date(epoch_ms)/ e.g. /Date(1683376344000)/
   PickupTime: string // Format: HHMM e.g. "1400"
   RegisterPickup?: boolean // Auto-register pickup with waybill
+  PDFOutputNotRequired?: boolean
   InvoiceNo?: string
 }
 

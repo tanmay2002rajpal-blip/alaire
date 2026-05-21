@@ -65,6 +65,8 @@ export interface CheckoutFormProps {
   couponCode?: string
   /** Callback when shipping cost changes based on pincode */
   onShippingChange?: (cost: number, days?: number) => void
+  /** Callback when Razorpay payment received, verification in progress */
+  onVerifyingPayment?: () => void
   /** Callback when checkout is successful, receives the order ID */
   onSuccess: (orderId: string) => void
 }
@@ -136,27 +138,21 @@ export interface PaymentMethodCardProps {
  * @see https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/
  */
 export interface RazorpayOptions {
-  /** Razorpay API key */
   key: string
-  /** Amount in smallest currency unit (paise for INR) */
   amount: number
-  /** Currency code (e.g., "INR") */
   currency: string
-  /** Merchant/Business name */
   name: string
-  /** Order description */
   description: string
-  /** Razorpay order ID */
   order_id: string
-  /** Success callback handler */
   handler: (response: RazorpaySuccessResponse) => void
-  /** Prefill customer information */
+  modal?: {
+    ondismiss?: () => void
+  }
   prefill: {
     name: string
     email: string
     contact: string
   }
-  /** Theme customization */
   theme: {
     color: string
   }
