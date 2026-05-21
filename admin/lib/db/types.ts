@@ -251,3 +251,11 @@ export interface ContactMessageDoc {
   status: 'unread' | 'read' | 'replied'
   created_at: Date
 }
+
+// Admin Settings
+export interface AdminSettingDoc {
+  _id: ObjectId
+  key: string
+  value: any
+  updated_at: Date
+}

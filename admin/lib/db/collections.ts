@@ -21,6 +21,7 @@ import type {
   ProductOptionDoc,
   ProductDetailDoc,
   ContactMessageDoc,
+  AdminSettingDoc,
 } from './types'
 
 export async function getAdminUsersCollection(): Promise<Collection<AdminUserDoc>> {
@@ -121,4 +122,9 @@ export async function getProductDetailsCollection(): Promise<Collection<ProductD
 export async function getContactMessagesCollection(): Promise<Collection<ContactMessageDoc>> {
   const db = await getDb()
   return db.collection<ContactMessageDoc>('contact_messages')
+}
+
+export async function getAdminSettingsCollection(): Promise<Collection<AdminSettingDoc>> {
+  const db = await getDb()
+  return db.collection<AdminSettingDoc>('admin_settings')
 }
