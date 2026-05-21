@@ -84,11 +84,16 @@ export async function POST(request: Request) {
     const db = await getDb()
 
     // ========================================================================
-    // Cleanup Stale Pending Orders (older than 30 minutes)
+    // Cleanup expired checkout sessions + any legacy stale pending orders
     // ========================================================================
 
     const staleThreshold = new Date(Date.now() - 30 * 60 * 1000)
     try {
+      await db.collection("checkout_sessions").deleteMany({
+        created_at: { $lt: staleThreshold },
+      })
+
+      // Clean up any legacy pending orders from before this refactor
       const staleOrders = await db.collection("orders")
         .find({ status: "pending", created_at: { $lt: staleThreshold } })
         .project({ _id: 1, discount_code_id: 1 })
@@ -110,7 +115,7 @@ export async function POST(request: Request) {
         }
       }
     } catch (cleanupError) {
-      console.error("Stale pending order cleanup error (non-fatal):", cleanupError)
+      console.error("Cleanup error (non-fatal):", cleanupError)
     }
 
     // ========================================================================
@@ -315,7 +320,51 @@ export async function POST(request: Request) {
     }
 
     // ========================================================================
-    // Database Order Creation
+    // Prepaid: Store checkout session (NO order in DB until payment confirmed)
+    // ========================================================================
+
+    if (paymentMethod === "prepaid") {
+      // Roll back coupon usage — will re-increment on payment confirmation
+      if (discountCodeId) {
+        await db.collection("coupons").updateOne(
+          { _id: new ObjectId(discountCodeId) },
+          { $inc: { usage_count: -1 } }
+        )
+      }
+
+      const sessionDoc = {
+        user_id: userId && ObjectId.isValid(userId) ? new ObjectId(userId) : userId,
+        email,
+        items,
+        subtotal: calculatedSubtotal,
+        discount_amount: discount,
+        discount_code: discountCode || null,
+        discount_code_id: discountCodeId,
+        shipping_amount: shipping,
+        shipping_cost: shippingCost,
+        total,
+        shipping_address: shippingAddress,
+        razorpay_order_id: razorpayOrderId,
+        wallet_amount_used: walletAmountUsed || 0,
+        estimated_delivery_days: estimatedDays || null,
+        created_at: new Date(),
+        expires_at: new Date(Date.now() + 30 * 60 * 1000),
+      }
+
+      const sessionResult = await db.collection("checkout_sessions").insertOne(sessionDoc)
+
+      return NextResponse.json({
+        sessionId: sessionResult.insertedId.toString(),
+        razorpayOrderId,
+        amount: amountInPaise,
+        currency: "INR",
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        paymentMethod: "prepaid",
+      })
+    }
+
+    // ========================================================================
+    // COD: Create order immediately
     // ========================================================================
 
     const orderDoc = {
@@ -328,11 +377,11 @@ export async function POST(request: Request) {
       shipping_amount: shipping,
       total,
       shipping_address: shippingAddress,
-      razorpay_order_id: razorpayOrderId,
+      razorpay_order_id: null,
       wallet_amount_used: walletAmountUsed || 0,
       estimated_delivery_days: estimatedDays || null,
       payment_method: paymentMethod,
-      status: paymentMethod === "cod" ? "confirmed" : "pending",
+      status: "confirmed",
       created_at: new Date(),
       updated_at: new Date(),
     }
@@ -341,7 +390,6 @@ export async function POST(request: Request) {
     const orderId = orderResult.insertedId.toString()
     const orderNumber = orderDoc.order_number
 
-    // Create order line items
     const orderItems = items.map((item) => ({
       order_id: orderResult.insertedId,
       product_id: item.productId,
@@ -357,13 +405,8 @@ export async function POST(request: Request) {
 
     await db.collection("order_items").insertMany(orderItems)
 
-    // Coupon usage already incremented atomically during validation above
-
-    // ========================================================================
     // COD Order Processing
-    // ========================================================================
-
-    if (paymentMethod === "cod") {
+    {
       await db.collection("order_status_history").insertOne({
         order_id: orderResult.insertedId,
         status: "confirmed",
@@ -558,19 +601,6 @@ export async function POST(request: Request) {
         success: true,
       })
     }
-
-    // ========================================================================
-    // Prepaid Order Response
-    // ========================================================================
-
-    return NextResponse.json({
-      orderId,
-      razorpayOrderId,
-      amount: amountInPaise,
-      currency: "INR",
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-      paymentMethod: "prepaid",
-    })
   } catch (error) {
     console.error("Checkout error:", error)
     return NextResponse.json(

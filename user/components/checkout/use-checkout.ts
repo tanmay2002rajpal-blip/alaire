@@ -183,7 +183,7 @@ export function useCheckout({
 
   const initializeRazorpay = useCallback(
     async (
-      orderId: string,
+      sessionId: string,
       razorpayOrderId: string,
       amount: number,
       currency: string,
@@ -194,7 +194,7 @@ export function useCheckout({
         amount,
         currency,
         name: "Alaire",
-        description: `Order #${orderId}`,
+        description: "Alaire Order",
         order_id: razorpayOrderId,
         handler: async (response) => {
           onVerifyingPayment?.()
@@ -203,7 +203,7 @@ export function useCheckout({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              orderId,
+              sessionId,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_signature: response.razorpay_signature,
@@ -211,28 +211,18 @@ export function useCheckout({
           })
 
           if (verifyResponse.ok) {
+            const data = await verifyResponse.json()
             toast.success("Payment successful!", {
               description: "Your order has been placed",
             })
-            onSuccess(orderId)
+            onSuccess(data.orderId || sessionId)
           } else {
             toast.error("Payment verification failed")
           }
         },
         modal: {
-          ondismiss: async () => {
-            toast.info("Payment cancelled")
-            for (let attempt = 0; attempt < 3; attempt++) {
-              try {
-                const res = await fetch("/api/checkout/cancel-pending", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ orderId }),
-                })
-                if (res.ok) return
-              } catch {}
-              await new Promise((r) => setTimeout(r, 1000))
-            }
+          ondismiss: () => {
+            toast.info("Payment cancelled — no order was created")
           },
         },
         prefill: {
@@ -246,21 +236,10 @@ export function useCheckout({
       }
 
       const razorpay = new window.Razorpay(options)
-      razorpay.on("payment.failed", async (response) => {
+      razorpay.on("payment.failed", (response) => {
         toast.error("Payment failed", {
           description: response.error.description,
         })
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const res = await fetch("/api/checkout/cancel-pending", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ orderId }),
-            })
-            if (res.ok) return
-          } catch {}
-          await new Promise((r) => setTimeout(r, 1000))
-        }
       })
       razorpay.open()
     },
@@ -323,8 +302,8 @@ export function useCheckout({
           return
         }
 
-        const { orderId, razorpayOrderId, amount, currency, key } = data
-        await initializeRazorpay(orderId, razorpayOrderId, amount, currency, key)
+        const { sessionId, razorpayOrderId, amount, currency, key } = data
+        await initializeRazorpay(sessionId, razorpayOrderId, amount, currency, key)
       } catch (error) {
         toast.error("Something went wrong", {
           description: error instanceof Error ? error.message : "Please try again",

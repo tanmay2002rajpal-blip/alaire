@@ -123,7 +123,7 @@ export type CreateOrderInput = z.infer<typeof createOrderSchema>
 // ============================================================================
 
 export const verifyPaymentSchema = z.object({
-  orderId: objectIdSchema,
+  sessionId: objectIdSchema,
   razorpay_payment_id: z
     .string()
     .min(1, "Payment ID required")
