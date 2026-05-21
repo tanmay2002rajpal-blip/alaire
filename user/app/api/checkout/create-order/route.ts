@@ -84,6 +84,36 @@ export async function POST(request: Request) {
     const db = await getDb()
 
     // ========================================================================
+    // Cleanup Stale Pending Orders (older than 30 minutes)
+    // ========================================================================
+
+    const staleThreshold = new Date(Date.now() - 30 * 60 * 1000)
+    try {
+      const staleOrders = await db.collection("orders")
+        .find({ status: "pending", created_at: { $lt: staleThreshold } })
+        .project({ _id: 1, discount_code_id: 1 })
+        .toArray()
+
+      if (staleOrders.length > 0) {
+        const staleIds = staleOrders.map((o) => o._id)
+        await db.collection("order_items").deleteMany({ order_id: { $in: staleIds } })
+        await db.collection("order_status_history").deleteMany({ order_id: { $in: staleIds } })
+        await db.collection("orders").deleteMany({ _id: { $in: staleIds } })
+
+        for (const order of staleOrders) {
+          if (order.discount_code_id) {
+            await db.collection("coupons").updateOne(
+              { _id: new ObjectId(order.discount_code_id) },
+              { $inc: { usage_count: -1 } }
+            )
+          }
+        }
+      }
+    } catch (cleanupError) {
+      console.error("Stale pending order cleanup error (non-fatal):", cleanupError)
+    }
+
+    // ========================================================================
     // Stock Availability Check
     // ========================================================================
 

@@ -346,6 +346,9 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   orderId={order.id}
                   orderNumber={order.order_number}
                   orderStatus={order.status}
+                  paymentMethod={order.payment_method}
+                  hasAwb={!!order.bluedart_waybill_no}
+                  total={order.total}
                 />
               </CardContent>
             </Card>

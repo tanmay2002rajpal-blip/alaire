@@ -20,6 +20,7 @@ import type {
   WalletTransactionDoc,
   ProductOptionDoc,
   ProductDetailDoc,
+  ContactMessageDoc,
 } from './types'
 
 export async function getAdminUsersCollection(): Promise<Collection<AdminUserDoc>> {
@@ -115,4 +116,9 @@ export async function getProductOptionsCollection(): Promise<Collection<ProductO
 export async function getProductDetailsCollection(): Promise<Collection<ProductDetailDoc>> {
   const db = await getDb()
   return db.collection<ProductDetailDoc>('product_details')
+}
+
+export async function getContactMessagesCollection(): Promise<Collection<ContactMessageDoc>> {
+  const db = await getDb()
+  return db.collection<ContactMessageDoc>('contact_messages')
 }

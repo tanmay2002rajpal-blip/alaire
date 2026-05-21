@@ -22,9 +22,14 @@ interface OrderActionButtonsProps {
   orderId: string
   orderNumber: string
   orderStatus: string
+  paymentMethod?: string | null
+  hasAwb?: boolean
+  total?: number
 }
 
-export function OrderActionButtons({ orderId, orderNumber, orderStatus }: OrderActionButtonsProps) {
+export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentMethod, hasAwb, total }: OrderActionButtonsProps) {
+  const isPrepaid = paymentMethod !== 'cod'
+  const isCod = paymentMethod === 'cod'
   const router = useRouter()
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
@@ -139,10 +144,25 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus }: OrderA
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Order</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to cancel order{' '}
-              <code className="bg-muted px-1 rounded">{orderNumber}</code>?
-              This will notify the customer and cannot be easily undone.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Are you sure you want to cancel order{' '}
+                  <code className="bg-muted px-1 rounded">{orderNumber}</code>?
+                </p>
+                <p className="font-medium">This will automatically:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  {hasAwb && <li>Cancel the BlueDart shipment</li>}
+                  <li>Restore product stock</li>
+                  {isPrepaid && (
+                    <li>
+                      Issue a full Razorpay refund{total ? ` of ₹${total}` : ''} (5-7 business days)
+                    </li>
+                  )}
+                  {isCod && <li>No payment refund needed (Cash on Delivery)</li>}
+                  <li>Send cancellation email to the customer</li>
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -164,10 +184,25 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus }: OrderA
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Refund Order</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to process a refund for order{' '}
-              <code className="bg-muted px-1 rounded">{orderNumber}</code>?
-              The customer will be notified and the refund will be reflected in 5-7 business days.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  Are you sure you want to process a refund for order{' '}
+                  <code className="bg-muted px-1 rounded">{orderNumber}</code>?
+                </p>
+                {isPrepaid ? (
+                  <ul className="list-disc list-inside space-y-1 text-sm">
+                    <li>Full Razorpay refund{total ? ` of ₹${total}` : ''} will be issued</li>
+                    <li>Refund reflects in 5-7 business days</li>
+                    <li>Customer will be notified by email</li>
+                  </ul>
+                ) : (
+                  <p className="text-sm text-amber-600">
+                    This is a Cash on Delivery order. No online refund will be processed.
+                    Contact the customer for manual refund if payment was already collected.
+                  </p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

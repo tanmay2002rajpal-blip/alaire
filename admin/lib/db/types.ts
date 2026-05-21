@@ -238,3 +238,16 @@ export interface ProductDetailDoc {
   value: string
   position: number
 }
+
+// Contact Messages
+export interface ContactMessageDoc {
+  _id: ObjectId
+  first_name: string
+  last_name: string
+  email: string
+  phone: string | null
+  subject: string
+  message: string
+  status: 'unread' | 'read' | 'replied'
+  created_at: Date
+}

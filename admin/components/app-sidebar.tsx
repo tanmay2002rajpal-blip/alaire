@@ -12,6 +12,7 @@ import {
   IconFileText,
   IconLayoutDashboard,
   IconMail,
+  IconMessage,
   IconPackage,
   IconPhoto,
   IconSettings,
@@ -52,6 +53,7 @@ const navigation = {
     { title: 'Blog Posts', href: '/content/blog', icon: IconFileText },
     { title: 'Promo Banner', href: '/content/promotions', icon: IconSpeakerphone },
     { title: 'Newsletter', href: '/newsletter', icon: IconMail },
+    { title: 'Messages', href: '/messages', icon: IconMessage },
   ],
   analytics: [
     { title: 'Sales Reports', href: '/analytics/sales', icon: IconChartBar },

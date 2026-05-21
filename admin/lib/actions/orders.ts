@@ -64,15 +64,15 @@ export async function updateOrderStatusAction(
       created_at: new Date(),
     })
 
-    // On cancellation: cancel BlueDart shipment + restore stock
-    if (status === 'cancelled') {
-      const cancelOrder = await ordersCol.findOne(
+    // On cancellation or refund: handle BlueDart + Razorpay + stock
+    if (status === 'cancelled' || status === 'refunded') {
+      const fullOrder = await ordersCol.findOne(
         { _id: oid },
-        { projection: { awb_number: 1, pickup_token: 1 } }
+        { projection: { awb_number: 1, pickup_token: 1, payment_method: 1, razorpay_payment_id: 1, total: 1 } }
       )
 
-      // Cancel BlueDart pickup via user app API
-      if (cancelOrder?.awb_number) {
+      // Cancel BlueDart pickup — only on cancellation (not refund-only)
+      if (status === 'cancelled' && fullOrder?.awb_number) {
         try {
           const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3000'
           const adminSecret = process.env.ADMIN_API_SECRET
@@ -93,25 +93,27 @@ export async function updateOrderStatusAction(
         }
       }
 
-      // Restore stock for cancelled order items
-      try {
-        const orderItemsCol = await getOrderItemsCollection()
-        const variantsCol = await getProductVariantsCollection()
-        const cancelledItems = await orderItemsCol.find({ order_id: oid }).toArray()
+      // Restore stock — only on cancellation
+      if (status === 'cancelled') {
+        try {
+          const orderItemsCol = await getOrderItemsCollection()
+          const variantsCol = await getProductVariantsCollection()
+          const cancelledItems = await orderItemsCol.find({ order_id: oid }).toArray()
 
-        for (const item of cancelledItems) {
-          if (item.variant_id) {
-            await variantsCol.updateOne(
-              { _id: typeof item.variant_id === 'string' ? toObjectId(item.variant_id) : item.variant_id },
-              { $inc: { stock_quantity: item.quantity } }
-            )
+          for (const item of cancelledItems) {
+            if (item.variant_id) {
+              await variantsCol.updateOne(
+                { _id: typeof item.variant_id === 'string' ? toObjectId(item.variant_id) : item.variant_id },
+                { $inc: { stock_quantity: item.quantity } }
+              )
+            }
           }
+        } catch (stockError) {
+          console.error('Stock restoration failed (non-fatal):', stockError)
         }
-      } catch (stockError) {
-        console.error('Stock restoration failed (non-fatal):', stockError)
       }
 
-      // Auto-refund Razorpay payment + wallet balance
+      // Auto-refund Razorpay payment + wallet balance — for both cancelled and refunded
       try {
         const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3000'
         const adminSecret = process.env.ADMIN_API_SECRET

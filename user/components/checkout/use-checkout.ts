@@ -220,12 +220,19 @@ export function useCheckout({
           }
         },
         modal: {
-          ondismiss: () => {
-            fetch("/api/checkout/cancel-pending", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ orderId }),
-            }).catch(() => {})
+          ondismiss: async () => {
+            toast.info("Payment cancelled")
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                const res = await fetch("/api/checkout/cancel-pending", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ orderId }),
+                })
+                if (res.ok) return
+              } catch {}
+              await new Promise((r) => setTimeout(r, 1000))
+            }
           },
         },
         prefill: {
@@ -239,15 +246,21 @@ export function useCheckout({
       }
 
       const razorpay = new window.Razorpay(options)
-      razorpay.on("payment.failed", (response) => {
+      razorpay.on("payment.failed", async (response) => {
         toast.error("Payment failed", {
           description: response.error.description,
         })
-        fetch("/api/checkout/cancel-pending", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId }),
-        }).catch(() => {})
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const res = await fetch("/api/checkout/cancel-pending", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId }),
+            })
+            if (res.ok) return
+          } catch {}
+          await new Promise((r) => setTimeout(r, 1000))
+        }
       })
       razorpay.open()
     },
