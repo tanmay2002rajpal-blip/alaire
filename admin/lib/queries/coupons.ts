@@ -7,8 +7,10 @@ import { toObjectId, paginate, totalPages } from '@/lib/db/helpers'
 export interface Coupon {
   id: string
   code: string
-  discount_type: 'percentage' | 'fixed'
+  discount_type: 'percentage' | 'fixed' | 'buy_x_get_y'
   discount_value: number
+  buy_quantity: number | null
+  get_quantity: number | null
   min_order_amount: number | null
   max_discount: number | null
   usage_limit: number | null
@@ -22,7 +24,7 @@ export interface Coupon {
 export interface CouponFilters {
   search?: string
   status?: 'all' | 'active' | 'inactive' | 'expired'
-  type?: 'all' | 'percentage' | 'fixed'
+  type?: 'all' | 'percentage' | 'fixed' | 'buy_x_get_y'
   page?: number
   limit?: number
 }
@@ -43,8 +45,10 @@ export interface PaginatedCoupons {
 
 export interface CreateCouponData {
   code: string
-  discount_type: 'percentage' | 'fixed'
+  discount_type: 'percentage' | 'fixed' | 'buy_x_get_y'
   discount_value: number
+  buy_quantity?: number
+  get_quantity?: number
   min_order_amount?: number
   max_discount?: number
   usage_limit?: number
@@ -55,8 +59,10 @@ export interface CreateCouponData {
 
 export interface UpdateCouponData {
   code?: string
-  discount_type?: 'percentage' | 'fixed'
+  discount_type?: 'percentage' | 'fixed' | 'buy_x_get_y'
   discount_value?: number
+  buy_quantity?: number
+  get_quantity?: number
   min_order_amount?: number
   max_discount?: number
   usage_limit?: number
@@ -118,6 +124,8 @@ export async function getCoupons(filters?: CouponFilters): Promise<PaginatedCoup
     code: coupon.code,
     discount_type: coupon.type,
     discount_value: coupon.value,
+    buy_quantity: coupon.buy_quantity ?? null,
+    get_quantity: coupon.get_quantity ?? null,
     min_order_amount: coupon.min_order_amount,
     max_discount: coupon.max_discount,
     usage_limit: coupon.usage_limit,
@@ -194,6 +202,8 @@ export async function getCouponById(id: string): Promise<Coupon | null> {
     code: data.code,
     discount_type: data.type,
     discount_value: data.value,
+    buy_quantity: data.buy_quantity ?? null,
+    get_quantity: data.get_quantity ?? null,
     min_order_amount: data.min_order_amount,
     max_discount: data.max_discount,
     usage_limit: data.usage_limit,

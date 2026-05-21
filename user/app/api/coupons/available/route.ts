@@ -30,6 +30,8 @@ export async function GET(request: Request) {
         code: 1,
         type: 1,
         value: 1,
+        buy_quantity: 1,
+        get_quantity: 1,
         min_order_amount: 1,
         max_discount: 1,
         valid_from: 1,
@@ -55,6 +57,9 @@ export async function GET(request: Request) {
           discount = (subtotal * value) / 100
           const maxDiscount = Number(c.max_discount) || null
           if (maxDiscount) discount = Math.min(discount, maxDiscount)
+        } else if (c.type === "buy_x_get_y") {
+          // Can't calculate exact discount without cart items, show 0 savings
+          discount = 0
         } else {
           discount = Math.min(value, subtotal)
         }
@@ -65,6 +70,8 @@ export async function GET(request: Request) {
         code: c.code,
         type: c.type,
         value: Number(c.value),
+        buy_quantity: c.buy_quantity ?? null,
+        get_quantity: c.get_quantity ?? null,
         min_order_amount: minOrder,
         max_discount: Number(c.max_discount) || null,
         is_eligible: isEligible && !isUsedUp,

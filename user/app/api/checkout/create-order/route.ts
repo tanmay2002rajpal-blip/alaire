@@ -211,16 +211,44 @@ export async function POST(request: Request) {
         if (calculatedSubtotal >= minOrder) {
           const discountValue = Number(code.value) || Number(code.discount_value) || 0
           const discountType = code.type || code.discount_type
-          if (discountType === "percentage") {
+
+          if (discountType === "buy_x_get_y") {
+            const buyQty = Number(code.buy_quantity) || 2
+            const getQty = Number(code.get_quantity) || 1
+            const requiredQty = buyQty + getQty
+            const totalCartQty = items.reduce((sum, item) => sum + item.quantity, 0)
+
+            if (totalCartQty >= requiredQty) {
+              // Expand to individual unit prices, sort ascending
+              const unitPrices: number[] = []
+              for (const item of items) {
+                for (let i = 0; i < item.quantity; i++) {
+                  unitPrices.push(item.price)
+                }
+              }
+              unitPrices.sort((a, b) => a - b)
+              for (let i = 0; i < Math.min(getQty, unitPrices.length); i++) {
+                discount += unitPrices[i]
+              }
+              discountCodeId = code._id.toString()
+            } else {
+              // Not enough items — roll back
+              await db.collection("coupons").updateOne(
+                { _id: code._id },
+                { $inc: { usage_count: -1 } }
+              )
+            }
+          } else if (discountType === "percentage") {
             discount = (calculatedSubtotal * discountValue) / 100
             const maxDiscount = Number(code.max_discount) || Number(code.max_discount_amount) || 0
             if (maxDiscount) {
               discount = Math.min(discount, maxDiscount)
             }
+            discountCodeId = code._id.toString()
           } else {
             discount = discountValue
+            discountCodeId = code._id.toString()
           }
-          discountCodeId = code._id.toString()
         } else {
           // Min order not met — roll back the usage increment
           await db.collection("coupons").updateOne(
@@ -434,9 +462,10 @@ export async function POST(request: Request) {
         const customerName = process.env.BLUEDART_CUSTOMER_NAME || ""
         const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ""
         const originArea = process.env.BLUEDART_ORIGIN_AREA || ""
-        const warehousePincode = "125001"
-        // BlueDart expects /Date(epoch_ms)/ format
-        const pickupDate = `/Date(${Date.now()})/`
+        const warehousePincode = process.env.BLUEDART_WAREHOUSE_PINCODE || "125001"
+        const warehouseAddress = process.env.BLUEDART_WAREHOUSE_ADDRESS || ""
+        const warehouseMobile = process.env.BLUEDART_WAREHOUSE_MOBILE || ""
+        const pickupDate = `/Date(${Date.now() + 24 * 60 * 60 * 1000})/`
         const pickupTime = "1400"
 
         const waybillResult = await blueDartClient.generateWaybill({
@@ -451,34 +480,39 @@ export async function POST(request: Request) {
             CustomerName: customerName,
             CustomerCode: customerCode,
             OriginArea: originArea,
-            CustomerAddress1: "",
+            CustomerAddress1: warehouseAddress,
             CustomerPincode: warehousePincode,
-            CustomerMobile: "",
+            CustomerMobile: warehouseMobile,
             Sender: customerName,
           },
           Services: {
             ProductCode: "A",
             ProductType: 1,
-            SubProductCode: "C", // COD
+            SubProductCode: "C",
             PieceCount: "1",
             ActualWeight: "0.5",
+            PDFOutputNotRequired: false,
             CreditReferenceNo: orderNumber,
             DeclaredValue: String(calculatedSubtotal),
-            CollectableAmount: total, // COD collectable amount
+            CollectableAmount: total,
             PickupDate: pickupDate,
             PickupTime: pickupTime,
-            RegisterPickup: true, // Auto-register pickup with waybill
+            RegisterPickup: true,
           },
         })
 
         const awbNo = waybillResult.GenerateWayBillResult?.AWBNo
+        const pickupToken = waybillResult.GenerateWayBillResult?.TokenNumber
+        const labelPdf = waybillResult.GenerateWayBillResult?.AWBPrintContent
         if (awbNo) {
           await db.collection("orders").updateOne(
             { _id: orderResult.insertedId },
             {
               $set: {
                 awb_number: awbNo,
+                pickup_token: pickupToken || null,
                 courier_name: "Blue Dart",
+                shipping_label_pdf: labelPdf || null,
               },
             }
           )

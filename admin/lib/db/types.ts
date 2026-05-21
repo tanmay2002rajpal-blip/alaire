@@ -91,6 +91,9 @@ export interface OrderDoc {
   shipping_address: any
   razorpay_order_id: string | null
   razorpay_payment_id: string | null
+  awb_number?: string | null
+  pickup_token?: string | null
+  courier_name?: string | null
   created_at: Date
   updated_at: Date
 }
@@ -146,8 +149,10 @@ export interface AddressDoc {
 export interface CouponDoc {
   _id: ObjectId
   code: string
-  type: 'percentage' | 'fixed'
+  type: 'percentage' | 'fixed' | 'buy_x_get_y'
   value: number
+  buy_quantity: number | null
+  get_quantity: number | null
   min_order_amount: number | null
   max_discount: number | null
   usage_limit: number | null

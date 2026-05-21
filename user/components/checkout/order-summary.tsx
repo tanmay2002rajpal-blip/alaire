@@ -56,6 +56,8 @@ export function OrderSummary({
     code: string
     type: string
     value: number
+    buy_quantity: number | null
+    get_quantity: number | null
     min_order_amount: number
     max_discount: number | null
     is_eligible: boolean
@@ -85,7 +87,11 @@ export function OrderSummary({
 
     setIsValidating(true)
     try {
-      const result = await validateCoupon(couponInput.trim(), subtotal)
+      const cartItemsForValidation = items.map((item) => ({
+        price: item.price,
+        quantity: item.quantity,
+      }))
+      const result = await validateCoupon(couponInput.trim(), subtotal, cartItemsForValidation)
       if (result.success && result.discount) {
         onCouponApply?.(result.code!, result.discount)
         setCouponInput("")
@@ -243,6 +249,8 @@ export function OrderSummary({
                   <p className="text-muted-foreground">
                     {coupon.type === "percentage"
                       ? `${coupon.value}% off${coupon.max_discount ? ` (up to ${formatPrice(coupon.max_discount)})` : ""}`
+                      : coupon.type === "buy_x_get_y"
+                      ? `Buy ${coupon.buy_quantity || 2} Get ${coupon.get_quantity || 1} Free`
                       : `${formatPrice(coupon.value)} off`}
                     {coupon.min_order_amount > 0 && ` on orders over ${formatPrice(coupon.min_order_amount)}`}
                   </p>

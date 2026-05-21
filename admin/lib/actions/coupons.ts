@@ -43,6 +43,15 @@ export async function createCouponAction(data: CreateCouponData): Promise<Action
       return { success: false, error: 'Percentage discount cannot exceed 100%' }
     }
 
+    if (data.discount_type === 'buy_x_get_y') {
+      if (!data.buy_quantity || data.buy_quantity < 1) {
+        return { success: false, error: 'Buy quantity must be at least 1' }
+      }
+      if (!data.get_quantity || data.get_quantity < 1) {
+        return { success: false, error: 'Get quantity must be at least 1' }
+      }
+    }
+
     const now = new Date()
     const couponId = new ObjectId()
 
@@ -51,6 +60,8 @@ export async function createCouponAction(data: CreateCouponData): Promise<Action
       code: normalizedCode,
       type: data.discount_type,
       value: data.discount_value,
+      buy_quantity: data.discount_type === 'buy_x_get_y' ? (data.buy_quantity || null) : null,
+      get_quantity: data.discount_type === 'buy_x_get_y' ? (data.get_quantity || null) : null,
       min_order_amount: data.min_order_amount || null,
       max_discount: data.max_discount || null,
       usage_limit: data.usage_limit || null,
@@ -118,6 +129,8 @@ export async function updateCouponAction(
       }
       updateData.value = data.discount_value
     }
+    if (data.buy_quantity !== undefined) updateData.buy_quantity = data.buy_quantity
+    if (data.get_quantity !== undefined) updateData.get_quantity = data.get_quantity
     if (data.min_order_amount !== undefined) updateData.min_order_amount = data.min_order_amount
     if (data.max_discount !== undefined) updateData.max_discount = data.max_discount
     if (data.usage_limit !== undefined) updateData.usage_limit = data.usage_limit

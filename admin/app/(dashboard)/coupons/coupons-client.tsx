@@ -97,14 +97,24 @@ interface CouponsClientProps {
 // Validation schema
 const couponSchema = z.object({
   code: z.string().min(3, 'Code must be at least 3 characters').max(20),
-  discount_type: z.enum(['percentage', 'fixed']),
-  discount_value: z.number().min(0.01, 'Discount must be greater than 0'),
+  discount_type: z.enum(['percentage', 'fixed', 'buy_x_get_y']),
+  discount_value: z.number().min(0, 'Discount must be 0 or greater'),
+  buy_quantity: z.number().int().min(1).optional().nullable(),
+  get_quantity: z.number().int().min(1).optional().nullable(),
   min_order_amount: z.number().min(0).optional().nullable(),
   max_discount: z.number().min(0).optional().nullable(),
   usage_limit: z.number().int().min(1).optional().nullable(),
   valid_from: z.string().min(1, 'Start date is required'),
   valid_until: z.string().optional().nullable(),
   is_active: z.boolean(),
+}).refine((data) => {
+  if (data.discount_type === 'buy_x_get_y') {
+    return data.buy_quantity && data.buy_quantity >= 1 && data.get_quantity && data.get_quantity >= 1
+  }
+  return data.discount_value > 0
+}, {
+  message: 'Buy X Get Y requires both buy and get quantities',
+  path: ['buy_quantity'],
 })
 
 type CouponFormData = z.infer<typeof couponSchema>
@@ -212,6 +222,8 @@ export function CouponsClient({
       code: '',
       discount_type: 'percentage',
       discount_value: 10,
+      buy_quantity: null,
+      get_quantity: null,
       min_order_amount: null,
       max_discount: null,
       usage_limit: null,
@@ -273,6 +285,8 @@ export function CouponsClient({
       code: '',
       discount_type: 'percentage',
       discount_value: 10,
+      buy_quantity: null,
+      get_quantity: null,
       min_order_amount: null,
       max_discount: null,
       usage_limit: null,
@@ -290,6 +304,8 @@ export function CouponsClient({
       code: coupon.code,
       discount_type: coupon.discount_type,
       discount_value: coupon.discount_value,
+      buy_quantity: coupon.buy_quantity,
+      get_quantity: coupon.get_quantity,
       min_order_amount: coupon.min_order_amount,
       max_discount: coupon.max_discount,
       usage_limit: coupon.usage_limit,
@@ -330,6 +346,8 @@ export function CouponsClient({
         code: data.code,
         discount_type: data.discount_type,
         discount_value: data.discount_value,
+        buy_quantity: data.discount_type === 'buy_x_get_y' ? (data.buy_quantity || undefined) : undefined,
+        get_quantity: data.discount_type === 'buy_x_get_y' ? (data.get_quantity || undefined) : undefined,
         min_order_amount: data.min_order_amount || undefined,
         max_discount: data.max_discount || undefined,
         usage_limit: data.usage_limit || undefined,
@@ -478,6 +496,7 @@ export function CouponsClient({
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="percentage">Percentage</SelectItem>
             <SelectItem value="fixed">Fixed Amount</SelectItem>
+            <SelectItem value="buy_x_get_y">Buy X Get Y</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -532,6 +551,10 @@ export function CouponsClient({
                           <Percent className="h-4 w-4 text-muted-foreground" />
                           <span className="font-medium">{coupon.discount_value}%</span>
                         </>
+                      ) : coupon.discount_type === 'buy_x_get_y' ? (
+                        <span className="font-medium">
+                          Buy {coupon.buy_quantity} Get {coupon.get_quantity} Free
+                        </span>
                       ) : (
                         <>
                           <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -695,14 +718,19 @@ export function CouponsClient({
             </div>
 
             {/* Discount Type & Value */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="discount_type">Discount Type</Label>
                 <Select
                   value={watchDiscountType}
-                  onValueChange={(value: 'percentage' | 'fixed') =>
+                  onValueChange={(value: 'percentage' | 'fixed' | 'buy_x_get_y') => {
                     setValue('discount_type', value)
-                  }
+                    if (value === 'buy_x_get_y') {
+                      setValue('discount_value', 0)
+                      setValue('buy_quantity', 2)
+                      setValue('get_quantity', 1)
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -710,24 +738,68 @@ export function CouponsClient({
                   <SelectContent>
                     <SelectItem value="percentage">Percentage (%)</SelectItem>
                     <SelectItem value="fixed">Fixed Amount</SelectItem>
+                    <SelectItem value="buy_x_get_y">Buy X Get Y Free</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="discount_value">
-                  Value <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="discount_value"
-                  type="number"
-                  step="0.01"
-                  {...register('discount_value', { valueAsNumber: true })}
-                  placeholder={watchDiscountType === 'percentage' ? '10' : '100'}
-                />
-                {errors.discount_value && (
-                  <p className="text-sm text-destructive">{errors.discount_value.message}</p>
-                )}
-              </div>
+
+              {watchDiscountType === 'buy_x_get_y' ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="buy_quantity">
+                      Buy Quantity <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="buy_quantity"
+                      type="number"
+                      min="1"
+                      {...register('buy_quantity', {
+                        valueAsNumber: true,
+                        setValueAs: (v) => v === '' ? null : parseInt(v),
+                      })}
+                      placeholder="2"
+                    />
+                    {errors.buy_quantity && (
+                      <p className="text-sm text-destructive">{errors.buy_quantity.message}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="get_quantity">
+                      Get Free Quantity <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="get_quantity"
+                      type="number"
+                      min="1"
+                      {...register('get_quantity', {
+                        valueAsNumber: true,
+                        setValueAs: (v) => v === '' ? null : parseInt(v),
+                      })}
+                      placeholder="1"
+                    />
+                  </div>
+                  <p className="col-span-2 text-xs text-muted-foreground">
+                    Customer must add {watch('buy_quantity') || 'X'} + {watch('get_quantity') || 'Y'} = {(watch('buy_quantity') || 0) + (watch('get_quantity') || 0)} items.
+                    The cheapest {watch('get_quantity') || 'Y'} item(s) will be free.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="discount_value">
+                    Value <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="discount_value"
+                    type="number"
+                    step="0.01"
+                    {...register('discount_value', { valueAsNumber: true })}
+                    placeholder={watchDiscountType === 'percentage' ? '10' : '100'}
+                  />
+                  {errors.discount_value && (
+                    <p className="text-sm text-destructive">{errors.discount_value.message}</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Min Order & Max Discount */}
