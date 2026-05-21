@@ -60,6 +60,7 @@ export const useCart = create<CartState>()(
           updatedItems[existingItemIndex] = {
             ...existingItem,
             quantity: Math.min(newQuantity, maxQty),
+            image: item.image || existingItem.image,
           }
 
           set({ items: updatedItems, isOpen: true })

@@ -258,7 +258,7 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
           variantName={selectedVariant ? Object.values(selectedOptions).join(" / ") : undefined}
           price={price}
           compareAtPrice={compareAtPrice ?? undefined}
-          image={getColorImage(product.images, selectedOptions, product.name, product.category?.slug)}
+          image={selectedVariant?.image_url || getColorImage(product.images, selectedOptions, product.name, product.category?.slug)}
           maxQuantity={selectedVariant?.stock_quantity ?? 10}
           quantity={quantity}
           disabled={!inStock || !allOptionsSelected}
