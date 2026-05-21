@@ -118,7 +118,7 @@ function buildEmail({
               <tr>
                 <td style="padding: 32px 20px; text-align: center;">
                   <p style="margin: 0 0 8px; font-family: -apple-system, sans-serif; font-size: 13px; color: #8a7e6b;">
-                    Need help? Reach us at <a href="mailto:support@alaire.in" style="color: #c4a265; text-decoration: none;">support@alaire.in</a>
+                    Need help? Reach us at <a href="mailto:alaireinnerwear@gmail.com" style="color: #c4a265; text-decoration: none;">alaireinnerwear@gmail.com</a>
                   </p>
                   <p style="margin: 0; font-family: -apple-system, sans-serif; font-size: 12px; color: #b8ad9e;">
                     &copy; ${new Date().getFullYear()} Alaire. Crafted with intention.
@@ -179,7 +179,7 @@ export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Prom
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <alaireinnerwear@gmail.com>",
       to: data.customerEmail,
       subject: `Your Order ${orderNumber} is Being Prepared`,
       html,
@@ -263,7 +263,7 @@ export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <alaireinnerwear@gmail.com>",
       to: data.customerEmail,
       subject: `Your Alaire Order ${orderNumber} Has Shipped`,
       html,
@@ -324,7 +324,7 @@ export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promi
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <alaireinnerwear@gmail.com>",
       to: data.customerEmail,
       subject: `Your Alaire Order ${orderNumber} Has Been Delivered`,
       html,
@@ -368,7 +368,7 @@ export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promi
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <alaireinnerwear@gmail.com>",
       to: data.customerEmail,
       subject: `Order ${orderNumber} Has Been Cancelled`,
       html,
@@ -425,7 +425,7 @@ export async function sendOrderRefundEmail(data: OrderStatusEmailData): Promise<
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <alaireinnerwear@gmail.com>",
       to: data.customerEmail,
       subject: `Refund Processed — Order ${orderNumber}`,
       html,

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Plus, Check, Trash2 } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { Plus, Check, Trash2, Loader2, Truck, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -30,6 +30,8 @@ import {
   type Address,
   type AddressInput,
 } from "@/lib/actions/addresses"
+import { checkPincodeServiceability } from "@/lib/bluedart/actions"
+import type { PincodeData } from "@/lib/bluedart/types"
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -59,6 +61,64 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
     pincode: "",
     is_default: false,
   })
+  const [isCheckingPincode, setIsCheckingPincode] = useState(false)
+  const [pincodeData, setPincodeData] = useState<PincodeData | null>(null)
+  const [pincodeError, setPincodeError] = useState<string | null>(null)
+  const [cityAutoFilled, setCityAutoFilled] = useState(false)
+  const [stateAutoFilled, setStateAutoFilled] = useState(false)
+
+  /**
+   * Looks up city, state, serviceability, and delivery estimate from a 6-digit pincode.
+   * Uses the existing checkPincodeServiceability server action (BlueDart / static map fallback).
+   */
+  const lookupPincode = useCallback(async (pincode: string) => {
+    if (pincode.length !== 6 || !/^\d{6}$/.test(pincode)) {
+      setPincodeData(null)
+      setPincodeError(null)
+      setCityAutoFilled(false)
+      setStateAutoFilled(false)
+      return
+    }
+
+    setIsCheckingPincode(true)
+    setPincodeError(null)
+    setPincodeData(null)
+
+    try {
+      const result = await checkPincodeServiceability(pincode)
+
+      if (result.success && result.data) {
+        setPincodeData(result.data)
+
+        // Auto-fill city and state if the lookup returned real values
+        if (result.data.city && result.data.city !== "Unknown") {
+          setFormData((prev) => ({ ...prev, city: result.data!.city }))
+          setCityAutoFilled(true)
+        }
+        if (result.data.state && result.data.state !== "Unknown") {
+          setFormData((prev) => ({ ...prev, state: result.data!.state }))
+          setStateAutoFilled(true)
+        }
+      } else {
+        setPincodeError(result.error || "Could not verify this pincode")
+      }
+    } catch {
+      setPincodeError("Failed to look up pincode. Please enter city and state manually.")
+    } finally {
+      setIsCheckingPincode(false)
+    }
+  }, [])
+
+  /**
+   * Formats estimated delivery days into a human-readable string.
+   */
+  const formatEstimatedDays = (days: number): string => {
+    if (days === 1) return "1 business day"
+    if (days <= 3) return `${days} business days`
+    if (days <= 5) return "3-5 business days"
+    if (days <= 7) return "5-7 business days"
+    return `${days} business days`
+  }
 
   // Load addresses on mount
   useEffect(() => {
@@ -117,6 +177,10 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
         pincode: "",
         is_default: false,
       })
+      setPincodeData(null)
+      setPincodeError(null)
+      setCityAutoFilled(false)
+      setStateAutoFilled(false)
       toast.success("Address added successfully")
     } else {
       toast.error(result.error || "Failed to add address")
@@ -213,14 +277,26 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
       )}
 
       {/* Add New Address Button */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+      <Dialog
+        open={isAddDialogOpen}
+        onOpenChange={(open) => {
+          setIsAddDialogOpen(open)
+          if (!open) {
+            // Reset pincode lookup state when dialog closes
+            setPincodeData(null)
+            setPincodeError(null)
+            setCityAutoFilled(false)
+            setStateAutoFilled(false)
+          }
+        }}
+      >
         <DialogTrigger asChild>
           <Button variant="outline" className="w-full h-auto py-4">
             <Plus className="mr-2 h-4 w-4" />
             Add New Address
           </Button>
         </DialogTrigger>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Address</DialogTitle>
           </DialogHeader>
@@ -261,45 +337,141 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
                 placeholder="Street, Landmark"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="city">City *</Label>
-                <Input
-                  id="city"
-                  value={formData.city}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, city: e.target.value }))}
-                  placeholder="Mumbai"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="pincode">Pincode *</Label>
+
+            {/* Pincode field - triggers auto-lookup on 6-digit entry */}
+            <div className="grid gap-2">
+              <Label htmlFor="pincode">Pincode *</Label>
+              <div className="relative">
                 <Input
                   id="pincode"
                   value={formData.pincode}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, pincode: e.target.value }))}
-                  placeholder="400001"
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, "").slice(0, 6)
+                    setFormData((prev) => ({ ...prev, pincode: value }))
+                    // Reset auto-fill flags when user changes pincode
+                    if (value.length !== 6) {
+                      setPincodeData(null)
+                      setPincodeError(null)
+                      setCityAutoFilled(false)
+                      setStateAutoFilled(false)
+                    } else {
+                      lookupPincode(value)
+                    }
+                  }}
+                  placeholder="Enter 6-digit pincode"
                   maxLength={6}
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  className="font-mono"
+                  disabled={isCheckingPincode}
+                />
+                {isCheckingPincode && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+
+              {/* Loading state */}
+              {isCheckingPincode && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Looking up pincode...
+                </p>
+              )}
+
+              {/* Delivery estimate - serviceable */}
+              {!isCheckingPincode && pincodeData?.serviceable && (
+                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Truck className="h-3.5 w-3.5 shrink-0 text-green-600" />
+                    <p className="text-xs text-green-700">
+                      <span className="font-medium">
+                        Delivery in {formatEstimatedDays(pincodeData.estimatedDays)}
+                      </span>
+                      {pincodeData.city !== "Unknown" && (
+                        <span className="text-green-600">
+                          {" "}to {pincodeData.city}, {pincodeData.state}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Not serviceable warning */}
+              {!isCheckingPincode && pincodeData && !pincodeData.serviceable && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <p className="text-xs text-amber-700 font-medium">
+                      Delivery may not be available to this pincode
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Pincode lookup error */}
+              {!isCheckingPincode && pincodeError && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                    <p className="text-xs text-red-600">
+                      {pincodeError}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* City and State - auto-filled from pincode when possible */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="city">
+                  City *
+                  {cityAutoFilled && (
+                    <span className="ml-1.5 text-xs font-normal text-green-600">(auto-filled)</span>
+                  )}
+                </Label>
+                <Input
+                  id="city"
+                  value={formData.city}
+                  onChange={(e) => {
+                    setFormData((prev) => ({ ...prev, city: e.target.value }))
+                    setCityAutoFilled(false)
+                  }}
+                  placeholder="Mumbai"
+                  className={cn(cityAutoFilled && "border-green-300 bg-green-50/50")}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label htmlFor="state">
+                  State *
+                  {stateAutoFilled && (
+                    <span className="ml-1.5 text-xs font-normal text-green-600">(auto-filled)</span>
+                  )}
+                </Label>
+                <Select
+                  value={formData.state}
+                  onValueChange={(value) => {
+                    setFormData((prev) => ({ ...prev, state: value }))
+                    setStateAutoFilled(false)
+                  }}
+                >
+                  <SelectTrigger className={cn(stateAutoFilled && "border-green-300 bg-green-50/50")}>
+                    <SelectValue placeholder="Select state" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INDIAN_STATES.map((state) => (
+                      <SelectItem key={state} value={state}>
+                        {state}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="state">State *</Label>
-              <Select
-                value={formData.state}
-                onValueChange={(value) => setFormData((prev) => ({ ...prev, state: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select state" />
-                </SelectTrigger>
-                <SelectContent>
-                  {INDIAN_STATES.map((state) => (
-                    <SelectItem key={state} value={state}>
-                      {state}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="is_default"

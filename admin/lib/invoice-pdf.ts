@@ -133,16 +133,15 @@ export async function generateInvoicePDF(order: InvoiceData) {
   doc.setFont("helvetica", "bold")
   doc.setFontSize(9)
   doc.setTextColor(30, 30, 30)
-  doc.text("Alaire Fashion Pvt. Ltd.", M, y)
+  doc.text("LPR Hosiery", M, y)
   y += 5
   doc.setFont("helvetica", "normal")
   doc.setFontSize(8)
   doc.setTextColor(80, 80, 80)
-  doc.text("123, Fashion Street, Bandra West", M, y); y += 4
-  doc.text("Mumbai, Maharashtra - 400050", M, y); y += 4
-  doc.text("GSTIN: 27AABCA1234B1ZD", M, y); y += 4
-  doc.text("PAN: AABCA1234B", M, y); y += 4
-  doc.text("Phone: +91 98765 43210", M, y)
+  doc.text("Plot no 170-p, Gali no 8, Shiv Colony", M, y); y += 4
+  doc.text("Near Jindal Stainless Steel (CRD), Opp Railway Line", M, y); y += 4
+  doc.text("Hisar, Haryana - 125001", M, y); y += 4
+  doc.text("Email: alaireinnerwear@gmail.com", M, y)
 
   // Right – Ship To
   let ry = addrTop
@@ -333,7 +332,7 @@ export async function generateInvoicePDF(order: InvoiceData) {
   doc.setFont("helvetica", "bold")
   doc.setFontSize(8)
   doc.setTextColor(30, 30, 30)
-  doc.text("For Alaire Fashion Pvt. Ltd.", pw - M, fY - 2, { align: "right" })
+  doc.text("For LPR Hosiery", pw - M, fY - 2, { align: "right" })
   doc.setFont("helvetica", "normal")
   doc.setFontSize(7)
   doc.setTextColor(140, 140, 140)
@@ -343,7 +342,7 @@ export async function generateInvoicePDF(order: InvoiceData) {
   doc.setFontSize(7)
   doc.setTextColor(140, 140, 140)
   doc.text("Thank you for shopping with Alaire!", M, fY - 2)
-  doc.text("support@alaire.in  |  www.alaire.in  |  +91 98765 43210", M, fY + 3)
+  doc.text("alaireinnerwear@gmail.com  |  www.alaire.in", M, fY + 3)
   doc.text("This is a computer-generated invoice. No signature required.", M, fY + 8)
 
   return doc

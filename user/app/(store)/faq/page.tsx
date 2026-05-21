@@ -29,7 +29,7 @@ const faqCategories = [
       },
       {
         question: "Can I modify or cancel my order?",
-        answer: "Orders can be modified or cancelled within 1 hour of placing them, provided they haven't been dispatched. Please contact our support team immediately at support@alaire.in to request changes."
+        answer: "Orders can be modified or cancelled within 1 hour of placing them, provided they haven't been dispatched. Please contact our support team immediately at alaireinnerwear@gmail.com to request changes."
       },
       {
         question: "How do I track my order?",
@@ -71,7 +71,7 @@ const faqCategories = [
       },
       {
         question: "How do I initiate a return?",
-        answer: "To initiate a return, log into your account, go to 'Orders', select the item you wish to return, and click 'Request Return'. You can also email us at tanmay2002rajpal@gmail.com with your order details."
+        answer: "To initiate a return, log into your account, go to 'Orders', select the item you wish to return, and click 'Request Return'. You can also email us at alaireinnerwear@gmail.com with your order details."
       },
       {
         question: "How long does it take to get a refund?",

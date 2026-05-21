@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Clock, Folder, Search, X, ArrowRight } from "lucide-react"
@@ -63,8 +64,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         if (overlayRef.current && contentRef.current) {
           gsap.fromTo(
             overlayRef.current,
-            { opacity: 0, backdropFilter: "blur(0px)" },
-            { opacity: 1, backdropFilter: "blur(24px)", duration: 0.5, ease: "power3.out" }
+            { opacity: 0, backdropFilter: "blur(0px)", webkitBackdropFilter: "blur(0px)" },
+            { opacity: 1, backdropFilter: "blur(24px)", webkitBackdropFilter: "blur(24px)", duration: 0.5, ease: "power3.out" }
           )
           gsap.fromTo(
             contentRef.current,
@@ -81,6 +82,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         gsap.to(overlayRef.current, {
           opacity: 0,
           backdropFilter: "blur(0px)",
+          webkitBackdropFilter: "blur(0px)",
           duration: 0.4,
           ease: "power2.inOut",
           onComplete: () => setIsRendered(false)
@@ -141,15 +143,16 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const hasResults = results.products.length > 0 || results.categories.length > 0
   const showRecent = !query && recentSearches.length > 0
 
-  return (
-    <div 
+  const dialog = (
+    <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex flex-col bg-white/80 dark:bg-black/80 backdrop-blur-3xl transition-colors"
+      className="fixed inset-0 z-[9999] flex flex-col bg-white/80 dark:bg-black/80"
+      style={{ WebkitBackdropFilter: "blur(24px)", backdropFilter: "blur(24px)" }}
       role="dialog"
       aria-modal="true"
     >
-      <div className="absolute top-6 right-6 z-50">
-        <button 
+      <div className="absolute top-6 right-6 z-[10000]">
+        <button
           onClick={() => onOpenChange(false)}
           className="p-3 bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 rounded-full transition-colors flex items-center justify-center group"
           aria-label="Close search"
@@ -160,28 +163,28 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
       <div ref={contentRef} className="container mx-auto px-4 pt-24 pb-12 flex-1 overflow-y-auto w-full max-w-5xl">
         {/* Large Elegant Search Input */}
-        <div className="relative group mb-16">
+        <div className="relative group mb-8 sm:mb-16">
           <input
             ref={inputRef}
             type="text"
             placeholder="What are you looking for?"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-transparent border-none outline-none text-4xl sm:text-5xl md:text-6xl font-serif tracking-tight text-foreground placeholder:text-muted-foreground/40 py-4"
+            className="w-full bg-transparent border-none outline-none text-3xl sm:text-5xl md:text-6xl font-serif tracking-tight text-foreground placeholder:text-muted-foreground/40 py-4"
             autoComplete="off"
             spellCheck="false"
           />
           <div className="absolute bottom-0 left-0 w-full h-[2px] bg-muted-foreground/20">
-            <div 
+            <div
               className="absolute bottom-0 left-0 h-full bg-foreground transition-all duration-700 ease-out"
               style={{ width: query ? '100%' : '0%' }}
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
           {/* Main Content Area */}
-          <div className="md:col-span-8 space-y-12">
+          <div className="md:col-span-8 space-y-8 md:space-y-12">
             {isLoading && (
               <div className="flex items-center space-x-3 text-muted-foreground animate-pulse">
                 <Search className="w-5 h-5 animate-spin" />
@@ -200,14 +203,14 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
             {results.products.length > 0 && (
               <div className="space-y-6">
                 <h3 className="text-sm font-medium tracking-widest uppercase text-muted-foreground">Products</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                   {results.products.map((product) => (
                     <button
                       key={product.id}
                       onClick={() => handleSelect(`/products/${product.slug}`, query)}
-                      className="group flex items-center gap-4 p-4 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+                      className="group flex items-center gap-4 p-3 sm:p-4 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 dark:active:bg-white/10 transition-colors text-left"
                     >
-                      <div className="relative h-20 w-20 overflow-hidden bg-muted rounded-lg shrink-0">
+                      <div className="relative h-16 w-16 sm:h-20 sm:w-20 overflow-hidden bg-muted rounded-lg shrink-0">
                         {product.image ? (
                           <Image
                             src={product.image}
@@ -223,7 +226,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                         )}
                       </div>
                       <div className="flex-1 min-w-0 flex flex-col justify-center">
-                        <span className="font-medium text-lg text-foreground truncate">{product.name}</span>
+                        <span className="font-medium text-base sm:text-lg text-foreground truncate">{product.name}</span>
                         <span className="text-sm text-primary mt-1">{formatPrice(product.price)}</span>
                       </div>
                     </button>
@@ -244,7 +247,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           </div>
 
           {/* Sidebar / Categories / Recent */}
-          <div className="md:col-span-4 space-y-12">
+          <div className="md:col-span-4 space-y-8 md:space-y-12">
             {/* Recent Searches */}
             {showRecent && (
               <div className="space-y-4">
@@ -298,4 +301,12 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
       </div>
     </div>
   )
+
+  // Portal to document.body to escape header's stacking context
+  // (backdrop-filter on sticky header creates a containing block that
+  // breaks fixed positioning on mobile browsers)
+  if (typeof document !== "undefined") {
+    return createPortal(dialog, document.body)
+  }
+  return dialog
 }

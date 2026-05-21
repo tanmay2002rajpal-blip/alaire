@@ -234,7 +234,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
               <tr>
                 <td style="padding: 32px 20px; text-align: center;">
                   <p style="margin: 0 0 8px; font-family: -apple-system, sans-serif; font-size: 13px; color: #8a7e6b;">
-                    Need help? Reach us at <a href="mailto:support@alaire.in" style="color: #c4a265; text-decoration: none;">support@alaire.in</a>
+                    Need help? Reach us at <a href="mailto:alaireinnerwear@gmail.com" style="color: #c4a265; text-decoration: none;">alaireinnerwear@gmail.com</a>
                   </p>
                   <p style="margin: 0; font-family: -apple-system, sans-serif; font-size: 12px; color: #b8ad9e;">
                     &copy; ${new Date().getFullYear()} Alaire. Crafted with intention.
@@ -252,7 +252,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
 
   try {
     await getResend().emails.send({
-      from: "Alaire <orders@alaire.in>",
+      from: "Alaire <alaireinnerwear@gmail.com>",
       to: customerEmail,
       subject: `Your Alaire Order is Confirmed — ${safeOrderNumber}`,
       html,

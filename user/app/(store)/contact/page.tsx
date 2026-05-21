@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import { Mail, Phone, MapPin, Clock } from "lucide-react"
+import { Mail, MapPin, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ContactForm } from "./contact-form"
@@ -45,19 +45,7 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <h3 className="font-medium">Email</h3>
-                  <p className="text-muted-foreground">support@alaire.in</p>
-                  <p className="text-muted-foreground">orders@alaire.in</p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Phone className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Phone</h3>
-                  <p className="text-muted-foreground">+91 98765 43210</p>
-                  <p className="text-sm text-muted-foreground">Mon-Sat, 10AM-6PM IST</p>
+                  <p className="text-muted-foreground">alaireinnerwear@gmail.com</p>
                 </div>
               </div>
 
@@ -68,9 +56,11 @@ export default function ContactPage() {
                 <div>
                   <h3 className="font-medium">Address</h3>
                   <p className="text-muted-foreground">
-                    Alaire Fashion Pvt. Ltd.<br />
-                    123 Fashion Street, Bandra West<br />
-                    Mumbai, Maharashtra 400050<br />
+                    LPR Hosiery<br />
+                    Plot no 170-p, Gali no 8, Shiv Colony<br />
+                    Near Jindal Stainless Steel (CRD)<br />
+                    Opp Railway Line<br />
+                    Hisar, Haryana 125001<br />
                     India
                   </p>
                 </div>
