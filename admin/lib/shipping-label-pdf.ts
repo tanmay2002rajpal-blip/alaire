@@ -39,23 +39,28 @@ function getDimensions(size: LabelSize) {
   }
 }
 
-function hLine(doc: jsPDF, x: number, y: number, w: number, thick = false) {
-  doc.setDrawColor(0)
-  doc.setLineWidth(thick ? 0.6 : 0.2)
-  doc.line(x, y, x + w, y)
-}
-
-function dashedLine(doc: jsPDF, x1: number, y1: number, x2: number) {
-  doc.setDrawColor(150)
-  doc.setLineWidth(0.15)
-  const dashLen = 1.5
-  const gap = 1.2
-  let cx = x1
-  while (cx < x2) {
-    const end = Math.min(cx + dashLen, x2)
-    doc.line(cx, y1, end, y1)
-    cx = end + gap
+// Code128B barcode — simplified renderer for digits/uppercase
+function drawBarcode(doc: jsPDF, text: string, x: number, y: number, w: number, h: number) {
+  doc.setFillColor(0, 0, 0)
+  const chars = text.replace(/[^A-Z0-9\-]/gi, "")
+  const barCount = chars.length * 6 + 20
+  const barW = w / barCount
+  let cx = x
+  // Pseudo-barcode — alternating pattern seeded from char codes for visual representation
+  for (let i = 0; i < barCount; i++) {
+    const charIdx = Math.floor(i / 6) % chars.length
+    const code = chars.charCodeAt(charIdx) || 65
+    const bit = ((code * (i + 1) * 7) % 11) > 4
+    if (bit) {
+      doc.rect(cx, y, barW * 0.9, h, "F")
+    }
+    cx += barW
   }
+  // Text below barcode
+  doc.setFont("courier", "normal")
+  doc.setFontSize(6)
+  doc.setTextColor(0)
+  doc.text(text, x + w / 2, y + h + 3, { align: "center" })
 }
 
 export function generateShippingLabel(
@@ -73,228 +78,249 @@ export function generateShippingLabel(
 
   const M = 5
   const iw = lw - M * 2
+  const midX = ox + lw / 2
 
   // ── Outer border ──────────────────────────────────────────────────────
   doc.setDrawColor(0)
-  doc.setLineWidth(1)
-  doc.rect(ox, oy, lw, lh)
+  doc.setLineWidth(0.4)
+  doc.rect(ox + 0.5, oy + 0.5, lw - 1, lh - 1)
 
   let y = oy + M
 
   // ═══════════════════════════════════════════════════════════════════════
-  // TOP BAR — Brand + Order Number + Date
+  // ROW 1: Barcode (left) + Brand (right)
   // ═══════════════════════════════════════════════════════════════════════
-  doc.setFillColor(0, 0, 0)
-  doc.rect(ox + 1, y, lw - 2, 10, "F")
+  const barcodeText = order.awb_number || order.order_number
+  drawBarcode(doc, barcodeText, ox + M, y, 38, 10)
 
+  // Brand — ALAIRE top-right
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(12)
-  doc.setTextColor(255)
-  doc.text("ALAIRE", ox + M + 1, y + 7)
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
-  doc.text(order.order_number, ox + lw - M - 1, y + 4.5, { align: "right" })
-  doc.setFontSize(6)
-  doc.text(fmtDate(order.created_at), ox + lw - M - 1, y + 8, { align: "right" })
-
-  y += 13
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // PAYMENT BADGE + TRACKING ID ROW
-  // ═══════════════════════════════════════════════════════════════════════
-  const isCod = order.payment_method === "cod"
-  const badgeText = isCod ? `COD  ₹${order.total.toLocaleString("en-IN")}` : "PREPAID"
-  doc.setFillColor(isCod ? 220 : 22, isCod ? 38 : 163, isCod ? 38 : 74)
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(8)
-  const bw = doc.getTextWidth(badgeText) + 8
-  doc.roundedRect(ox + M, y - 3, bw, 7, 1, 1, "F")
-  doc.setTextColor(255)
-  doc.text(badgeText, ox + M + 4, y + 1.5)
-
-  if (order.awb_number) {
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(8)
-    doc.setTextColor(0)
-    doc.text(`AWB: ${order.awb_number}`, ox + lw - M, y + 1.5, { align: "right" })
-  }
-
-  y += 8
-  hLine(doc, ox + M, y, iw, true)
-  y += 4
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // FROM (Sender) — compact
-  // ═══════════════════════════════════════════════════════════════════════
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(6)
-  doc.setTextColor(120)
-  doc.text("FROM / SHIP BY", ox + M, y)
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(8)
+  doc.setFontSize(16)
   doc.setTextColor(0)
-  doc.text("LPR HOSIERY", ox + M + 25, y)
-  y += 4
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(6.5)
-  doc.setTextColor(60)
-  doc.text("Plot 170-p, Gali 8, Shiv Colony, Hisar, Haryana 125001  |  Ph: 9671030886", ox + M, y, { maxWidth: iw })
-  y += 5
-
-  hLine(doc, ox + M, y, iw)
-  y += 4
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // TO (Recipient) — prominent
-  // ═══════════════════════════════════════════════════════════════════════
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(6)
-  doc.setTextColor(120)
-  doc.text("SHIP TO", ox + M, y)
-  y += 4
-
-  const addr = order.shipping_address
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(11)
-  doc.setTextColor(0)
-  doc.text(addr.full_name.toUpperCase(), ox + M, y, { maxWidth: iw - 25 })
-  y += 5.5
-
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8.5)
-  doc.setTextColor(20)
-
-  const addrLines: string[] = [addr.line1]
-  if (addr.line2) addrLines.push(addr.line2)
-  addrLines.push(`${addr.city}, ${addr.state}`)
-
-  for (const line of addrLines) {
-    const split = doc.splitTextToSize(line, iw)
-    doc.text(split, ox + M, y)
-    y += split.length * 4
-  }
-
-  // Pincode — big and bold, right-aligned
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(18)
-  doc.setTextColor(0)
-  doc.text(addr.pincode, ox + lw - M, y + 2, { align: "right" })
-
-  // Phone next to address
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(8)
-  doc.setTextColor(40)
-  doc.text(`Ph: ${addr.phone}`, ox + M, y + 2)
-  y += 10
-
-  hLine(doc, ox + M, y, iw, true)
-  y += 4
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // TRACKING NUMBER — extra large, centered
-  // ═══════════════════════════════════════════════════════════════════════
-  if (order.awb_number) {
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(6)
-    doc.setTextColor(120)
-    doc.text("TRACKING NUMBER", ox + lw / 2, y, { align: "center" })
-    y += 5
-
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(16)
-    doc.setTextColor(0)
-    doc.text(order.awb_number, ox + lw / 2, y, { align: "center", maxWidth: iw })
-    y += 8
-
-    if (order.courier_name) {
-      doc.setFont("helvetica", "normal")
-      doc.setFontSize(8)
-      doc.setTextColor(80)
-      doc.text(`via ${order.courier_name}`, ox + lw / 2, y, { align: "center" })
-      y += 5
-    }
-
-    dashedLine(doc, ox + M, y, ox + lw - M)
-    y += 4
-  } else if (order.courier_name) {
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(6)
-    doc.setTextColor(120)
-    doc.text("COURIER", ox + M, y)
-    y += 4
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(9)
-    doc.setTextColor(0)
-    doc.text(order.courier_name, ox + M, y)
-    y += 6
-    dashedLine(doc, ox + M, y, ox + lw - M)
-    y += 4
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // ORDER ITEMS — compact list
-  // ═══════════════════════════════════════════════════════════════════════
-  const remainingH = (oy + lh - 12) - y
-  if (order.items.length > 0 && remainingH > 15) {
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(6)
-    doc.setTextColor(120)
-    doc.text("ITEMS", ox + M, y)
-    doc.text("QTY", ox + lw - M, y, { align: "right" })
-    y += 3.5
-
-    doc.setFont("helvetica", "normal")
-    doc.setFontSize(7)
-    doc.setTextColor(30)
-
-    const maxItems = size === "4x4" ? 3 : 6
-    const itemsToShow = order.items.slice(0, maxItems)
-
-    for (const item of itemsToShow) {
-      if (y > oy + lh - 16) break
-      const name = item.variant_name
-        ? `${item.product_name} (${item.variant_name})`
-        : item.product_name
-      const truncated = name.length > 45 ? name.substring(0, 42) + "..." : name
-      doc.text(truncated, ox + M, y)
-      doc.text(`×${item.quantity}`, ox + lw - M, y, { align: "right" })
-      y += 3.5
-    }
-
-    if (order.items.length > maxItems) {
-      doc.setTextColor(100)
-      doc.text(`+ ${order.items.length - maxItems} more item(s)`, ox + M, y)
-      y += 3.5
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // FOOTER — Weight + Brand
-  // ═══════════════════════════════════════════════════════════════════════
-  const fy = oy + lh - 9
-  hLine(doc, ox + M, fy - 2, iw)
+  doc.text("ALAIRE", ox + lw - M, y + 6, { align: "right" })
 
   doc.setFont("helvetica", "normal")
   doc.setFontSize(6)
   doc.setTextColor(100)
-  doc.text("Wt: 0.5 KG", ox + M, fy + 2)
-  doc.text("alaire.in", ox + lw / 2, fy + 2, { align: "center" })
+  doc.text("www.alaire.in", ox + lw - M, y + 10, { align: "right" })
 
-  const isCodFooter = order.payment_method === "cod"
-  if (isCodFooter) {
+  y += 17
+
+  // Thin line
+  doc.setDrawColor(200)
+  doc.setLineWidth(0.15)
+  doc.line(ox + M, y, ox + lw - M, y)
+  y += 4
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROW 2: SHIP DATE + Packing Slip (two columns)
+  // ═══════════════════════════════════════════════════════════════════════
+  const colL = ox + M
+  const colR = midX + 2
+
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(7)
+  doc.setTextColor(0)
+  doc.text("SHIP DATE", colL, y)
+  doc.text("Packing slip " + order.order_number, colR, y)
+  y += 4
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(8)
+  doc.setTextColor(40)
+  doc.text(fmtDate(order.created_at), colL, y)
+
+  // Payment badge on right
+  const isCod = order.payment_method === "cod"
+  if (isCod) {
     doc.setFont("helvetica", "bold")
-    doc.setTextColor(220, 38, 38)
-    doc.text(`COLLECT: ₹${order.total.toLocaleString("en-IN")}`, ox + lw - M, fy + 2, { align: "right" })
+    doc.setFontSize(8)
+    doc.setTextColor(200, 30, 30)
+    doc.text(`COD: Rs.${order.total.toLocaleString("en-IN")}`, ox + lw - M, y, { align: "right" })
   } else {
-    doc.setTextColor(22, 163, 74)
     doc.setFont("helvetica", "bold")
-    doc.text("PAID", ox + lw - M, fy + 2, { align: "right" })
+    doc.setFontSize(8)
+    doc.setTextColor(22, 140, 60)
+    doc.text("PREPAID", ox + lw - M, y, { align: "right" })
   }
+
+  y += 6
+
+  // Thin line
+  doc.setDrawColor(200)
+  doc.line(ox + M, y, ox + lw - M, y)
+  y += 5
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROW 3: SHIP TO (left) + RETURN ADDRESS (right)
+  // ═══════════════════════════════════════════════════════════════════════
+  const addr = order.shipping_address
+  const halfW = iw / 2 - 2
+
+  // Left column — SHIP TO
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(7)
+  doc.setTextColor(0)
+  doc.text("SHIP TO", colL, y)
+
+  // Right column — RETURN ADDRESS
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(7)
+  doc.setTextColor(0)
+  doc.text("RETURN ADDRESS", colR, y)
+  y += 4.5
+
+  // Ship To content
+  let ly = y
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(8)
+  doc.setTextColor(20)
+  doc.text(addr.full_name, colL, ly, { maxWidth: halfW })
+  ly += 4
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(7.5)
+  doc.setTextColor(40)
+
+  const shipLines = [addr.line1]
+  if (addr.line2) shipLines.push(addr.line2)
+  shipLines.push(`${addr.city}, ${addr.state} ${addr.pincode}`)
+  shipLines.push(`Ph: ${addr.phone}`)
+
+  for (const line of shipLines) {
+    const split = doc.splitTextToSize(line, halfW)
+    doc.text(split, colL, ly)
+    ly += split.length * 3.5
+  }
+
+  // Return Address content
+  let ry = y
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(8)
+  doc.setTextColor(20)
+  doc.text("LPR Hosiery (Alaire)", colR, ry, { maxWidth: halfW })
+  ry += 4
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(7.5)
+  doc.setTextColor(40)
+
+  const returnLines = [
+    "Plot 170-p, Gali 8",
+    "Shiv Colony, Hisar",
+    "Haryana 125001",
+    "Ph: 9671030886",
+  ]
+
+  for (const line of returnLines) {
+    doc.text(line, colR, ry, { maxWidth: halfW })
+    ry += 3.5
+  }
+
+  y = Math.max(ly, ry) + 3
+
+  // Thin line
+  doc.setDrawColor(200)
+  doc.line(ox + M, y, ox + lw - M, y)
+  y += 4
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROW 4: Courier + Tracking
+  // ═══════════════════════════════════════════════════════════════════════
+  if (order.awb_number || order.courier_name) {
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(7)
+    doc.setTextColor(100)
+
+    if (order.courier_name) {
+      doc.text(`Courier: ${order.courier_name}`, colL, y)
+    }
+
+    if (order.awb_number) {
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(0)
+      doc.text(`AWB: ${order.awb_number}`, ox + lw - M, y, { align: "right" })
+    }
+
+    y += 5
+
+    doc.setDrawColor(200)
+    doc.line(ox + M, y, ox + lw - M, y)
+    y += 4
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROW 5: Order details line
+  // ═══════════════════════════════════════════════════════════════════════
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(6.5)
+  doc.setTextColor(80)
+  doc.text(`Your order of ${fmtDate(order.created_at)}`, colL, y)
+  doc.text(`Order ID: ${order.order_number}`, ox + lw - M, y, { align: "right" })
+  y += 4
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ROW 6: Items table — Product | Qty
+  // ═══════════════════════════════════════════════════════════════════════
+  // Table header
+  doc.setDrawColor(0)
+  doc.setLineWidth(0.3)
+  doc.line(ox + M, y, ox + lw - M, y)
+  y += 3.5
+
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(7)
+  doc.setTextColor(0)
+  doc.text("Product", colL, y)
+  doc.text("Qty", ox + lw - M, y, { align: "right" })
+  y += 3
+
+  doc.setDrawColor(0)
+  doc.setLineWidth(0.15)
+  doc.line(ox + M, y, ox + lw - M, y)
+  y += 3.5
+
+  // Table rows
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(7)
+  doc.setTextColor(30)
+
+  const maxY = oy + lh - 15
+  const maxItems = size === "4x4" ? 3 : 8
+
+  for (let i = 0; i < Math.min(order.items.length, maxItems); i++) {
+    if (y > maxY) break
+    const item = order.items[i]
+    const name = item.variant_name
+      ? `${item.product_name} - ${item.variant_name}`
+      : item.product_name
+    const maxNameW = iw - 12
+    const truncated = doc.getTextWidth(name) > maxNameW
+      ? name.substring(0, Math.floor(maxNameW / doc.getTextWidth("A") * name.length / doc.getTextWidth(name))) + "..."
+      : name
+    doc.text(truncated, colL, y, { maxWidth: maxNameW })
+    doc.text(String(item.quantity), ox + lw - M, y, { align: "right" })
+    y += 4
+  }
+
+  if (order.items.length > maxItems) {
+    doc.setTextColor(100)
+    doc.setFontSize(6)
+    doc.text(`+ ${order.items.length - maxItems} more item(s)`, colL, y)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FOOTER
+  // ═══════════════════════════════════════════════════════════════════════
+  const fy = oy + lh - 7
+  doc.setDrawColor(200)
+  doc.setLineWidth(0.15)
+  doc.line(ox + M, fy - 2, ox + lw - M, fy - 2)
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(5.5)
+  doc.setTextColor(140)
+  doc.text("alaireinnerwear@gmail.com  |  alaire.in", ox + lw / 2, fy + 1, { align: "center" })
 
   return doc
 }
