@@ -15,6 +15,7 @@ const COURIER_TRACKING_URLS: Record<string, (awb: string) => string> = {
   "DTDC": (awb) => `https://www.dtdc.in/tracking.asp?strCnno=${awb}`,
   "Ecom Express": (awb) => `https://ecomexpress.in/tracking/?awb_field=${awb}`,
   "XpressBees": (awb) => `https://www.xpressbees.com/track?awb=${awb}`,
+  "TrackOn": (awb) => `https://trackon.in/tracking?waybill_no=${awb}`,
 }
 
 function getCourierTrackingUrl(courierName: string | undefined, awb: string): string | null {

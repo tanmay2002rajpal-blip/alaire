@@ -18,16 +18,17 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const size = (searchParams.get("size") || "4x6") as "4x6" | "4x4" | "a4"
 
-    // Validate size parameter
     if (!["4x6", "4x4", "a4"].includes(size)) {
       return NextResponse.json({ error: "Invalid label size" }, { status: 400 })
     }
 
     const db = await getDb()
+    const oid = new ObjectId(orderId)
 
-    const order = await db.collection("orders").findOne({
-      _id: new ObjectId(orderId),
-    })
+    const [order, orderItems] = await Promise.all([
+      db.collection("orders").findOne({ _id: oid }),
+      db.collection("order_items").find({ order_id: oid }).toArray(),
+    ])
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
@@ -41,6 +42,11 @@ export async function GET(
       {
         order_number: order.order_number,
         shipping_address: order.shipping_address,
+        items: orderItems.map((item) => ({
+          product_name: item.product_name,
+          variant_name: item.variant_name,
+          quantity: item.quantity,
+        })),
         awb_number: order.bluedart_waybill_no || order.awb_number || null,
         courier_name: order.courier_name || null,
         payment_method: order.payment_method || "prepaid",
