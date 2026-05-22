@@ -239,6 +239,8 @@ export async function POST(request: Request) {
     // Stock Reduction
     // ========================================================================
 
+    const stockWarningItems: string[] = []
+
     for (const item of items) {
       if (item.variantId && ObjectId.isValid(item.variantId)) {
         const result = await db.collection("product_variants").updateOne(
@@ -247,8 +249,22 @@ export async function POST(request: Request) {
         )
         if (result.modifiedCount === 0) {
           console.error(`Stock insufficient for variant ${item.variantId}`)
+          stockWarningItems.push(item.variantId)
         }
       }
+    }
+
+    // Flag the order if any items had insufficient stock so admin can review
+    if (stockWarningItems.length > 0) {
+      await db.collection("orders").updateOne(
+        { _id: orderResult.insertedId },
+        {
+          $set: {
+            stock_warning: true,
+            stock_warning_variants: stockWarningItems,
+          },
+        }
+      )
     }
 
     // ========================================================================

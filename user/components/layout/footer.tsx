@@ -2,52 +2,29 @@
 
 import { useEffect, useRef } from "react"
 import Link from "next/link"
-import { gsap } from "gsap"
-import { ScrollTrigger } from "gsap/ScrollTrigger"
 import { Instagram, Facebook, Twitter } from "lucide-react"
 import { NewsletterForm } from "./newsletter-form"
 import { FOOTER_LINKS, SOCIAL_LINKS, SITE_CONFIG } from "@/lib/constants"
-
-if (typeof window !== "undefined") {
-  gsap.registerPlugin(ScrollTrigger)
-}
 
 export function Footer() {
   const footerRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
+    // Simple CSS fade-in on mount — no ScrollTrigger race condition risk
     if (!footerRef.current) return
-
-    const ctx = gsap.context(() => {
-      // Animate footer sections on scroll
-      gsap.fromTo(
-        ".footer-section",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: footerRef.current,
-            start: "top 90%",
-            once: true,
-          },
-        }
-      )
-    }, footerRef)
-
-    return () => ctx.revert()
+    footerRef.current.classList.add("footer-visible")
   }, [])
 
   return (
-    <footer ref={footerRef} className="mt-auto border-t border-border/50 bg-muted/30">
+    <footer
+      ref={footerRef}
+      className="mt-auto border-t border-border/50 bg-muted/30 opacity-0 translate-y-4 transition-all duration-700 ease-out [&.footer-visible]:opacity-100 [&.footer-visible]:translate-y-0"
+    >
       {/* Main Footer Content */}
       <div className="container py-16 lg:py-20">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-12 lg:gap-8">
           {/* Brand & Newsletter */}
-          <div className="footer-section lg:col-span-5 space-y-8">
+          <div className="lg:col-span-5 space-y-8">
             <Link href="/" className="inline-block">
               <span className="font-serif text-3xl font-medium tracking-tight">
                 ALAIRE
@@ -71,7 +48,7 @@ export function Footer() {
           <div className="hidden lg:block lg:col-span-1" />
 
           {/* Shop Links */}
-          <div className="footer-section lg:col-span-2">
+          <div className="lg:col-span-2">
             <h4 className="mb-6 text-sm font-medium uppercase tracking-widest">
               Shop
             </h4>
@@ -90,7 +67,7 @@ export function Footer() {
           </div>
 
           {/* Account Links */}
-          <div className="footer-section lg:col-span-2">
+          <div className="lg:col-span-2">
             <h4 className="mb-6 text-sm font-medium uppercase tracking-widest">
               Account
             </h4>
@@ -109,7 +86,7 @@ export function Footer() {
           </div>
 
           {/* Help Links */}
-          <div className="footer-section lg:col-span-2">
+          <div className="lg:col-span-2">
             <h4 className="mb-6 text-sm font-medium uppercase tracking-widest">
               Support
             </h4>

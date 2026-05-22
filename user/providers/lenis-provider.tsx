@@ -69,6 +69,10 @@ export function LenisProvider({ children }: LenisProviderProps) {
     // Disable GSAP's default lag smoothing for better sync
     gsap.ticker.lagSmoothing(0)
 
+    // Refresh ScrollTrigger after Lenis takes over scrolling
+    // so trigger positions are recalculated correctly
+    ScrollTrigger.refresh()
+
     // Cleanup function
     return () => {
       gsap.ticker.remove(update)
