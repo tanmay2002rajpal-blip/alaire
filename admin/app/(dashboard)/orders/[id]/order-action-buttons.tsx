@@ -2,10 +2,17 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Printer, RefreshCcw, XCircle, Loader2 } from 'lucide-react'
+import { Printer, RefreshCcw, XCircle, Loader2, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,15 +32,21 @@ interface OrderActionButtonsProps {
   paymentMethod?: string | null
   hasAwb?: boolean
   total?: number
+  shippingAddress?: Record<string, unknown> | null
+  awbNumber?: string | null
+  courierName?: string | null
+  createdAt?: string | null
 }
 
-export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentMethod, hasAwb, total }: OrderActionButtonsProps) {
+export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentMethod, hasAwb, total, shippingAddress, awbNumber, courierName, createdAt }: OrderActionButtonsProps) {
   const isPrepaid = paymentMethod !== 'cod'
   const isCod = paymentMethod === 'cod'
   const router = useRouter()
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [labelSize, setLabelSize] = useState<'4x6' | '4x4' | 'a4'>('4x6')
+  const [isLabelProcessing, setIsLabelProcessing] = useState(false)
 
   const handlePrintInvoice = async () => {
     setIsProcessing(true)
@@ -57,6 +70,33 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentM
       })
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const canPrintLabel = !!shippingAddress && ['processing', 'shipped', 'delivered'].includes(orderStatus)
+
+  const handlePrintLabel = async () => {
+    setIsLabelProcessing(true)
+    try {
+      const res = await fetch(`/api/orders/${orderId}/label?size=${labelSize}`)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to generate shipping label')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Label-${orderNumber}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Shipping label downloaded')
+    } catch (error) {
+      toast.error('Failed to download shipping label', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      })
+    } finally {
+      setIsLabelProcessing(false)
     }
   }
 
@@ -110,6 +150,32 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentM
         <Printer className="h-4 w-4 mr-2" />
         Print Invoice
       </Button>
+
+      <div className="flex items-center gap-2">
+        <Button
+          className="flex-1"
+          variant="outline"
+          disabled={!canPrintLabel || isLabelProcessing}
+          onClick={handlePrintLabel}
+        >
+          {isLabelProcessing ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Tag className="h-4 w-4 mr-2" />
+          )}
+          Print Label
+        </Button>
+        <Select value={labelSize} onValueChange={(v) => setLabelSize(v as '4x6' | '4x4' | 'a4')}>
+          <SelectTrigger className="w-[80px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="4x6">4x6</SelectItem>
+            <SelectItem value="4x4">4x4</SelectItem>
+            <SelectItem value="a4">A4</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       <Button
         className="w-full"

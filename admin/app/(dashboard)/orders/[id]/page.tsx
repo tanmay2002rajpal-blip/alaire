@@ -349,6 +349,10 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   paymentMethod={order.payment_method}
                   hasAwb={!!order.bluedart_waybill_no}
                   total={order.total}
+                  shippingAddress={order.shipping_address}
+                  awbNumber={order.bluedart_waybill_no || order.awb_number || null}
+                  courierName={order.courier_name || null}
+                  createdAt={order.created_at}
                 />
               </CardContent>
             </Card>

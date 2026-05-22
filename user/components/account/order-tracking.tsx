@@ -1,10 +1,37 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Loader2, Package, Truck, CheckCircle2, Clock, MapPin } from "lucide-react"
+import { Loader2, Package, Truck, CheckCircle2, Clock, MapPin, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { getOrderTracking } from "@/lib/bluedart/actions"
 import type { TrackingActivity } from "@/lib/bluedart/types"
+
+// ── Courier tracking URL map ────────────────────────────────────────────────
+const COURIER_TRACKING_URLS: Record<string, (awb: string) => string> = {
+  "Blue Dart": (awb) => `https://www.bluedart.com/tracking/${awb}`,
+  "BlueDart": (awb) => `https://www.bluedart.com/tracking/${awb}`,
+  "Delhivery": (awb) => `https://www.delhivery.com/track/package/${awb}`,
+  "DTDC": (awb) => `https://www.dtdc.in/tracking.asp?strCnno=${awb}`,
+  "Ecom Express": (awb) => `https://ecomexpress.in/tracking/?awb_field=${awb}`,
+  "XpressBees": (awb) => `https://www.xpressbees.com/track?awb=${awb}`,
+}
+
+function getCourierTrackingUrl(courierName: string | undefined, awb: string): string | null {
+  if (!courierName) return null
+  // Try exact match first
+  if (COURIER_TRACKING_URLS[courierName]) {
+    return COURIER_TRACKING_URLS[courierName](awb)
+  }
+  // Try case-insensitive partial match
+  const normalized = courierName.toLowerCase()
+  for (const [key, fn] of Object.entries(COURIER_TRACKING_URLS)) {
+    if (normalized.includes(key.toLowerCase()) || key.toLowerCase().includes(normalized)) {
+      return fn(awb)
+    }
+  }
+  return null
+}
 
 interface OrderTrackingProps {
   awbNumber: string
@@ -64,6 +91,8 @@ export function OrderTracking({ awbNumber, courierName }: OrderTrackingProps) {
   const [activities, setActivities] = useState<TrackingActivity[]>([])
   const [currentStatus, setCurrentStatus] = useState<string>("")
 
+  const trackingUrl = getCourierTrackingUrl(courierName, awbNumber)
+
   useEffect(() => {
     async function fetchTracking() {
       setLoading(true)
@@ -98,7 +127,7 @@ export function OrderTracking({ awbNumber, courierName }: OrderTrackingProps) {
           </p>
         )}
         <p className="text-sm text-muted-foreground">
-          Tracking #: {awbNumber}
+          Tracking #: <span className="font-mono">{awbNumber}</span>
         </p>
       </CardHeader>
       <CardContent>
@@ -110,14 +139,44 @@ export function OrderTracking({ awbNumber, courierName }: OrderTrackingProps) {
             </span>
           </div>
         ) : error ? (
-          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-            <p className="text-sm text-destructive">{error}</p>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+            {/* Fallback: show courier website link when live tracking fails */}
+            {trackingUrl ? (
+              <Button variant="outline" className="w-full" asChild>
+                <a href={trackingUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Track on {courierName} Website
+                </a>
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Use tracking number <span className="font-mono font-medium">{awbNumber}</span> to track on your courier&apos;s website.
+              </p>
+            )}
           </div>
         ) : activities.length === 0 ? (
-          <div className="rounded-lg border border-muted bg-muted/10 p-4">
-            <p className="text-sm text-muted-foreground">
-              No tracking information available yet.
-            </p>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-muted bg-muted/10 p-4">
+              <p className="text-sm text-muted-foreground">
+                No tracking information available yet.
+              </p>
+            </div>
+            {/* Fallback link when no activities */}
+            {trackingUrl ? (
+              <Button variant="outline" className="w-full" asChild>
+                <a href={trackingUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Track on {courierName} Website
+                </a>
+              </Button>
+            ) : courierName ? (
+              <p className="text-sm text-muted-foreground">
+                Use tracking number <span className="font-mono font-medium">{awbNumber}</span> to track on {courierName}&apos;s website.
+              </p>
+            ) : null}
           </div>
         ) : (
           <div className="space-y-4">
@@ -130,6 +189,20 @@ export function OrderTracking({ awbNumber, courierName }: OrderTrackingProps) {
                 </div>
               </div>
             )}
+
+            {/* Track on Courier Website button */}
+            {trackingUrl ? (
+              <Button variant="outline" className="w-full" asChild>
+                <a href={trackingUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Track on {courierName} Website
+                </a>
+              </Button>
+            ) : courierName ? (
+              <p className="text-xs text-muted-foreground">
+                Use tracking number <span className="font-mono font-medium">{awbNumber}</span> to track on {courierName}&apos;s website.
+              </p>
+            ) : null}
 
             {/* Timeline */}
             <div className="relative space-y-6 pl-8">
