@@ -319,19 +319,36 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                 <CardTitle>Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {order.bluedart_waybill_no && (
-                  <div className="mb-4 space-y-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm border border-blue-200 dark:border-blue-800">
-                    <p className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
-                       <Package className="h-4 w-4" /> Blue Dart Shipment
-                    </p>
-                    <div className="flex justify-between items-center text-blue-800 dark:text-blue-300">
-                      <span>Waybill: <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{order.bluedart_waybill_no}</span></span>
-                      <a href={`https://www.bluedart.com/tracking/-/trackme/awb/${order.bluedart_waybill_no}`} target="_blank" rel="noreferrer" className="underline font-medium hover:text-blue-900">
-                        Track
-                      </a>
+                {(order.awb_number || order.bluedart_waybill_no) && (() => {
+                  const awb = order.awb_number || order.bluedart_waybill_no || ''
+                  const courier = order.courier_name || 'Courier'
+                  const trackingUrls: Record<string, (a: string) => string> = {
+                    'Blue Dart': (a) => `https://www.bluedart.com/tracking/${a}`,
+                    'Delhivery': (a) => `https://www.delhivery.com/track/package/${a}`,
+                    'DTDC': (a) => `https://www.dtdc.in/tracking.asp?strCnno=${a}`,
+                    'Ecom Express': (a) => `https://ecomexpress.in/tracking/?awb_field=${a}`,
+                    'XpressBees': (a) => `https://www.xpressbees.com/track?awb=${a}`,
+                    'TrackOn': (a) => `https://trackon.in/tracking?waybill_no=${a}`,
+                  }
+                  const trackUrl = Object.entries(trackingUrls).find(([k]) =>
+                    courier.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(courier.toLowerCase())
+                  )?.[1]?.(awb)
+                  return (
+                    <div className="mb-4 space-y-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm border border-blue-200 dark:border-blue-800">
+                      <p className="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                        <Package className="h-4 w-4" /> {courier} Shipment
+                      </p>
+                      <div className="flex justify-between items-center text-blue-800 dark:text-blue-300">
+                        <span>AWB: <span className="font-mono bg-blue-100 dark:bg-blue-900 px-1 rounded">{awb}</span></span>
+                        {trackUrl && (
+                          <a href={trackUrl} target="_blank" rel="noreferrer" className="underline font-medium hover:text-blue-900">
+                            Track
+                          </a>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {order.bluedart_awb_pdf && (
                   <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white border-transparent" variant="outline" asChild>
@@ -347,7 +364,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   orderNumber={order.order_number}
                   orderStatus={order.status}
                   paymentMethod={order.payment_method}
-                  hasAwb={!!order.bluedart_waybill_no}
+                  hasAwb={!!(order.awb_number || order.bluedart_waybill_no)}
                   total={order.total}
                   shippingAddress={order.shipping_address}
                   awbNumber={order.bluedart_waybill_no || order.awb_number || null}
