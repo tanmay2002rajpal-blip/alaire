@@ -111,9 +111,9 @@ const couponSchema = z.object({
   if (data.discount_type === 'buy_x_get_y') {
     return data.buy_quantity && data.buy_quantity >= 1 && data.get_quantity && data.get_quantity >= 1
   }
-  return data.discount_value > 0
+  return (data.discount_value ?? 0) > 0
 }, {
-  message: 'Buy X Get Y requires both buy and get quantities',
+  message: 'Buy X Get Y requires both buy and get quantities, or discount value must be greater than 0',
   path: ['buy_quantity'],
 })
 
@@ -743,7 +743,7 @@ export function CouponsClient({
                 </Select>
               </div>
 
-              {watchDiscountType === 'buy_x_get_y' ? (
+              {watchDiscountType === 'buy_x_get_y' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="buy_quantity">
@@ -783,23 +783,22 @@ export function CouponsClient({
                     The cheapest {watch('get_quantity') || 'Y'} item(s) will be free.
                   </p>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="discount_value">
-                    Value <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="discount_value"
-                    type="number"
-                    step="0.01"
-                    {...register('discount_value', { valueAsNumber: true })}
-                    placeholder={watchDiscountType === 'percentage' ? '10' : '100'}
-                  />
-                  {errors.discount_value && (
-                    <p className="text-sm text-destructive">{errors.discount_value.message}</p>
-                  )}
-                </div>
               )}
+              <div className={watchDiscountType === 'buy_x_get_y' ? 'hidden' : 'space-y-2'}>
+                <Label htmlFor="discount_value">
+                  Value <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="discount_value"
+                  type="number"
+                  step="0.01"
+                  {...register('discount_value', { valueAsNumber: true })}
+                  placeholder={watchDiscountType === 'percentage' ? '10' : '100'}
+                />
+                {errors.discount_value && (
+                  <p className="text-sm text-destructive">{errors.discount_value.message}</p>
+                )}
+              </div>
             </div>
 
             {/* Min Order & Max Discount */}

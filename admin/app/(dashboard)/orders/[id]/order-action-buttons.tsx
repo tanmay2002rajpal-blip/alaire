@@ -218,7 +218,7 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentM
                 </p>
                 <p className="font-medium">This will automatically:</p>
                 <ul className="list-disc list-inside space-y-1 text-sm">
-                  {hasAwb && <li>Cancel the BlueDart shipment</li>}
+                  {hasAwb && <li>Cancel the shipment</li>}
                   <li>Restore product stock</li>
                   {isPrepaid && (
                     <li>

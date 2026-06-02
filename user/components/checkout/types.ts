@@ -7,7 +7,7 @@
 
 import type { CartItem } from "@/hooks/use-cart"
 import type { Address } from "@/lib/actions/addresses"
-import type { PincodeData } from "@/lib/bluedart/types"
+import type { PincodeData } from "@/lib/fship/types"
 
 /**
  * Supported payment methods for checkout.

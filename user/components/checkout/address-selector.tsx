@@ -30,8 +30,8 @@ import {
   type Address,
   type AddressInput,
 } from "@/lib/actions/addresses"
-import { checkPincodeServiceability } from "@/lib/bluedart/actions"
-import type { PincodeData } from "@/lib/bluedart/types"
+import { checkPincodeServiceability } from "@/lib/fship/actions"
+import type { PincodeData } from "@/lib/fship/types"
 
 const INDIAN_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -69,7 +69,7 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
 
   /**
    * Looks up city, state, serviceability, and delivery estimate from a 6-digit pincode.
-   * Uses the existing checkPincodeServiceability server action (BlueDart / static map fallback).
+   * Uses the existing checkPincodeServiceability server action (FShip / static map fallback).
    */
   const lookupPincode = useCallback(async (pincode: string) => {
     if (pincode.length !== 6 || !/^\d{6}$/.test(pincode)) {

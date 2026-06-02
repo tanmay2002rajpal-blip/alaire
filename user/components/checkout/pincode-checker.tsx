@@ -5,8 +5,8 @@ import { Loader2, Check, X, Truck } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { checkPincodeServiceability } from "@/lib/bluedart/actions"
-import type { PincodeData } from "@/lib/bluedart/types"
+import { checkPincodeServiceability } from "@/lib/fship/actions"
+import type { PincodeData } from "@/lib/fship/types"
 
 interface PincodeCheckerProps {
   onServiceabilityChange?: (data: PincodeData | null) => void

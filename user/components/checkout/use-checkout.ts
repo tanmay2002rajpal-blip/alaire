@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from "react"
 import { toast } from "sonner"
 import { useAuth } from "@/components/auth/auth-provider"
 import type { Address } from "@/lib/actions/addresses"
-import type { PincodeData } from "@/lib/bluedart/types"
+import type { PincodeData } from "@/lib/fship/types"
 import type {
   CheckoutFormData,
   CheckoutFormProps,

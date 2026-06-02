@@ -50,7 +50,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secon
 
 // Courier options
 const COURIER_OPTIONS = [
-  { value: "bluedart", label: "Blue Dart" },
+  { value: "fship", label: "FShip" },
   { value: "delhivery", label: "Delhivery" },
   { value: "dtdc", label: "DTDC" },
   { value: "ecom_express", label: "Ecom Express" },

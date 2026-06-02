@@ -3,7 +3,7 @@ import crypto from "crypto"
 import { ObjectId } from "mongodb"
 import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
-import { blueDartClient } from "@/lib/bluedart/client"
+import { fshipClient } from "@/lib/fship/client"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
 import { sendAdminOrderNotification } from "@/lib/emails/admin-notification"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
@@ -330,84 +330,53 @@ export async function POST(request: Request) {
     }
 
     // ========================================================================
-    // Blue Dart Shipment (non-blocking)
+    // FShip Shipment (non-blocking)
     // ========================================================================
 
     try {
-      if (shippingAddress && orderItems.length > 0) {
-        const isSandbox = process.env.BLUEDART_SANDBOX === "true"
-        const customerName = isSandbox
-          ? process.env.BLUEDART_SANDBOX_CUSTOMER_NAME?.trim() || process.env.BLUEDART_CUSTOMER_NAME || ""
-          : process.env.BLUEDART_CUSTOMER_NAME || ""
-        const customerCode = isSandbox
-          ? process.env.BLUEDART_SANDBOX_CUSTOMER_CODE?.trim() || process.env.BLUEDART_CUSTOMER_CODE || ""
-          : process.env.BLUEDART_CUSTOMER_CODE || ""
-        const originArea = isSandbox
-          ? process.env.BLUEDART_SANDBOX_ORIGIN_AREA?.trim() || process.env.BLUEDART_ORIGIN_AREA || ""
-          : process.env.BLUEDART_ORIGIN_AREA || ""
-        const warehousePincode = isSandbox
-          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_PINCODE?.trim() || process.env.BLUEDART_WAREHOUSE_PINCODE?.trim() || "125001"
-          : process.env.BLUEDART_WAREHOUSE_PINCODE?.trim() || "125001"
-        const warehouseAddress = isSandbox
-          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_ADDRESS?.trim() || process.env.BLUEDART_WAREHOUSE_ADDRESS?.trim() || ""
-          : process.env.BLUEDART_WAREHOUSE_ADDRESS?.trim() || ""
-        const warehouseMobile = isSandbox
-          ? process.env.BLUEDART_SANDBOX_WAREHOUSE_MOBILE?.trim() || process.env.BLUEDART_WAREHOUSE_MOBILE?.trim() || ""
-          : process.env.BLUEDART_WAREHOUSE_MOBILE?.trim() || ""
-        const pickupDate = `/Date(${Date.now() + 24 * 60 * 60 * 1000})/`
-        const pickupTime = "1400"
-
-        const waybillResult = await blueDartClient.generateWaybill({
-          Consignee: {
-            ConsigneeName: shippingAddress.full_name,
-            ConsigneeAddress1: shippingAddress.line1,
-            ConsigneeAddress2: shippingAddress.line2 || undefined,
-            ConsigneePincode: shippingAddress.pincode,
-            ConsigneeMobile: shippingAddress.phone,
-          },
-          Shipper: {
-            CustomerName: customerName,
-            CustomerCode: customerCode,
-            OriginArea: originArea,
-            CustomerAddress1: warehouseAddress,
-            CustomerPincode: warehousePincode,
-            CustomerMobile: warehouseMobile,
-            Sender: customerName,
-          },
-          Services: {
-            ProductCode: "A",
-            ProductType: 1,
-            SubProductCode: "P",
-            PieceCount: "1",
-            ActualWeight: "0.5",
-            PDFOutputNotRequired: false,
-            CreditReferenceNo: orderNumber,
-            DeclaredValue: String(checkoutSession.subtotal),
-            PickupDate: pickupDate,
-            PickupTime: pickupTime,
-            RegisterPickup: true,
-          },
+      const isFShipConfigured = !!process.env.FSHIP_API_KEY
+      const fshipWarehouseId = parseInt(process.env.FSHIP_WAREHOUSE_ID || "0", 10)
+      if (shippingAddress && orderItems.length > 0 && isFShipConfigured && fshipWarehouseId) {
+        const createResult = await fshipClient.createForwardOrder({
+          customer_Name: shippingAddress.full_name,
+          customer_Mobile: shippingAddress.phone,
+          customer_Address: [shippingAddress.line1, shippingAddress.line2].filter(Boolean).join(", "),
+          customer_PinCode: shippingAddress.pincode,
+          customer_City: shippingAddress.city || "",
+          orderId: orderNumber,
+          payment_Mode: 2,
+          express_Type: "air",
+          order_Amount: checkoutSession.subtotal,
+          total_Amount: checkoutSession.total,
+          cod_Amount: 0,
+          shipment_Weight: 0.5,
+          shipment_Length: 20,
+          shipment_Width: 15,
+          shipment_Height: 10,
+          volumetric_Weight: 0,
+          pick_Address_ID: fshipWarehouseId,
+          products: [{
+            productName: "Order Items",
+            unitPrice: checkoutSession.subtotal,
+            quantity: 1,
+          }],
         })
 
-        const awbNo = waybillResult.GenerateWayBillResult?.AWBNo
-        const pickupToken = waybillResult.GenerateWayBillResult?.TokenNumber
-        const labelPdf = waybillResult.GenerateWayBillResult?.AWBPrintContent
-        if (awbNo) {
+        if (createResult.status && createResult.waybill) {
           await db.collection("orders").updateOne(
             { _id: orderResult.insertedId },
             {
               $set: {
-                awb_number: awbNo,
-                pickup_token: pickupToken || null,
-                courier_name: "Blue Dart",
-                shipping_label_pdf: labelPdf || null,
+                awb_number: createResult.waybill,
+                courier_name: "FShip",
+                fship_order_id: createResult.apiorderid || null,
               },
             }
           )
         }
       }
     } catch (shippingError) {
-      console.error("Blue Dart shipment creation error (non-fatal):", shippingError)
+      console.error("FShip shipment creation error (non-fatal):", shippingError)
     }
 
     return NextResponse.json({ success: true, orderId })

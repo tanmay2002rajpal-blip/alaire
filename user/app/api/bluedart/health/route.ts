@@ -1,26 +1,19 @@
 import { NextResponse } from 'next/server'
-import { getBlueDartHealthStatus } from '@/lib/bluedart/config'
-import { getDiagnosticsSummary } from '@/lib/bluedart/diagnostics'
+import { getFShipHealthStatus } from '@/lib/fship/config'
+import { getRecentDiagnostics } from '@/lib/fship/diagnostics'
 
-/**
- * Blue Dart Health Check Endpoint
- *
- * GET /api/bluedart/health
- *
- * Returns comprehensive health status including:
- * - Configuration validation
- * - Feature availability
- * - Recent diagnostics summary
- * - Operational mode (live/fallback/unconfigured)
- */
 export async function GET() {
   try {
-    const healthStatus = getBlueDartHealthStatus()
-    const diagnosticsSummary = await getDiagnosticsSummary()
+    const healthStatus = getFShipHealthStatus()
+    const recentDiagnostics = await getRecentDiagnostics(10)
+
+    const successCount = recentDiagnostics.filter(d => d.response?.success).length
+    const failureCount = recentDiagnostics.length - successCount
 
     return NextResponse.json({
       status: healthStatus.fullyConfigured ? 'healthy' : healthStatus.configured ? 'degraded' : 'unconfigured',
       timestamp: healthStatus.timestamp,
+      provider: 'fship',
       config: {
         mode: healthStatus.mode,
         configured: healthStatus.configured,
@@ -31,7 +24,11 @@ export async function GET() {
         errors: healthStatus.validation.errors,
         warnings: healthStatus.validation.warnings,
       },
-      diagnostics: diagnosticsSummary,
+      diagnostics: {
+        total: recentDiagnostics.length,
+        successCount,
+        failureCount,
+      },
     })
   } catch (error) {
     console.error('Health check error:', error)

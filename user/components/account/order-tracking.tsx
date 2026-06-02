@@ -4,13 +4,12 @@ import { useState, useEffect } from "react"
 import { Loader2, Package, Truck, CheckCircle2, Clock, MapPin, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { getOrderTracking } from "@/lib/bluedart/actions"
-import type { TrackingActivity } from "@/lib/bluedart/types"
+import { getOrderTracking } from "@/lib/fship/actions"
+import type { TrackingActivity } from "@/lib/fship/types"
 
 // ── Courier tracking URL map ────────────────────────────────────────────────
 const COURIER_TRACKING_URLS: Record<string, (awb: string) => string> = {
-  "Blue Dart": (awb) => `https://www.bluedart.com/tracking/${awb}`,
-  "BlueDart": (awb) => `https://www.bluedart.com/tracking/${awb}`,
+  "FShip": (awb) => `https://track.fship.in/?waybill=${awb}`,
   "Delhivery": (awb) => `https://www.delhivery.com/track/package/${awb}`,
   "DTDC": (awb) => `https://www.dtdc.in/tracking.asp?strCnno=${awb}`,
   "Ecom Express": (awb) => `https://ecomexpress.in/tracking/?awb_field=${awb}`,

@@ -64,14 +64,14 @@ export async function updateOrderStatusAction(
       created_at: new Date(),
     })
 
-    // On cancellation or refund: handle BlueDart + Razorpay + stock
+    // On cancellation or refund: handle FShip + Razorpay + stock
     if (status === 'cancelled' || status === 'refunded') {
       const fullOrder = await ordersCol.findOne(
         { _id: oid },
         { projection: { awb_number: 1, pickup_token: 1, payment_method: 1, razorpay_payment_id: 1, total: 1 } }
       )
 
-      // Cancel BlueDart pickup — only on cancellation (not refund-only)
+      // Cancel FShip shipment — only on cancellation (not refund-only)
       if (status === 'cancelled' && fullOrder?.awb_number) {
         try {
           const userAppUrl = process.env.USER_APP_URL || 'http://localhost:3000'
@@ -86,10 +86,10 @@ export async function updateOrderStatusAction(
           })
           const cancelData = await cancelRes.json()
           if (!cancelData.pickupCancelled) {
-            console.warn('BlueDart pickup cancellation issue:', cancelData.pickupError)
+            console.warn('FShip shipment cancellation issue:', cancelData.pickupError)
           }
         } catch (cancelError) {
-          console.error('BlueDart cancellation failed (non-fatal):', cancelError)
+          console.error('FShip cancellation failed (non-fatal):', cancelError)
         }
       }
 

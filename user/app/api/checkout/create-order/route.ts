@@ -3,7 +3,7 @@ import { ObjectId } from "mongodb"
 import Razorpay from "razorpay"
 import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
-import { blueDartClient } from "@/lib/bluedart/client"
+import { fshipClient } from "@/lib/fship/client"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
 import { sendAdminOrderNotification } from "@/lib/emails/admin-notification"
 import { createOrderSchema, validateRequest, type CreateOrderInput } from "@/lib/validations/api"
@@ -529,69 +529,49 @@ export async function POST(request: Request) {
         console.error("Admin notification email failed (non-fatal):", adminEmailError)
       }
 
-      // Create Blue Dart shipment (non-blocking, only if configured)
-      const isBlueDartConfigured = !!(process.env.BLUEDART_LOGIN_ID && process.env.BLUEDART_LICENSE_KEY)
-      if (isBlueDartConfigured) try {
-        const customerName = process.env.BLUEDART_CUSTOMER_NAME || ""
-        const customerCode = process.env.BLUEDART_CUSTOMER_CODE || ""
-        const originArea = process.env.BLUEDART_ORIGIN_AREA || ""
-        const warehousePincode = process.env.BLUEDART_WAREHOUSE_PINCODE || "125001"
-        const warehouseAddress = process.env.BLUEDART_WAREHOUSE_ADDRESS || ""
-        const warehouseMobile = process.env.BLUEDART_WAREHOUSE_MOBILE || ""
-        const pickupDate = `/Date(${Date.now() + 24 * 60 * 60 * 1000})/`
-        const pickupTime = "1400"
-
-        const waybillResult = await blueDartClient.generateWaybill({
-          Consignee: {
-            ConsigneeName: shippingAddress.full_name,
-            ConsigneeAddress1: shippingAddress.line1,
-            ConsigneeAddress2: shippingAddress.line2 || undefined,
-            ConsigneePincode: shippingAddress.pincode,
-            ConsigneeMobile: shippingAddress.phone,
-          },
-          Shipper: {
-            CustomerName: customerName,
-            CustomerCode: customerCode,
-            OriginArea: originArea,
-            CustomerAddress1: warehouseAddress,
-            CustomerPincode: warehousePincode,
-            CustomerMobile: warehouseMobile,
-            Sender: customerName,
-          },
-          Services: {
-            ProductCode: "A",
-            ProductType: 1,
-            SubProductCode: "C",
-            PieceCount: "1",
-            ActualWeight: "0.5",
-            PDFOutputNotRequired: false,
-            CreditReferenceNo: orderNumber,
-            DeclaredValue: String(calculatedSubtotal),
-            CollectableAmount: total,
-            PickupDate: pickupDate,
-            PickupTime: pickupTime,
-            RegisterPickup: true,
-          },
+      // Create FShip shipment (non-blocking, only if configured)
+      const isFShipConfigured = !!process.env.FSHIP_API_KEY
+      const fshipWarehouseId = parseInt(process.env.FSHIP_WAREHOUSE_ID || "0", 10)
+      if (isFShipConfigured && fshipWarehouseId) try {
+        const createResult = await fshipClient.createForwardOrder({
+          customer_Name: shippingAddress.full_name,
+          customer_Mobile: shippingAddress.phone,
+          customer_Address: [shippingAddress.line1, shippingAddress.line2].filter(Boolean).join(", "),
+          customer_PinCode: shippingAddress.pincode,
+          customer_City: shippingAddress.city || "",
+          orderId: orderNumber,
+          payment_Mode: 1,
+          express_Type: "air",
+          order_Amount: calculatedSubtotal,
+          total_Amount: total,
+          cod_Amount: total,
+          shipment_Weight: 0.5,
+          shipment_Length: 20,
+          shipment_Width: 15,
+          shipment_Height: 10,
+          volumetric_Weight: 0,
+          pick_Address_ID: fshipWarehouseId,
+          products: [{
+            productName: "Order Items",
+            unitPrice: calculatedSubtotal,
+            quantity: 1,
+          }],
         })
 
-        const awbNo = waybillResult.GenerateWayBillResult?.AWBNo
-        const pickupToken = waybillResult.GenerateWayBillResult?.TokenNumber
-        const labelPdf = waybillResult.GenerateWayBillResult?.AWBPrintContent
-        if (awbNo) {
+        if (createResult.status && createResult.waybill) {
           await db.collection("orders").updateOne(
             { _id: orderResult.insertedId },
             {
               $set: {
-                awb_number: awbNo,
-                pickup_token: pickupToken || null,
-                courier_name: "Blue Dart",
-                shipping_label_pdf: labelPdf || null,
+                awb_number: createResult.waybill,
+                courier_name: "FShip",
+                fship_order_id: createResult.apiorderid || null,
               },
             }
           )
         }
       } catch (shippingError) {
-        console.error("Blue Dart shipment creation error (non-fatal):", shippingError)
+        console.error("FShip shipment creation error (non-fatal):", shippingError)
       }
 
       return NextResponse.json({

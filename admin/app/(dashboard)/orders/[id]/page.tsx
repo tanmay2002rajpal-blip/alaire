@@ -323,7 +323,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   const awb = order.awb_number || order.bluedart_waybill_no || ''
                   const courier = order.courier_name || 'Courier'
                   const trackingUrls: Record<string, (a: string) => string> = {
-                    'Blue Dart': (a) => `https://www.bluedart.com/tracking/${a}`,
+                    'FShip': (a) => `https://track.fship.in/?waybill=${a}`,
                     'Delhivery': (a) => `https://www.delhivery.com/track/package/${a}`,
                     'DTDC': (a) => `https://www.dtdc.in/tracking.asp?strCnno=${a}`,
                     'Ecom Express': (a) => `https://ecomexpress.in/tracking/?awb_field=${a}`,
