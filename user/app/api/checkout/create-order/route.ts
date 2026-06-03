@@ -83,6 +83,17 @@ export async function POST(request: Request) {
 
     const db = await getDb()
 
+    // Block COD if disabled in admin settings
+    if (paymentMethod === "cod") {
+      const codSetting = await db.collection("admin_settings").findOne({ key: "cod_enabled" })
+      if (codSetting?.value === false) {
+        return NextResponse.json(
+          { message: "Cash on Delivery is currently not available" },
+          { status: 400 }
+        )
+      }
+    }
+
     // ========================================================================
     // Cleanup expired checkout sessions + any legacy stale pending orders
     // ========================================================================
