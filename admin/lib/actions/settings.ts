@@ -99,7 +99,8 @@ export async function clearActiveCartsAction(): Promise<ActionResult> {
 
     const { getDb } = await import('@/lib/db/client')
     const db = await getDb()
-    const result = await db.collection('carts').deleteMany({})
+    await db.collection('carts').deleteMany({})
+    const result = await db.collection('active_carts').deleteMany({})
 
     revalidatePath('/carts')
     return { success: true }
