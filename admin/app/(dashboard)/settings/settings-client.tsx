@@ -54,6 +54,9 @@ import {
 import { toast } from 'sonner'
 import {
   saveNotificationEmails,
+  saveCodSetting,
+  clearActiveCartsAction,
+  clearOrdersAction,
   createAdminUser,
   changeAdminPassword,
   toggleAdminStatus,
@@ -65,24 +68,30 @@ interface SettingsClientProps {
   notificationEmails: string[]
   adminUsers: AdminUserListItem[]
   currentAdminId: string
+  codEnabled: boolean
 }
 
 export function SettingsClient({
   notificationEmails: initialEmails,
   adminUsers: initialAdminUsers,
   currentAdminId,
+  codEnabled: initialCodEnabled,
 }: SettingsClientProps) {
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">
-          Manage notification preferences and admin users
+          Manage notification preferences, admin users, and store settings
         </p>
       </div>
 
-      <Tabs defaultValue="notifications" className="space-y-4">
+      <Tabs defaultValue="store" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="store" className="gap-1.5">
+            <Save className="h-4 w-4" />
+            Store
+          </TabsTrigger>
           <TabsTrigger value="notifications" className="gap-1.5">
             <Mail className="h-4 w-4" />
             Notification Emails
@@ -91,7 +100,15 @@ export function SettingsClient({
             <Users className="h-4 w-4" />
             Admin Users
           </TabsTrigger>
+          <TabsTrigger value="data" className="gap-1.5">
+            <Trash2 className="h-4 w-4" />
+            Data Management
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="store">
+          <StoreSettingsTab initialCodEnabled={initialCodEnabled} />
+        </TabsContent>
 
         <TabsContent value="notifications">
           <NotificationEmailsTab initialEmails={initialEmails} />
@@ -103,8 +120,180 @@ export function SettingsClient({
             currentAdminId={currentAdminId}
           />
         </TabsContent>
+
+        <TabsContent value="data">
+          <DataManagementTab />
+        </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+// ─── Store Settings Tab ────────────────────────────────────────────────────
+
+function StoreSettingsTab({ initialCodEnabled }: { initialCodEnabled: boolean }) {
+  const [codEnabled, setCodEnabled] = useState(initialCodEnabled)
+  const [saving, setSaving] = useState(false)
+
+  async function handleCodToggle(checked: boolean) {
+    setSaving(true)
+    try {
+      const result = await saveCodSetting(checked)
+      if (result.success) {
+        setCodEnabled(checked)
+        toast.success(`Cash on Delivery ${checked ? 'enabled' : 'disabled'}`)
+      } else {
+        toast.error(result.error || 'Failed to save')
+      }
+    } catch {
+      toast.error('An unexpected error occurred')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Store Settings</CardTitle>
+        <CardDescription>Configure checkout and payment options</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label>Cash on Delivery (COD)</Label>
+            <p className="text-sm text-muted-foreground">
+              Allow customers to pay cash when order is delivered
+            </p>
+          </div>
+          <Switch
+            checked={codEnabled}
+            onCheckedChange={handleCodToggle}
+            disabled={saving}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Data Management Tab ──────────────────────────────────────────────────
+
+function DataManagementTab() {
+  const [clearingCarts, setClearingCarts] = useState(false)
+  const [clearingOrders, setClearingOrders] = useState(false)
+  const [showClearCartsDialog, setShowClearCartsDialog] = useState(false)
+  const [showClearOrdersDialog, setShowClearOrdersDialog] = useState(false)
+
+  async function handleClearCarts() {
+    setClearingCarts(true)
+    try {
+      const result = await clearActiveCartsAction()
+      if (result.success) {
+        toast.success('All active carts cleared')
+        setShowClearCartsDialog(false)
+      } else {
+        toast.error(result.error || 'Failed to clear carts')
+      }
+    } catch {
+      toast.error('An unexpected error occurred')
+    } finally {
+      setClearingCarts(false)
+    }
+  }
+
+  async function handleClearOrders() {
+    setClearingOrders(true)
+    try {
+      const result = await clearOrdersAction()
+      if (result.success) {
+        toast.success('All orders data cleared')
+        setShowClearOrdersDialog(false)
+      } else {
+        toast.error(result.error || 'Failed to clear orders')
+      }
+    } catch {
+      toast.error('An unexpected error occurred')
+    } finally {
+      setClearingOrders(false)
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Management</CardTitle>
+          <CardDescription>Clear test data from the system. These actions are irreversible.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="font-medium">Active Carts</p>
+              <p className="text-sm text-muted-foreground">Remove all active/abandoned cart data</p>
+            </div>
+            <Button variant="destructive" size="sm" onClick={() => setShowClearCartsDialog(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All Carts
+            </Button>
+          </div>
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="font-medium">Orders</p>
+              <p className="text-sm text-muted-foreground">Remove all orders, order items, and status history</p>
+            </div>
+            <Button variant="destructive" size="sm" onClick={() => setShowClearOrdersDialog(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All Orders
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={showClearCartsDialog} onOpenChange={setShowClearCartsDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Active Carts</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all active cart data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingCarts}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearCarts}
+              disabled={clearingCarts}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {clearingCarts && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Clear All Carts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showClearOrdersDialog} onOpenChange={setShowClearOrdersDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Orders</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all orders, order items, and order status history. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingOrders}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearOrders}
+              disabled={clearingOrders}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {clearingOrders && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Clear All Orders
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 

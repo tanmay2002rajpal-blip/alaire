@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getNotificationEmails, getAdminUsers } from '@/lib/queries/settings'
+import { getNotificationEmails, getAdminUsers, getCodEnabled } from '@/lib/queries/settings'
 import { getCurrentAdmin } from '@/lib/auth/actions'
 import { redirect } from 'next/navigation'
 import { SettingsClient } from './settings-client'
@@ -9,9 +9,10 @@ export default async function SettingsPage() {
   const admin = await getCurrentAdmin()
   if (!admin) redirect('/login')
 
-  const [notificationEmails, adminUsers] = await Promise.all([
+  const [notificationEmails, adminUsers, codEnabled] = await Promise.all([
     getNotificationEmails(),
     getAdminUsers(),
+    getCodEnabled(),
   ])
 
   return (
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
         notificationEmails={notificationEmails}
         adminUsers={adminUsers}
         currentAdminId={admin.id}
+        codEnabled={codEnabled}
       />
     </Suspense>
   )

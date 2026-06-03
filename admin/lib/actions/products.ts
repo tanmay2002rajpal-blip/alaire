@@ -248,6 +248,35 @@ export async function deleteProductAction(id: string): Promise<ActionResult> {
 }
 
 /**
+ * Server action to permanently delete a product and its variants from the database
+ */
+export async function hardDeleteProductAction(id: string): Promise<ActionResult> {
+  try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
+    if (!id) return { success: false, error: 'Product ID is required' }
+
+    const products = await getProductsCollection()
+    const variants = await getProductVariantsCollection()
+
+    await variants.deleteMany({ product_id: toObjectId(id) })
+    await products.deleteOne({ _id: toObjectId(id) })
+
+    revalidatePath('/products')
+    revalidatePath('/dashboard')
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error in hardDeleteProductAction:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unexpected error occurred',
+    }
+  }
+}
+
+/**
  * Server action to toggle product active status
  */
 export async function toggleProductStatusAction(

@@ -49,6 +49,7 @@ interface Product {
 interface ProductsTableProps {
   products: Product[];
   onDelete?: (id: string) => void;
+  onHardDelete?: (id: string) => void;
   selectedProducts?: string[];
   onSelectionChange?: (ids: string[]) => void;
 }
@@ -59,6 +60,7 @@ type SortDirection = "asc" | "desc";
 export function ProductsTable({
   products,
   onDelete,
+  onHardDelete,
   selectedProducts = [],
   onSelectionChange,
 }: ProductsTableProps) {
@@ -328,6 +330,15 @@ export function ProductsTable({
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
                       </DropdownMenuItem>
+                      {onHardDelete && (
+                        <DropdownMenuItem
+                          onClick={() => onHardDelete(product.id)}
+                          className="text-destructive focus:text-destructive font-semibold"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Permanently Delete
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

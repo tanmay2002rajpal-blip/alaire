@@ -35,20 +35,19 @@ export async function createCouponAction(data: CreateCouponData): Promise<Action
       return { success: false, error: 'A coupon with this code already exists' }
     }
 
-    if (data.discount_value <= 0) {
-      return { success: false, error: 'Discount value must be greater than 0' }
-    }
-
-    if (data.discount_type === 'percentage' && data.discount_value > 100) {
-      return { success: false, error: 'Percentage discount cannot exceed 100%' }
-    }
-
     if (data.discount_type === 'buy_x_get_y') {
       if (!data.buy_quantity || data.buy_quantity < 1) {
         return { success: false, error: 'Buy quantity must be at least 1' }
       }
       if (!data.get_quantity || data.get_quantity < 1) {
         return { success: false, error: 'Get quantity must be at least 1' }
+      }
+    } else {
+      if (data.discount_value <= 0) {
+        return { success: false, error: 'Discount value must be greater than 0' }
+      }
+      if (data.discount_type === 'percentage' && data.discount_value > 100) {
+        return { success: false, error: 'Percentage discount cannot exceed 100%' }
       }
     }
 

@@ -11,6 +11,12 @@ export async function getNotificationEmails(): Promise<string[]> {
   return (doc?.value as string[]) || []
 }
 
+export async function getCodEnabled(): Promise<boolean> {
+  const settingsCol = await getAdminSettingsCollection()
+  const doc = await settingsCol.findOne({ key: 'cod_enabled' })
+  return doc?.value !== false
+}
+
 export interface AdminUserListItem {
   id: string
   name: string

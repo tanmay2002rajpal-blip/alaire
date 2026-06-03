@@ -59,6 +59,76 @@ export async function saveNotificationEmails(emails: string[]): Promise<ActionRe
   }
 }
 
+// ─── COD Toggle ────────────────────────────────────────────────────────────
+
+export async function saveCodSetting(enabled: boolean): Promise<ActionResult> {
+  try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
+    const settingsCol = await getAdminSettingsCollection()
+    await settingsCol.updateOne(
+      { key: 'cod_enabled' },
+      {
+        $set: {
+          key: 'cod_enabled',
+          value: enabled,
+          updated_at: new Date(),
+        },
+      },
+      { upsert: true }
+    )
+
+    revalidatePath('/settings')
+    return { success: true }
+  } catch (error) {
+    console.error('Error in saveCodSetting:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unexpected error occurred',
+    }
+  }
+}
+
+// ─── Data Management ───────────────────────────────────────────────────────
+
+export async function clearActiveCartsAction(): Promise<ActionResult> {
+  try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
+    const { getDb } = await import('@/lib/db/client')
+    const db = await getDb()
+    const result = await db.collection('carts').deleteMany({})
+
+    revalidatePath('/carts')
+    return { success: true }
+  } catch (error) {
+    console.error('Error clearing carts:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to clear carts' }
+  }
+}
+
+export async function clearOrdersAction(): Promise<ActionResult> {
+  try {
+    const session = await getSession()
+    if (!session) return { success: false, error: 'Unauthorized' }
+
+    const { getDb } = await import('@/lib/db/client')
+    const db = await getDb()
+    await db.collection('orders').deleteMany({})
+    await db.collection('order_items').deleteMany({})
+    await db.collection('order_status_history').deleteMany({})
+
+    revalidatePath('/orders')
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch (error) {
+    console.error('Error clearing orders:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to clear orders' }
+  }
+}
+
 // ─── Admin Users CRUD ───────────────────────────────────────────────────────
 
 /**

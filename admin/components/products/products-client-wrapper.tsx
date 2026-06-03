@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { bulkDeleteProductsAction, bulkUpdateProductStatusAction } from '@/lib/actions/products'
+import { bulkDeleteProductsAction, bulkUpdateProductStatusAction, deleteProductAction, hardDeleteProductAction } from '@/lib/actions/products'
 
 interface Product {
   id: string
@@ -40,6 +40,7 @@ export function ProductsClientWrapper({ products }: ProductsClientWrapperProps) 
   const [isDeleting, setIsDeleting] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [hardDeleteId, setHardDeleteId] = useState<string | null>(null)
 
   const handleDelete = async () => {
     if (selectedProducts.length === 0) return
@@ -146,6 +147,16 @@ export function ProductsClientWrapper({ products }: ProductsClientWrapperProps) 
         products={products}
         selectedProducts={selectedProducts}
         onSelectionChange={setSelectedProducts}
+        onDelete={async (id) => {
+          const result = await deleteProductAction(id)
+          if (result.success) {
+            toast.success('Product deleted')
+            router.refresh()
+          } else {
+            toast.error(result.error || 'Failed to delete')
+          }
+        }}
+        onHardDelete={(id) => setHardDeleteId(id)}
       />
 
       {/* Delete Confirmation Dialog */}
@@ -166,6 +177,36 @@ export function ProductsClientWrapper({ products }: ProductsClientWrapperProps) 
             >
               {isDeleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* Hard Delete Confirmation Dialog */}
+      <AlertDialog open={!!hardDeleteId} onOpenChange={(open) => !open && setHardDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently Delete Product</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove this product and all its variants from the database. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!hardDeleteId) return
+                const result = await hardDeleteProductAction(hardDeleteId)
+                if (result.success) {
+                  toast.success('Product permanently deleted')
+                  setHardDeleteId(null)
+                  router.refresh()
+                } else {
+                  toast.error(result.error || 'Failed to delete')
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Permanently Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

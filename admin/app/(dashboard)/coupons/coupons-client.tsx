@@ -95,15 +95,18 @@ interface CouponsClientProps {
 }
 
 // Validation schema
+const safeNum = z.any().transform((v) => (typeof v === 'number' && !Number.isNaN(v) ? v : null))
+const safeNumRequired = z.any().transform((v) => (typeof v === 'number' && !Number.isNaN(v) ? v : 0))
+
 const couponSchema = z.object({
   code: z.string().min(3, 'Code must be at least 3 characters').max(20),
   discount_type: z.enum(['percentage', 'fixed', 'buy_x_get_y']),
-  discount_value: z.number().min(0, 'Discount must be 0 or greater').catch(0),
-  buy_quantity: z.number().int().min(1).optional().nullable(),
-  get_quantity: z.number().int().min(1).optional().nullable(),
-  min_order_amount: z.number().min(0).optional().nullable(),
-  max_discount: z.number().min(0).optional().nullable(),
-  usage_limit: z.number().int().min(1).optional().nullable(),
+  discount_value: safeNumRequired,
+  buy_quantity: safeNum,
+  get_quantity: safeNum,
+  min_order_amount: safeNum,
+  max_discount: safeNum,
+  usage_limit: safeNum,
   valid_from: z.string().min(1, 'Start date is required'),
   valid_until: z.string().optional().nullable(),
   is_active: z.boolean(),
@@ -754,8 +757,7 @@ export function CouponsClient({
                       type="number"
                       min="1"
                       {...register('buy_quantity', {
-                        valueAsNumber: true,
-                        setValueAs: (v) => v === '' ? null : parseInt(v),
+                        setValueAs: (v) => (v === '' || v === undefined) ? null : parseInt(v),
                       })}
                       placeholder="2"
                     />
@@ -772,8 +774,7 @@ export function CouponsClient({
                       type="number"
                       min="1"
                       {...register('get_quantity', {
-                        valueAsNumber: true,
-                        setValueAs: (v) => v === '' ? null : parseInt(v),
+                        setValueAs: (v) => (v === '' || v === undefined) ? null : parseInt(v),
                       })}
                       placeholder="1"
                     />
@@ -792,7 +793,7 @@ export function CouponsClient({
                   id="discount_value"
                   type="number"
                   step="0.01"
-                  {...register('discount_value', { valueAsNumber: true })}
+                  {...register('discount_value', { setValueAs: (v) => (v === '' || v === undefined) ? 0 : parseFloat(v) })}
                   placeholder={watchDiscountType === 'percentage' ? '10' : '100'}
                 />
                 {errors.discount_value && (
@@ -810,8 +811,7 @@ export function CouponsClient({
                   type="number"
                   step="0.01"
                   {...register('min_order_amount', {
-                    valueAsNumber: true,
-                    setValueAs: (v) => v === '' ? null : parseFloat(v),
+                    setValueAs: (v) => (v === '' || v === undefined) ? null : parseFloat(v),
                   })}
                   placeholder="500"
                 />
@@ -823,8 +823,7 @@ export function CouponsClient({
                   type="number"
                   step="0.01"
                   {...register('max_discount', {
-                    valueAsNumber: true,
-                    setValueAs: (v) => v === '' ? null : parseFloat(v),
+                    setValueAs: (v) => (v === '' || v === undefined) ? null : parseFloat(v),
                   })}
                   placeholder="1000"
                 />
@@ -838,8 +837,7 @@ export function CouponsClient({
                 id="usage_limit"
                 type="number"
                 {...register('usage_limit', {
-                  valueAsNumber: true,
-                  setValueAs: (v) => v === '' ? null : parseInt(v),
+                  setValueAs: (v) => (v === '' || v === undefined) ? null : parseInt(v),
                 })}
                 placeholder="100"
               />
