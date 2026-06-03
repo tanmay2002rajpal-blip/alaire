@@ -98,7 +98,7 @@ interface CouponsClientProps {
 const couponSchema = z.object({
   code: z.string().min(3, 'Code must be at least 3 characters').max(20),
   discount_type: z.enum(['percentage', 'fixed', 'buy_x_get_y']),
-  discount_value: z.number().min(0, 'Discount must be 0 or greater'),
+  discount_value: z.number().min(0, 'Discount must be 0 or greater').catch(0),
   buy_quantity: z.number().int().min(1).optional().nullable(),
   get_quantity: z.number().int().min(1).optional().nullable(),
   min_order_amount: z.number().min(0).optional().nullable(),
