@@ -1,8 +1,13 @@
 'use server'
 
-import { ObjectId } from 'mongodb'
-import { getProductsCollection, getProductVariantsCollection } from '@/lib/db/collections'
+import { ObjectId, MongoServerError } from 'mongodb'
+import {
+  getProductsCollection,
+  getProductVariantsCollection,
+  getProductOptionsCollection,
+} from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
+import type { ProductDoc, ProductVariantDoc } from '@/lib/db/types'
 import { revalidatePath } from 'next/cache'
 import { getSession } from '@/lib/auth/jwt'
 
@@ -36,10 +41,68 @@ interface CreateProductData {
   description?: string
   category_id?: string | null
   base_price?: number | null
+  stock_quantity?: number | null
   is_active: boolean
   images: string[]
   has_variants: boolean
   variants?: VariantData[]
+}
+
+/**
+ * Build product_options documents from variant.options.
+ * variant.options is a Record<string, string> like { Size: 'M', Color: 'Maroon' }.
+ * The storefront reads product_options ({ product_id, name, values, position }).
+ */
+function buildProductOptionDocs(productId: ObjectId, variants?: VariantData[]) {
+  const optionMap = new Map<string, string[]>()
+
+  for (const variant of variants || []) {
+    const opts = variant.options
+    if (!opts || typeof opts !== 'object' || Array.isArray(opts)) continue
+    for (const [name, rawValue] of Object.entries(opts)) {
+      if (rawValue == null || rawValue === '') continue
+      const value = String(rawValue)
+      if (!optionMap.has(name)) optionMap.set(name, [])
+      const values = optionMap.get(name)!
+      if (!values.includes(value)) values.push(value)
+    }
+  }
+
+  let position = 0
+  const docs: {
+    _id: ObjectId
+    product_id: ObjectId
+    name: string
+    values: string[]
+    position: number
+  }[] = []
+  for (const [name, values] of optionMap) {
+    docs.push({ _id: new ObjectId(), product_id: productId, name, values, position: position++ })
+  }
+  return docs
+}
+
+/**
+ * Find a slug not already used by any product (including soft-deleted ones),
+ * auto-suffixing -2/-3/... to dedupe. Optionally excludes a product id (for updates).
+ */
+async function dedupeSlug(
+  products: Awaited<ReturnType<typeof getProductsCollection>>,
+  desiredSlug: string,
+  excludeId?: ObjectId
+): Promise<string> {
+  let candidate = desiredSlug
+  let suffix = 2
+  // Loop until we find a candidate not taken by another product.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const query: Record<string, unknown> = { slug: candidate }
+    if (excludeId) query._id = { $ne: excludeId }
+    const existing = await products.findOne(query, { projection: { _id: 1 } })
+    if (!existing) return candidate
+    candidate = `${desiredSlug}-${suffix}`
+    suffix += 1
+  }
 }
 
 interface UpdateProductData extends Partial<CreateProductData> {
@@ -63,39 +126,73 @@ export async function createProductAction(data: CreateProductData): Promise<Acti
 
     const now = new Date()
     const productId = new ObjectId()
+    const hasVariants = (data.variants && data.variants.length > 0) || false
 
-    await products.insertOne({
-      _id: productId,
-      name: data.name,
-      slug: data.slug,
-      description: data.description || null,
-      category_id: data.category_id ? toObjectId(data.category_id) : null,
-      base_price: data.base_price ?? null,
-      is_active: data.is_active,
-      images: data.images || [],
-      has_variants: data.has_variants ?? false,
-      created_at: now,
-      updated_at: now,
-    })
+    // Dedupe slug against ALL products (including soft-deleted) so we never
+    // collide on the unique index; auto-suffix -2/-3/... when needed.
+    const slug = await dedupeSlug(products, data.slug)
 
-    // Handle variants if provided
-    if (data.variants && data.variants.length > 0) {
-      const variantsCol = await getProductVariantsCollection()
-      const variantDocs = data.variants.map(variant => ({
-        _id: new ObjectId(),
-        product_id: productId,
-        name: variant.name,
-        sku: variant.sku || null,
-        price: variant.price,
-        compare_at_price: variant.compare_at_price ?? null,
-        stock_quantity: variant.stock_quantity,
-        options: variant.options || {},
-        image_url: variant.image_url || null,
-        is_active: variant.is_active ?? true,
+    try {
+      await products.insertOne({
+        _id: productId,
+        name: data.name,
+        slug,
+        description: data.description || null,
+        category_id: data.category_id ? toObjectId(data.category_id) : null,
+        base_price: data.base_price ?? null,
+        // Variantless products need product-level stock to be purchasable.
+        stock_quantity: hasVariants ? null : (data.stock_quantity ?? 0),
+        is_active: data.is_active,
+        images: data.images || [],
+        // Derive from actual variants, not the client flag, so a product created
+        // with variants is correctly marked has_variants.
+        has_variants: hasVariants,
         created_at: now,
         updated_at: now,
-      }))
-      await variantsCol.insertMany(variantDocs)
+      } as ProductDoc)
+    } catch (insertError) {
+      if (insertError instanceof MongoServerError && insertError.code === 11000) {
+        return { success: false, error: 'A product with this URL slug already exists.' }
+      }
+      throw insertError
+    }
+
+    // Handle variants if provided. If any variant write fails, roll back the
+    // just-inserted product so no half-created product remains.
+    if (data.variants && data.variants.length > 0) {
+      try {
+        const variantsCol = await getProductVariantsCollection()
+        const variantDocs = data.variants.map(variant => ({
+          _id: new ObjectId(),
+          product_id: productId,
+          name: variant.name,
+          sku: variant.sku || null,
+          price: variant.price,
+          compare_at_price: variant.compare_at_price ?? null,
+          stock_quantity: variant.stock_quantity,
+          options: variant.options || {},
+          image_url: variant.image_url || null,
+          is_active: variant.is_active ?? true,
+          created_at: now,
+          updated_at: now,
+        }))
+        await variantsCol.insertMany(variantDocs)
+
+        // Derive storefront product_options from variant options.
+        const optionDocs = buildProductOptionDocs(productId, data.variants)
+        if (optionDocs.length > 0) {
+          const optionsCol = await getProductOptionsCollection()
+          await optionsCol.insertMany(optionDocs)
+        }
+      } catch (variantError) {
+        // Roll back the half-created product (and any options written).
+        await products.deleteOne({ _id: productId })
+        const optionsCol = await getProductOptionsCollection()
+        await optionsCol.deleteMany({ product_id: productId })
+        const variantsCol = await getProductVariantsCollection()
+        await variantsCol.deleteMany({ product_id: productId })
+        throw variantError
+      }
     }
 
     revalidatePath('/products')
@@ -104,6 +201,9 @@ export async function createProductAction(data: CreateProductData): Promise<Acti
     return { success: true, productId: productId.toString() }
   } catch (error) {
     console.error('Error in createProductAction:', error)
+    if (error instanceof MongoServerError && error.code === 11000) {
+      return { success: false, error: 'A product with this URL slug already exists.' }
+    }
     return {
       success: false,
       error: error instanceof Error ? error.message : 'An unexpected error occurred',
@@ -134,22 +234,28 @@ export async function updateProductAction(
     const productOid = toObjectId(id)
     const now = new Date()
 
-    await products.updateOne(
-      { _id: productOid },
-      {
-        $set: {
-          name: data.name,
-          slug: data.slug,
-          description: data.description || null,
-          category_id: data.category_id ? toObjectId(data.category_id) : null,
-          base_price: data.base_price ?? null,
-          is_active: data.is_active,
-          images: data.images || [],
-          has_variants: data.has_variants ?? false,
-          updated_at: now,
-        },
-      }
-    )
+    const hasVariants =
+      data.variants !== undefined
+        ? data.variants.length > 0
+        : (data.has_variants ?? false)
+
+    const productSet: Record<string, unknown> = {
+      name: data.name,
+      slug: data.slug,
+      description: data.description || null,
+      category_id: data.category_id ? toObjectId(data.category_id) : null,
+      base_price: data.base_price ?? null,
+      is_active: data.is_active,
+      images: data.images || [],
+      has_variants: hasVariants,
+      updated_at: now,
+    }
+    // Variantless products need product-level stock to be purchasable.
+    if (!hasVariants) {
+      productSet.stock_quantity = data.stock_quantity ?? 0
+    }
+
+    await products.updateOne({ _id: productOid }, { $set: productSet })
 
     // Handle variant updates if provided
     if (data.variants) {
@@ -172,17 +278,20 @@ export async function updateProductAction(
 
       // Update or insert variants
       for (const variant of data.variants) {
-        const variantData = {
+        const variantData: Record<string, unknown> = {
           product_id: productOid,
           name: variant.name,
           sku: variant.sku || null,
           price: variant.price,
           compare_at_price: variant.compare_at_price ?? null,
           stock_quantity: variant.stock_quantity,
-          options: variant.options || {},
           image_url: variant.image_url || null,
           is_active: variant.is_active ?? true,
           updated_at: now,
+        }
+        // Only touch options when explicitly provided — NEVER reset to {}.
+        if (variant.options !== undefined) {
+          variantData.options = variant.options
         }
 
         if (variant.id) {
@@ -193,10 +302,20 @@ export async function updateProductAction(
         } else {
           await variantsCol.insertOne({
             _id: new ObjectId(),
+            options: variant.options ?? {},
             ...variantData,
             created_at: now,
-          })
+          } as ProductVariantDoc)
         }
+      }
+
+      // Upsert product_options to match the current variant options so the
+      // storefront selector stays in sync. Rebuild from the current variant set.
+      const optionsCol = await getProductOptionsCollection()
+      await optionsCol.deleteMany({ product_id: productOid })
+      const optionDocs = buildProductOptionDocs(productOid, data.variants)
+      if (optionDocs.length > 0) {
+        await optionsCol.insertMany(optionDocs)
       }
     }
 

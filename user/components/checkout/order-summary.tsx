@@ -127,13 +127,19 @@ export function OrderSummary({
             return (
               <div key={item.id} className="flex gap-4">
                 <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
-                  <Image
-                    src={imageUrl}
-                    alt={item.name}
-                    fill
-                    sizes="64px"
-                    className="object-cover"
-                  />
+                  {imageUrl ? (
+                    <Image
+                      src={imageUrl}
+                      alt={item.name}
+                      fill
+                      sizes="64px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                      No image
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1">
                 <p className="font-medium leading-tight">{item.name}</p>

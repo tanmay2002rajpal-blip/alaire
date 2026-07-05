@@ -21,6 +21,8 @@ import { toast } from "sonner";
 interface OrderStatusUpdateProps {
   orderId: string;
   currentStatus: string;
+  awbNumber?: string | null;
+  courierName?: string | null;
   onStatusUpdated?: () => void;
 }
 
@@ -62,15 +64,19 @@ const COURIER_OPTIONS = [
 export function OrderStatusUpdate({
   orderId,
   currentStatus,
+  awbNumber,
+  courierName: initialCourierName,
   onStatusUpdated,
 }: OrderStatusUpdateProps) {
   const [selectedStatus, setSelectedStatus] = useState<string>("");
   const [note, setNote] = useState<string>("");
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
 
-  // Shipping details for "shipped" status
-  const [trackingNumber, setTrackingNumber] = useState<string>("");
-  const [courierName, setCourierName] = useState<string>("");
+  // Shipping details for "shipped" status.
+  // Prefill the tracking number from the FShip AWB (if one already exists) so
+  // admins don't accidentally type a new one over it.
+  const [trackingNumber, setTrackingNumber] = useState<string>(awbNumber || "");
+  const [courierName, setCourierName] = useState<string>(initialCourierName || "");
   const [estimatedDelivery, setEstimatedDelivery] = useState<string>("");
 
   const availableStatuses = STATUS_WORKFLOW[currentStatus] || [];

@@ -13,10 +13,44 @@ interface ActionResult {
   error?: string
 }
 
+// Fields that can be explicitly cleared (null = unset) plus the hidden flag.
+// The base types in queries/coupons.ts declare these as non-nullable optionals,
+// so we widen them here to allow null and add is_hidden without editing that file.
+type CouponWritableExtras = {
+  is_hidden?: boolean
+  buy_quantity?: number | null
+  get_quantity?: number | null
+  min_order_amount?: number | null
+  max_discount?: number | null
+  usage_limit?: number | null
+  valid_until?: string | null
+}
+type CreateCouponInput = Omit<
+  CreateCouponData,
+  'buy_quantity' | 'get_quantity' | 'min_order_amount' | 'max_discount' | 'usage_limit' | 'valid_until'
+> & CouponWritableExtras
+type UpdateCouponInput = Omit<
+  UpdateCouponData,
+  'buy_quantity' | 'get_quantity' | 'min_order_amount' | 'max_discount' | 'usage_limit' | 'valid_until'
+> & CouponWritableExtras
+
+// Build a Date at the START of the given day in IST (+05:30).
+function istStartOfDay(dateStr: string): Date {
+  const day = dateStr.split('T')[0]
+  return new Date(`${day}T00:00:00.000+05:30`)
+}
+
+// Build a Date at the END of the given day in IST (+05:30) so the advertised
+// final day remains fully valid.
+function istEndOfDay(dateStr: string): Date {
+  const day = dateStr.split('T')[0]
+  return new Date(`${day}T23:59:59.999+05:30`)
+}
+
 /**
  * Server action to create a new coupon
  */
-export async function createCouponAction(data: CreateCouponData): Promise<ActionResult> {
+export async function createCouponAction(data: CreateCouponInput): Promise<ActionResult> {
   try {
     const session = await getSession()
     if (!session) return { success: false, error: 'Unauthorized' }
@@ -65,9 +99,10 @@ export async function createCouponAction(data: CreateCouponData): Promise<Action
       max_discount: data.max_discount || null,
       usage_limit: data.usage_limit || null,
       usage_count: 0,
-      valid_from: new Date(data.valid_from),
-      valid_until: data.valid_until ? new Date(data.valid_until) : null,
+      valid_from: istStartOfDay(data.valid_from),
+      valid_until: data.valid_until ? istEndOfDay(data.valid_until) : null,
       is_active: data.is_active !== false,
+      is_hidden: data.is_hidden === true,
       created_at: now,
       updated_at: now,
     })
@@ -88,7 +123,7 @@ export async function createCouponAction(data: CreateCouponData): Promise<Action
  */
 export async function updateCouponAction(
   id: string,
-  data: UpdateCouponData
+  data: UpdateCouponInput
 ): Promise<ActionResult> {
   try {
     const session = await getSession()
@@ -133,9 +168,10 @@ export async function updateCouponAction(
     if (data.min_order_amount !== undefined) updateData.min_order_amount = data.min_order_amount
     if (data.max_discount !== undefined) updateData.max_discount = data.max_discount
     if (data.usage_limit !== undefined) updateData.usage_limit = data.usage_limit
-    if (data.valid_from !== undefined) updateData.valid_from = new Date(data.valid_from)
-    if (data.valid_until !== undefined) updateData.valid_until = data.valid_until ? new Date(data.valid_until) : null
+    if (data.valid_from !== undefined) updateData.valid_from = istStartOfDay(data.valid_from)
+    if (data.valid_until !== undefined) updateData.valid_until = data.valid_until ? istEndOfDay(data.valid_until) : null
     if (data.is_active !== undefined) updateData.is_active = data.is_active
+    if (data.is_hidden !== undefined) updateData.is_hidden = data.is_hidden
 
     updateData.updated_at = new Date()
 

@@ -36,9 +36,10 @@ interface OrderActionButtonsProps {
   awbNumber?: string | null
   courierName?: string | null
   createdAt?: string | null
+  refundedAt?: string | null
 }
 
-export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentMethod, hasAwb, total, shippingAddress, awbNumber, courierName, createdAt }: OrderActionButtonsProps) {
+export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentMethod, hasAwb, total, shippingAddress, awbNumber, courierName, createdAt, refundedAt }: OrderActionButtonsProps) {
   const isPrepaid = paymentMethod !== 'cod'
   const isCod = paymentMethod === 'cod'
   const router = useRouter()
@@ -105,7 +106,13 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentM
     try {
       const result = await updateOrderStatusAction(orderId, 'cancelled', 'Order cancelled by admin')
       if (result.success) {
-        toast.success('Order cancelled successfully')
+        if (result.warnings?.length) {
+          toast.warning('Order cancelled with issues', {
+            description: result.warnings.join(' '),
+          })
+        } else {
+          toast.success('Order cancelled successfully')
+        }
         router.refresh()
       } else {
         toast.error('Failed to cancel order', {
@@ -127,7 +134,13 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentM
     try {
       const result = await updateOrderStatusAction(orderId, 'refunded', 'Refund processed by admin')
       if (result.success) {
-        toast.success('Refund processed successfully')
+        if (result.warnings?.length) {
+          toast.warning('Refund processed with issues', {
+            description: result.warnings.join(' '),
+          })
+        } else {
+          toast.success('Refund processed successfully')
+        }
         router.refresh()
       } else {
         toast.error('Failed to process refund', {
@@ -180,7 +193,7 @@ export function OrderActionButtons({ orderId, orderNumber, orderStatus, paymentM
       <Button
         className="w-full"
         variant="outline"
-        disabled={orderStatus === 'refunded' || isProcessing}
+        disabled={['cancelled', 'refunded'].includes(orderStatus) || !!refundedAt || isProcessing}
         onClick={() => setRefundDialogOpen(true)}
       >
         {isProcessing && refundDialogOpen ? (

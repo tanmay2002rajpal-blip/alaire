@@ -25,12 +25,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    const results: { pickupCancelled?: boolean; pickupError?: string } = {}
+    const results: {
+      pickupCancelled?: boolean
+      pickupError?: string
+      shipment_cancel_failed?: string
+    } = {}
 
     if (order.awb_number) {
       try {
         const cancelResult = await fshipClient.cancelOrder(order.awb_number)
-        if (cancelResult.status) {
+        // Only treat the shipment as cancelled when FShip explicitly confirms it.
+        if (cancelResult.status === true) {
           results.pickupCancelled = true
         } else {
           results.pickupCancelled = false
@@ -45,15 +50,23 @@ export async function POST(request: Request) {
       results.pickupError = "No AWB number stored for this order"
     }
 
+    // Persist the real outcome. Item 9: set shipment_cancelled=true ONLY when the
+    // courier confirmed cancellation; otherwise record shipment_cancel_failed and
+    // surface it in the response so admin can see the partial failure.
+    const setFields: Record<string, unknown> = { updated_at: new Date() }
+    if (results.pickupCancelled) {
+      setFields.shipment_cancelled = true
+      setFields.shipment_cancelled_at = new Date()
+      setFields.shipment_cancel_failed = null
+    } else {
+      const failMsg = results.pickupError || "Shipment cancellation failed"
+      setFields.shipment_cancel_failed = failMsg
+      results.shipment_cancel_failed = failMsg
+    }
+
     await db.collection("orders").updateOne(
       { _id: new ObjectId(orderId) },
-      {
-        $set: {
-          shipment_cancelled: true,
-          shipment_cancelled_at: new Date(),
-          updated_at: new Date(),
-        },
-      }
+      { $set: setFields }
     )
 
     return NextResponse.json({ success: true, ...results })

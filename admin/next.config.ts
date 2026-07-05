@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      // Allow images up to 5MB (plus multipart overhead) — Next default is 1MB
+      bodySizeLimit: '10mb',
+    },
+  },
   images: {
     remotePatterns: [
       {

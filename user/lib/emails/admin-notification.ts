@@ -22,7 +22,7 @@ function formatPrice(amount: number): string {
   }).format(amount)
 }
 
-const ADMIN_EMAIL = "tanmay2002rajpal@gmail.com"
+const ADMIN_EMAIL = process.env.ADMIN_NOTIFICATION_EMAIL || "admin@alaire.in"
 
 interface AdminOrderNotificationData {
   orderId: string
@@ -187,7 +187,7 @@ export async function sendAdminOrderNotification(data: AdminOrderNotificationDat
 
         <!-- CTA -->
         <div style="text-align: center;">
-          <a href="${process.env.NEXT_PUBLIC_SITE_URL || "https://alaire.in"}/admin/orders" style="display: inline-block; background-color: #000; color: #fff; padding: 14px 32px; text-decoration: none; font-size: 14px; font-weight: 600; letter-spacing: 1px; border-radius: 6px;">
+          <a href="${process.env.ADMIN_APP_URL || "https://admin.alaire.in"}/orders" style="display: inline-block; background-color: #000; color: #fff; padding: 14px 32px; text-decoration: none; font-size: 14px; font-weight: 600; letter-spacing: 1px; border-radius: 6px;">
             VIEW IN ADMIN
           </a>
         </div>
@@ -204,12 +204,16 @@ export async function sendAdminOrderNotification(data: AdminOrderNotificationDat
   `
 
   try {
-    await getResend().emails.send({
-      from: "Alaire Orders <admin@alaire.in>",
+    const { error } = await getResend().emails.send({
+      from: "Alaire Orders <noreply@alaire.in>",
       to: ADMIN_EMAIL,
       subject: `New Order ${safeOrderNumber} — ${formatPrice(total)} (${paymentMethod})`,
       html,
     })
+    if (error) {
+      console.error("Failed to send admin notification email:", error)
+      return false
+    }
     return true
   } catch (error) {
     console.error("Failed to send admin notification email:", error)

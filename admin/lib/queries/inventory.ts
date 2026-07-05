@@ -59,10 +59,22 @@ export async function getInventory(filters?: InventoryFilters): Promise<Paginate
   const variantFilter: Record<string, any> = { is_active: true }
 
   if (filters?.search) {
-    variantFilter.$or = [
-      { name: { $regex: filters.search, $options: 'i' } },
-      { sku: { $regex: filters.search, $options: 'i' } },
+    const searchPattern = { $regex: filters.search, $options: 'i' }
+    const or: Record<string, any>[] = [
+      { name: searchPattern },
+      { sku: searchPattern },
     ]
+    // Variants only store their own name/sku, so a search for a PRODUCT name
+    // ("Search products...") would miss all its variants. Resolve product ids
+    // by name and include their variants too.
+    const matchedProducts = await productsCol.find(
+      { name: searchPattern },
+      { projection: { _id: 1 } }
+    ).toArray()
+    if (matchedProducts.length > 0) {
+      or.push({ product_id: { $in: matchedProducts.map(p => p._id) } })
+    }
+    variantFilter.$or = or
   }
 
   if (filters?.stock_status && filters.stock_status !== 'all') {

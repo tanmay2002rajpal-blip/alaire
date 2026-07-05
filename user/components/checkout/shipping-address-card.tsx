@@ -175,6 +175,7 @@ export function ShippingAddressCard({
               <AddressSelector
                 onSelect={onAddressSelect}
                 selectedId={selectedAddress?.id}
+                onShippingChange={onShippingChange}
               />
             </TabsContent>
 

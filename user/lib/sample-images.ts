@@ -1,5 +1,13 @@
 // Curated luxury product images from Unsplash
 // Japanese minimal aesthetic - clean, elevated, intentional
+//
+// IMPORTANT: These are stock photos used ONLY for demos. Substituting them for
+// real product/category imagery is dishonest, so all substitution is gated
+// behind the NEXT_PUBLIC_DEMO_IMAGES flag (default OFF). When the flag is off
+// components render an honest "no image" placeholder instead.
+
+// Demo mode flag — when OFF (default), sample/stock images are never used.
+export const DEMO_IMAGES = process.env.NEXT_PUBLIC_DEMO_IMAGES === "true"
 
 export const SAMPLE_PRODUCT_IMAGES = {
   // Men's Clothing
@@ -105,8 +113,12 @@ function hashString(str: string): number {
   return Math.abs(hash)
 }
 
-// Get a sample image based on product name/category (deterministic)
-export function getSampleProductImage(name: string, categorySlug?: string): string {
+// Get a sample image based on product name/category (deterministic).
+// Returns null unless demo mode is explicitly enabled, so real deployments
+// never substitute stock photos for missing imagery.
+export function getSampleProductImage(name: string, categorySlug?: string): string | null {
+  if (!DEMO_IMAGES) return null
+
   const nameLower = name.toLowerCase()
   const hash = hashString(name)
 
@@ -159,4 +171,11 @@ export function getSampleProductImage(name: string, categorySlug?: string): stri
     ...SAMPLE_PRODUCT_IMAGES.bags,
   ]
   return allImages[hash % allImages.length]
+}
+
+// Get a sample category image (deterministic). Returns null unless demo mode
+// is enabled so real deployments render an honest placeholder instead.
+export function getSampleCategoryImage(slug: string): string | null {
+  if (!DEMO_IMAGES) return null
+  return (CATEGORY_IMAGES as Record<string, string>)[slug] || CATEGORY_IMAGES["new-arrivals"]
 }

@@ -29,17 +29,14 @@ import { useAuth } from "@/components/auth/auth-provider"
 
 export default function SettingsPage() {
   const { logout } = useAuth()
-  const [settings, setSettings] = useState({
+  // NOTE: these preferences are display-only for now. There is no persistence
+  // endpoint yet, so the toggles are disabled rather than pretending to save.
+  const [settings] = useState({
     emailNotifications: true,
     orderUpdates: true,
     promotions: false,
     newsletter: true,
   })
-
-  const handleToggle = (key: keyof typeof settings) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key] }))
-    toast.success("Settings updated")
-  }
 
   return (
     <div className="space-y-6">
@@ -48,7 +45,7 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Notification Preferences</CardTitle>
           <CardDescription>
-            Manage how you receive notifications
+            Manage how you receive notifications — saving preferences is coming soon.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -62,7 +59,7 @@ export default function SettingsPage() {
             <Switch
               id="emailNotifications"
               checked={settings.emailNotifications}
-              onCheckedChange={() => handleToggle("emailNotifications")}
+              disabled
             />
           </div>
 
@@ -78,7 +75,7 @@ export default function SettingsPage() {
             <Switch
               id="orderUpdates"
               checked={settings.orderUpdates}
-              onCheckedChange={() => handleToggle("orderUpdates")}
+              disabled
             />
           </div>
 
@@ -94,7 +91,7 @@ export default function SettingsPage() {
             <Switch
               id="promotions"
               checked={settings.promotions}
-              onCheckedChange={() => handleToggle("promotions")}
+              disabled
             />
           </div>
 
@@ -110,7 +107,7 @@ export default function SettingsPage() {
             <Switch
               id="newsletter"
               checked={settings.newsletter}
-              onCheckedChange={() => handleToggle("newsletter")}
+              disabled
             />
           </div>
         </CardContent>

@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken'
+import { createHash } from 'crypto'
 import { cookies } from 'next/headers'
+import { getAdminSessionsCollection, getAdminUsersCollection } from '@/lib/db/collections'
 import type { JWTPayload } from './types'
 
 const JWT_SECRET = process.env.ADMIN_JWT_SECRET!
@@ -24,7 +26,33 @@ export async function getSession(): Promise<JWTPayload | null> {
 
   if (!token) return null
 
-  return verifyToken(token)
+  // 1. Verify the JWT signature/expiry.
+  const payload = verifyToken(token)
+  if (!payload) return null
+
+  // 2. Verify the session row still exists (logout deletes it) and the admin is
+  //    still active (deactivation must revoke access) on every request.
+  try {
+    const sessions = await getAdminSessionsCollection()
+    const tokenHash = createHash('sha256').update(payload.session_id).digest('hex')
+    const sessionRow = await sessions.findOne({ token_hash: tokenHash })
+
+    if (!sessionRow) return null
+    if (sessionRow.expires_at && sessionRow.expires_at.getTime() < Date.now()) return null
+
+    const adminUsers = await getAdminUsersCollection()
+    const admin = await adminUsers.findOne(
+      { _id: sessionRow.admin_id },
+      { projection: { is_active: 1 } }
+    )
+    if (!admin || admin.is_active === false) return null
+  } catch (err) {
+    // Fail closed: if the session cannot be verified, deny access.
+    console.error('getSession verification error:', err)
+    return null
+  }
+
+  return payload
 }
 
 export async function setSessionCookie(token: string): Promise<void> {

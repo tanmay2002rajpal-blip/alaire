@@ -1,6 +1,7 @@
 'use server'
 
 import { v2 as cloudinary } from 'cloudinary'
+import { getSession } from '@/lib/auth/jwt'
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -41,7 +42,22 @@ const ALLOWED_IMAGE_TYPES = [
   'image/png',
   'image/webp',
   'image/gif',
+  // Cloudinary transcodes these formats on upload
+  'image/heic',
+  'image/heif',
+  'image/avif',
 ]
+
+/**
+ * Ensures the caller is an authenticated admin. Throws when there is no valid
+ * session so the exported server actions cannot be invoked unauthenticated.
+ */
+async function requireAdminSession(): Promise<void> {
+  const session = await getSession()
+  if (!session) {
+    throw new Error('Unauthorized')
+  }
+}
 
 /**
  * Validates that a file is an image and under the size limit
@@ -119,6 +135,7 @@ export async function deleteImage(
   _bucket: string,
   path: string
 ): Promise<UploadResult> {
+  await requireAdminSession()
   try {
     // Extract public_id from URL or path
     // Cloudinary URLs look like: https://res.cloudinary.com/cloud/image/upload/v123/folder/filename.ext
@@ -147,6 +164,7 @@ export async function uploadProductImage(
   file: File,
   productId: string
 ): Promise<UploadResult> {
+  await requireAdminSession()
   const validationError = await validateImage(file)
   if (validationError) {
     return { success: false, error: validationError }
@@ -163,6 +181,7 @@ export async function uploadCategoryImage(
   file: File,
   categoryId: string
 ): Promise<UploadResult> {
+  await requireAdminSession()
   const validationError = await validateImage(file)
   if (validationError) {
     return { success: false, error: validationError }
@@ -179,6 +198,7 @@ export async function uploadHeroImage(
   file: File,
   slideId: string
 ): Promise<UploadResult> {
+  await requireAdminSession()
   const validationError = await validateImage(file)
   if (validationError) {
     return { success: false, error: validationError }

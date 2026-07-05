@@ -1,8 +1,12 @@
 'use server'
 
 import { getDb } from '@/lib/db/client'
+import { getSession } from '@/lib/auth/jwt'
 
 export async function getActiveCarts() {
+  const session = await getSession()
+  if (!session) throw new Error('Unauthorized')
+
   const db = await getDb()
   const carts = await db.collection('active_carts')
     .find({})

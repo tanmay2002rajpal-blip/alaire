@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ShoppingBag, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -13,14 +14,24 @@ import {
 } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useCart } from "@/hooks"
+import { useAuth } from "@/components/auth/auth-provider"
 import { formatPrice } from "@/lib/utils"
 import { CartItem } from "./cart-item"
 
 export function CartDrawer() {
   const { items, isOpen, closeCart, getSubtotal, getItemCount } = useCart()
+  const { requireAuth } = useAuth()
+  const router = useRouter()
 
   const subtotal = getSubtotal()
   const itemCount = getItemCount()
+
+  // Guests must sign in first — open the auth popup instead of letting the
+  // /checkout navigation get bounced to the home page by middleware.
+  const handleCheckout = () => {
+    closeCart()
+    requireAuth(() => router.push("/checkout"))
+  }
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && closeCart()}>
@@ -81,11 +92,9 @@ export function CartDrawer() {
               </div>
 
               <SheetFooter className="flex-col gap-2 px-0 sm:flex-col">
-                <Button asChild size="lg" className="w-full" onClick={closeCart}>
-                  <Link href="/checkout">
-                    Checkout
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
+                <Button size="lg" className="w-full" onClick={handleCheckout}>
+                  Checkout
+                  <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"

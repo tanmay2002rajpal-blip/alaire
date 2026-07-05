@@ -21,24 +21,46 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
         
-        const email = credentials.email.toLowerCase()
+        const email = credentials.email.toLowerCase().trim()
         const otp = credentials.otp as string
         const hashedOtp = createHash("sha256").update(otp).digest("hex")
 
         const db = await getDb()
 
-        const validOtp = await db.collection("otps").findOne({
-          email,
-          otp: hashedOtp,
-          expires_at: { $gt: new Date() }
-        })
-        
-        if (!validOtp) return null
-        
-        await db.collection("otps").deleteOne({ _id: validOtp._id })
-        
+        // Look up the OTP record for this email (regardless of the submitted code)
+        const otpDoc = await db.collection("otps").findOne({ email })
+
+        // No OTP on file, or it has expired
+        if (!otpDoc || (otpDoc.expires_at && otpDoc.expires_at < new Date())) {
+          return null
+        }
+
+        // Wrong code — count the failed attempt and lock out after too many tries
+        if (otpDoc.otp !== hashedOtp) {
+          const MAX_OTP_ATTEMPTS = 5
+          const attempts = (otpDoc.attempts || 0) + 1
+          if (attempts >= MAX_OTP_ATTEMPTS) {
+            // Too many failures — invalidate the OTP entirely
+            await db.collection("otps").deleteOne({ _id: otpDoc._id })
+          } else {
+            await db.collection("otps").updateOne(
+              { _id: otpDoc._id },
+              { $set: { attempts } }
+            )
+          }
+          return null
+        }
+
+        // Correct code — consume the OTP so it cannot be reused
+        await db.collection("otps").deleteOne({ _id: otpDoc._id })
+
         let user = await db.collection("users").findOne({ email })
-        
+
+        // Deactivated users cannot log in
+        if (user && (user as any).is_active === false) {
+          return null
+        }
+
         if (!user) {
           const now = new Date()
           const result = await db.collection("users").insertOne({

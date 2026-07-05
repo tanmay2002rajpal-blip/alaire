@@ -1,6 +1,7 @@
 'use server'
 
 import { getDb } from '@/lib/db/client'
+import { getSession } from '@/lib/auth/jwt'
 import { Resend } from 'resend'
 
 function getResend() {
@@ -19,30 +20,52 @@ export async function getSubscribers() {
 }
 
 export async function sendNewsletterBroadcast(subject: string, htmlContent: string) {
+  // Auth guard: only authenticated admins may broadcast.
+  const session = await getSession()
+  if (!session) {
+    return { success: false, error: 'Unauthorized.' }
+  }
+
   const db = await getDb()
   const subscribers = await db.collection('newsletter_subscribers').find({ is_active: true }).toArray()
-  
+
   const emails = subscribers.map(s => s.email)
   if (emails.length === 0) return { success: false, error: 'No active subscribers found.' }
 
   try {
-    // Note: In production you might batch these or use audience features in Resend.
-    // We send via BCC or separate requests here to avoid exposing full list.
     const resend = getResend()
-    
-    // Batching 50 emails per request to respect limits
-    const BATCH_SIZE = 50
-    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-      const batch = emails.slice(i, i + BATCH_SIZE)
-      await resend.emails.send({
-        from: 'Alaire <newsletter@alaire.in>',
-        to: batch,
+    const fromAddress = 'Alaire <newsletter@alaire.in>'
+
+    // Privacy: send ONE email per recipient so no subscriber sees another's
+    // address. (Previously used `to: batch`, which exposed the entire list to
+    // every recipient.)
+    // TODO: add a real per-recipient unsubscribe link/token. For now we send a
+    // generic List-Unsubscribe mailto header as a placeholder.
+    let sent = 0
+    let failed = 0
+    for (const email of emails) {
+      const { error } = await resend.emails.send({
+        from: fromAddress,
+        to: email,
         subject,
         html: htmlContent,
+        headers: {
+          'List-Unsubscribe': '<mailto:newsletter@alaire.in?subject=unsubscribe>',
+        },
       })
+      if (error) {
+        failed++
+        console.error(`Failed to send newsletter to ${email}:`, error)
+      } else {
+        sent++
+      }
     }
-    
-    return { success: true, count: emails.length }
+
+    if (sent === 0) {
+      return { success: false, error: 'Failed to send broadcast to any subscriber.' }
+    }
+
+    return { success: true, count: sent, failed }
   } catch (err: any) {
     console.error('Failed to send broadcast:', err)
     return { success: false, error: err.message || 'Error executing broadcast.' }

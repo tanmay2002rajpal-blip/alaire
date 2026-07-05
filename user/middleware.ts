@@ -9,7 +9,12 @@ export default auth((req) => {
   const isAuthRoute = pathname.startsWith("/account") || pathname.startsWith("/checkout")
 
   if (isAuthRoute && !req.auth) {
-    return NextResponse.redirect(new URL("/", req.url))
+    // Send guests home but flag that auth is required so the storefront
+    // auto-opens the sign-in popup instead of silently landing on home.
+    const redirectUrl = new URL("/", req.url)
+    redirectUrl.searchParams.set("authRequired", "1")
+    if (pathname.startsWith("/checkout")) redirectUrl.searchParams.set("next", "/checkout")
+    return NextResponse.redirect(redirectUrl)
   }
 
   return NextResponse.next()

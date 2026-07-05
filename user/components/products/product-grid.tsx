@@ -89,8 +89,11 @@ export function ProductGrid({
         className
       )}
     >
-      {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+      {products.map((product, index) => (
+        <ProductCard
+          key={(product as { _key?: string })._key ?? `${product.id}-${index}`}
+          product={product}
+        />
       ))}
     </div>
   )

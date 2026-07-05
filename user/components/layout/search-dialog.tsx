@@ -50,6 +50,8 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  // Monotonic request id so a slow earlier response can't overwrite newer results.
+  const requestIdRef = useRef(0)
 
   // Handle mounting and animation sequence
   useEffect(() => {
@@ -96,24 +98,44 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   // Debounced search
   useEffect(() => {
     if (!query || query.length < 2) {
+      // Invalidate any in-flight request and clear results.
+      requestIdRef.current += 1
       setResults({ products: [], categories: [] })
+      setIsLoading(false)
       return
     }
 
     const timer = setTimeout(async () => {
+      const reqId = ++requestIdRef.current
       setIsLoading(true)
       try {
         const data = await searchProducts(query)
+        // Ignore stale responses that resolve after a newer request started.
+        if (reqId !== requestIdRef.current) return
         setResults(data)
       } catch (error) {
+        if (reqId !== requestIdRef.current) return
         console.error("Search error:", error)
       } finally {
-        setIsLoading(false)
+        if (reqId === requestIdRef.current) setIsLoading(false)
       }
     }, 300)
 
     return () => clearTimeout(timer)
   }, [query])
+
+  // Close on Escape while the dialog is open.
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        onOpenChange(false)
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [open, onOpenChange])
 
   const handleSelect = useCallback(
     (href: string, searchQuery?: string) => {

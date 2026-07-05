@@ -27,3 +27,10 @@ QA_TODO.md
 TEST_REPORT_FULL.md
 dashboard-snapshot.md
 .vercel
+
+# macOS AppleDouble + test/screenshot artifacts (added during audit)
+._*
+.DS_Store
+.playwright-mcp/
+*.jpeg
+rzp-*.png

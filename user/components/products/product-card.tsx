@@ -1,8 +1,9 @@
 "use client"
 
-import { useRef, useMemo, useState } from "react"
+import { useRef, useMemo, useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Heart, Eye, ShoppingBag } from "lucide-react"
 import { gsap } from "gsap"
 import { cn, formatPrice, calculateDiscount } from "@/lib/utils"
@@ -27,6 +28,7 @@ interface ProductCardProps {
 export function ProductCard({ product, className }: ProductCardProps) {
   const cardRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
   const { isInWishlist, toggleWishlist } = useWishlist()
   const { addItem } = useCart()
 
@@ -40,6 +42,23 @@ export function ProductCard({ product, className }: ProductCardProps) {
     }) || product.variants[0]
   }, [product.variants, product._colorVariant])
 
+  // Variants belonging to the displayed color. If more than one (e.g. multiple
+  // sizes) a specific selection is required, so Quick Add sends the shopper to
+  // the PDP rather than silently adding an arbitrary variant.
+  const colorVariants = useMemo(() => {
+    if (!product.variants?.length) return []
+    if (!product._colorVariant) return product.variants
+    const colorName = product._colorVariant.color
+    const matches = product.variants.filter((v) => {
+      const opts = v.options as Record<string, string>
+      return (opts?.color || opts?.Color) === colorName
+    })
+    return matches.length > 0 ? matches : product.variants
+  }, [product.variants, product._colorVariant])
+
+  const needsSelection = colorVariants.length > 1
+  const quickAddVariant = colorVariants.length === 1 ? colorVariants[0] : colorVariant
+
   const price = colorVariant?.price ?? product.base_price ?? 0
   const compareAtPrice = colorVariant?.compare_at_price
   const discount = compareAtPrice ? calculateDiscount(compareAtPrice, price) : null
@@ -52,8 +71,9 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const isOutOfStock = product.variants && product.variants.length > 0 && totalStock === 0
   const isLowStock = totalStock > 0 && totalStock <= 5
 
-  // Get image — prefer color variant image if available
-  const imageUrl = useMemo(() => {
+  // Get image — prefer color variant image if available. Falls back to a sample
+  // only in demo mode; otherwise stays null so we render an honest placeholder.
+  const imageUrl = useMemo<string | null>(() => {
     if (product._colorVariant?.image) return product._colorVariant.image
     const dbImage = product.images?.[0]
     if (!dbImage || dbImage.includes("placehold") || dbImage.includes("placeholder")) {
@@ -62,7 +82,11 @@ export function ProductCard({ product, className }: ProductCardProps) {
     return dbImage
   }, [product.images, product.name, product.category?.slug, product._colorVariant])
 
-  const isWishlisted = isInWishlist(product.id)
+  // Mounted guard: persisted zustand wishlist state must not be read during
+  // SSR/first render or it causes a hydration mismatch.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const isWishlisted = mounted && isInWishlist(product.id)
 
   const productUrl = product._colorVariant
     ? `/products/${product.slug}?color=${encodeURIComponent(product._colorVariant.color)}`
@@ -103,19 +127,32 @@ export function ProductCard({ product, className }: ProductCardProps) {
     toggleWishlist(product.id)
   }
 
+  // Disable Quick Add when the whole product is sold out, or when a single
+  // resolved variant has no stock. (When a size choice is required the button
+  // navigates to the PDP instead, so it is never disabled for that reason.)
+  const quickAddDisabled =
+    isOutOfStock ||
+    (!needsSelection && (quickAddVariant?.stock_quantity ?? 0) === 0)
+
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    // Multi-variant (e.g. size) products need an explicit choice — go to PDP.
+    if (needsSelection) {
+      router.push(productUrl)
+      return
+    }
+    if (!quickAddVariant || (quickAddVariant.stock_quantity ?? 0) === 0) return
     addItem({
       productId: product.id,
-      variantId: colorVariant?.id,
+      variantId: quickAddVariant.id,
       name: product.name,
-      variantName: colorVariant?.name,
+      variantName: quickAddVariant.name,
       price: price,
       compareAtPrice: compareAtPrice ?? undefined,
       quantity: 1,
-      image: imageUrl,
-      maxQuantity: colorVariant?.stock_quantity ?? 10,
+      image: imageUrl ?? undefined,
+      maxQuantity: quickAddVariant.stock_quantity ?? 10,
     })
   }
 
@@ -135,13 +172,21 @@ export function ProductCard({ product, className }: ProductCardProps) {
           ref={imageRef}
           className="relative aspect-[3/4] overflow-hidden bg-muted/50"
         >
-          <Image
-            src={imageUrl}
-            alt={product.name}
-            fill
-            sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
-            className="object-cover transition-transform duration-700 ease-out"
-          />
+          {imageUrl ? (
+            <Image
+              src={imageUrl}
+              alt={product.name}
+              fill
+              sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
+              className="object-cover transition-transform duration-700 ease-out"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-muted">
+              <span className="font-serif text-5xl font-light text-muted-foreground/40">
+                {product.name.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
 
           {/* Overlay gradient */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
@@ -186,10 +231,10 @@ export function ProductCard({ product, className }: ProductCardProps) {
               variant="secondary"
               className="h-10 flex-1 bg-background/95 backdrop-blur-sm hover:bg-background text-xs font-medium tracking-wide disabled:opacity-50"
               onClick={handleQuickAdd}
-              disabled={isOutOfStock}
+              disabled={quickAddDisabled}
             >
               <ShoppingBag className="mr-2 h-4 w-4" />
-              {isOutOfStock ? "Sold Out" : "Quick Add"}
+              {isOutOfStock ? "Sold Out" : needsSelection ? "Select Options" : "Quick Add"}
             </Button>
             <Button
               size="icon"

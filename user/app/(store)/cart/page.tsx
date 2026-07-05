@@ -31,10 +31,24 @@ export default function CartPage() {
     shortfall: number
   }
   const [availableCoupons, setAvailableCoupons] = useState<AvailableCoupon[]>([])
+  // Delivery settings (admin-configurable): fee on/off + free-delivery threshold.
+  const [delivery, setDelivery] = useState<{ deliveryFeeEnabled: boolean; freeDeliveryThreshold: number }>({
+    deliveryFeeEnabled: true,
+    freeDeliveryThreshold: 999,
+  })
 
   // Prevent hydration mismatch - cart state comes from localStorage
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  // Fetch admin delivery settings so the cart's free-shipping messaging matches
+  // what checkout will actually charge.
+  useEffect(() => {
+    fetch("/api/site-settings/delivery")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setDelivery(data))
+      .catch(() => {})
   }, [])
 
   // Fetch available coupons
@@ -75,7 +89,9 @@ export default function CartPage() {
   }
 
   const subtotal = getSubtotal()
-  const freeShipping = subtotal >= 999
+  // Free shipping when the admin has turned delivery fees off entirely, or when
+  // the subtotal clears the configurable free-delivery threshold.
+  const freeShipping = !delivery.deliveryFeeEnabled || subtotal >= delivery.freeDeliveryThreshold
   const total = subtotal
 
   return (
@@ -183,7 +199,7 @@ export default function CartPage() {
 
               {!freeShipping && (
                 <p className="text-xs text-muted-foreground">
-                  Free shipping on orders over ₹999
+                  Free shipping on orders over {formatPrice(delivery.freeDeliveryThreshold)}
                 </p>
               )}
 

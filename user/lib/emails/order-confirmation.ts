@@ -234,7 +234,7 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
               <tr>
                 <td style="padding: 32px 20px; text-align: center;">
                   <p style="margin: 0 0 8px; font-family: -apple-system, sans-serif; font-size: 13px; color: #8a7e6b;">
-                    Need help? Reach us at <a href="mailto:alaireinnerwear@gmail.com" style="color: #c4a265; text-decoration: none;">alaireinnerwear@gmail.com</a>
+                    Need help? Reach us at <a href="mailto:${process.env.SUPPORT_EMAIL || "support@alaire.in"}" style="color: #c4a265; text-decoration: none;">${process.env.SUPPORT_EMAIL || "support@alaire.in"}</a>
                   </p>
                   <p style="margin: 0; font-family: -apple-system, sans-serif; font-size: 12px; color: #b8ad9e;">
                     &copy; ${new Date().getFullYear()} Alaire. Crafted with intention.
@@ -251,12 +251,16 @@ export async function sendOrderConfirmationEmail(data: OrderEmailData): Promise<
   `
 
   try {
-    await getResend().emails.send({
-      from: "Alaire <alaireinnerwear@gmail.com>",
+    const { error } = await getResend().emails.send({
+      from: "Alaire <noreply@alaire.in>",
       to: customerEmail,
       subject: `Your Alaire Order is Confirmed — ${safeOrderNumber}`,
       html,
     })
+    if (error) {
+      console.error("Failed to send order confirmation email:", error)
+      return false
+    }
     return true
   } catch (error) {
     console.error("Failed to send order confirmation email:", error)

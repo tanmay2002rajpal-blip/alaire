@@ -6,10 +6,36 @@ import { revalidatePath } from 'next/cache'
 import { getAdminSettingsCollection, getAdminUsersCollection } from '@/lib/db/collections'
 import { toObjectId } from '@/lib/db/helpers'
 import { getSession } from '@/lib/auth/jwt'
+import { logActivity } from '@/lib/queries/activity'
+
+// Typed-confirmation sentinels for irreversible mass-delete actions.
+// The UI must send the exact phrase before the deletion is allowed to run.
+// NOTE: not exported — this is a 'use server' module where every export must be
+// an async function. The client mirrors these phrases locally.
+const CLEAR_ORDERS_CONFIRMATION = 'DELETE ALL ORDERS'
+const CLEAR_CARTS_CONFIRMATION = 'DELETE ALL CARTS'
 
 interface ActionResult {
   success: boolean
   error?: string
+}
+
+/**
+ * Ensure the caller is an authenticated admin (not staff).
+ * Returns the session when authorized, or an error result to short-circuit.
+ */
+async function requireAdmin(): Promise<
+  | { ok: true; session: NonNullable<Awaited<ReturnType<typeof getSession>>> }
+  | { ok: false; result: ActionResult }
+> {
+  const session = await getSession()
+  if (!session) {
+    return { ok: false, result: { success: false, error: 'Unauthorized' } }
+  }
+  if (session.role !== 'admin') {
+    return { ok: false, result: { success: false, error: 'Forbidden: admin access required' } }
+  }
+  return { ok: true, session }
 }
 
 // ─── Notification Emails ────────────────────────────────────────────────────
@@ -19,8 +45,8 @@ interface ActionResult {
  */
 export async function saveNotificationEmails(emails: string[]): Promise<ActionResult> {
   try {
-    const session = await getSession()
-    if (!session) return { success: false, error: 'Unauthorized' }
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
 
     // Validate emails
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -63,8 +89,8 @@ export async function saveNotificationEmails(emails: string[]): Promise<ActionRe
 
 export async function saveCodSetting(enabled: boolean): Promise<ActionResult> {
   try {
-    const session = await getSession()
-    if (!session) return { success: false, error: 'Unauthorized' }
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
 
     const settingsCol = await getAdminSettingsCollection()
     await settingsCol.updateOne(
@@ -90,17 +116,87 @@ export async function saveCodSetting(enabled: boolean): Promise<ActionResult> {
   }
 }
 
+// ─── Delivery Settings ─────────────────────────────────────────────────────
+
+export async function saveDeliverySettings(data: {
+  deliveryFeeEnabled: boolean
+  freeDeliveryThreshold: number
+}): Promise<ActionResult> {
+  try {
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
+
+    const { deliveryFeeEnabled, freeDeliveryThreshold } = data
+
+    if (
+      typeof freeDeliveryThreshold !== 'number' ||
+      !Number.isFinite(freeDeliveryThreshold) ||
+      freeDeliveryThreshold < 0
+    ) {
+      return { success: false, error: 'Free delivery threshold must be a number greater than or equal to 0' }
+    }
+
+    const settingsCol = await getAdminSettingsCollection()
+    await settingsCol.updateOne(
+      { key: 'delivery_fee_enabled' },
+      {
+        $set: {
+          key: 'delivery_fee_enabled',
+          value: deliveryFeeEnabled,
+          updated_at: new Date(),
+        },
+      },
+      { upsert: true }
+    )
+    await settingsCol.updateOne(
+      { key: 'free_delivery_threshold' },
+      {
+        $set: {
+          key: 'free_delivery_threshold',
+          value: freeDeliveryThreshold,
+          updated_at: new Date(),
+        },
+      },
+      { upsert: true }
+    )
+
+    revalidatePath('/settings')
+    return { success: true }
+  } catch (error) {
+    console.error('Error in saveDeliverySettings:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unexpected error occurred',
+    }
+  }
+}
+
 // ─── Data Management ───────────────────────────────────────────────────────
 
-export async function clearActiveCartsAction(): Promise<ActionResult> {
+export async function clearActiveCartsAction(confirmationText: string): Promise<ActionResult> {
   try {
-    const session = await getSession()
-    if (!session) return { success: false, error: 'Unauthorized' }
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
+
+    // Require exact typed confirmation before this irreversible mass-delete runs.
+    if (confirmationText !== CLEAR_CARTS_CONFIRMATION) {
+      return { success: false, error: 'Confirmation text did not match' }
+    }
 
     const { getDb } = await import('@/lib/db/client')
     const db = await getDb()
-    await db.collection('carts').deleteMany({})
-    const result = await db.collection('active_carts').deleteMany({})
+    const cartsResult = await db.collection('carts').deleteMany({})
+    const activeResult = await db.collection('active_carts').deleteMany({})
+
+    await logActivity({
+      adminId: auth.session.sub,
+      action: 'clear_active_carts',
+      details: {
+        admin_name: auth.session.name,
+        carts_deleted: cartsResult.deletedCount,
+        active_carts_deleted: activeResult.deletedCount,
+      },
+    })
 
     revalidatePath('/carts')
     return { success: true }
@@ -110,16 +206,32 @@ export async function clearActiveCartsAction(): Promise<ActionResult> {
   }
 }
 
-export async function clearOrdersAction(): Promise<ActionResult> {
+export async function clearOrdersAction(confirmationText: string): Promise<ActionResult> {
   try {
-    const session = await getSession()
-    if (!session) return { success: false, error: 'Unauthorized' }
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
+
+    // Require exact typed confirmation before this irreversible mass-delete runs.
+    if (confirmationText !== CLEAR_ORDERS_CONFIRMATION) {
+      return { success: false, error: 'Confirmation text did not match' }
+    }
 
     const { getDb } = await import('@/lib/db/client')
     const db = await getDb()
-    await db.collection('orders').deleteMany({})
-    await db.collection('order_items').deleteMany({})
-    await db.collection('order_status_history').deleteMany({})
+    const ordersResult = await db.collection('orders').deleteMany({})
+    const itemsResult = await db.collection('order_items').deleteMany({})
+    const historyResult = await db.collection('order_status_history').deleteMany({})
+
+    await logActivity({
+      adminId: auth.session.sub,
+      action: 'clear_orders',
+      details: {
+        admin_name: auth.session.name,
+        orders_deleted: ordersResult.deletedCount,
+        order_items_deleted: itemsResult.deletedCount,
+        order_status_history_deleted: historyResult.deletedCount,
+      },
+    })
 
     revalidatePath('/orders')
     revalidatePath('/dashboard')
@@ -142,8 +254,8 @@ export async function createAdminUser(data: {
   role: 'admin' | 'staff'
 }): Promise<ActionResult & { userId?: string }> {
   try {
-    const session = await getSession()
-    if (!session) return { success: false, error: 'Unauthorized' }
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
 
     if (!data.name || data.name.trim().length < 2) {
       return { success: false, error: 'Name must be at least 2 characters' }
@@ -197,6 +309,7 @@ export async function createAdminUser(data: {
 export async function changeAdminPassword(data: {
   userId: string
   newPassword: string
+  currentPassword?: string
 }): Promise<ActionResult> {
   try {
     const session = await getSession()
@@ -206,12 +319,30 @@ export async function changeAdminPassword(data: {
       return { success: false, error: 'Password must be at least 6 characters' }
     }
 
+    const isSelf = data.userId === session.sub
+
+    // Changing another admin's password requires the admin role.
+    // Changing your own requires verifying your current password.
+    if (!isSelf && session.role !== 'admin') {
+      return { success: false, error: 'Forbidden: admin access required' }
+    }
+
     const adminUsersCol = await getAdminUsersCollection()
     const oid = toObjectId(data.userId)
 
     const user = await adminUsersCol.findOne({ _id: oid })
     if (!user) {
       return { success: false, error: 'Admin user not found' }
+    }
+
+    if (isSelf) {
+      if (!data.currentPassword) {
+        return { success: false, error: 'Current password is required' }
+      }
+      const validCurrent = await bcrypt.compare(data.currentPassword, user.password_hash)
+      if (!validCurrent) {
+        return { success: false, error: 'Current password is incorrect' }
+      }
     }
 
     const passwordHash = await bcrypt.hash(data.newPassword, 12)
@@ -237,8 +368,9 @@ export async function changeAdminPassword(data: {
  */
 export async function toggleAdminStatus(userId: string): Promise<ActionResult> {
   try {
-    const session = await getSession()
-    if (!session) return { success: false, error: 'Unauthorized' }
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
+    const session = auth.session
 
     // Prevent toggling self
     if (userId === session.sub) {
@@ -278,8 +410,9 @@ export async function toggleAdminStatus(userId: string): Promise<ActionResult> {
  */
 export async function deleteAdminUser(userId: string): Promise<ActionResult> {
   try {
-    const session = await getSession()
-    if (!session) return { success: false, error: 'Unauthorized' }
+    const auth = await requireAdmin()
+    if (!auth.ok) return auth.result
+    const session = auth.session
 
     // Prevent self-deletion
     if (userId === session.sub) {

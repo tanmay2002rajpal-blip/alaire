@@ -73,7 +73,9 @@ function formatShippingAddress(address: any): string {
     address.line2,
     address.city,
     address.state,
-    address.postal_code,
+    // PIN is stored as `pincode` by the checkout flow; older data used
+    // `postal_code`. Accept either.
+    address.pincode ?? address.postal_code,
     address.country,
   ].filter(Boolean);
 
@@ -95,6 +97,9 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   const subtotal = order.subtotal || order.items.reduce((sum, item) => sum + (item.price_at_purchase * item.quantity), 0);
   const shipping = order.shipping_cost || 0;
   const discount = order.discount_amount || 0;
+  // Fields that may not be on the typed OrderDetail projection yet.
+  const walletUsed = Number((order as any).wallet_amount_used || 0);
+  const fshipLabelUrl: string | null = (order as any).fship_label_url || null;
 
   return (
     <OrderDetailClient>
@@ -244,6 +249,13 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   </div>
                 )}
 
+                {walletUsed > 0 && (
+                  <div className="flex justify-between text-base text-green-600">
+                    <span>Wallet Credit Applied</span>
+                    <span>-{formatCurrency(walletUsed)}</span>
+                  </div>
+                )}
+
                 <Separator />
 
                 <div className="flex justify-between text-lg font-bold">
@@ -261,6 +273,8 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
               <OrderStatusUpdate
                 orderId={order.id}
                 currentStatus={order.status}
+                awbNumber={order.awb_number || order.bluedart_waybill_no || null}
+                courierName={order.courier_name || null}
               />
             </div>
 
@@ -350,6 +364,15 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   )
                 })()}
 
+                {fshipLabelUrl && (
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white border-transparent" variant="outline" asChild>
+                    <a href={fshipLabelUrl} target="_blank" rel="noreferrer">
+                      <Printer className="h-4 w-4 mr-2" />
+                      Print Label / Waybill
+                    </a>
+                  </Button>
+                )}
+
                 {order.bluedart_awb_pdf && (
                   <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white border-transparent" variant="outline" asChild>
                     <a href={order.bluedart_awb_pdf} target="_blank" rel="noreferrer" download={`Waybill_${order.order_number}.pdf`}>
@@ -370,6 +393,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   awbNumber={order.bluedart_waybill_no || order.awb_number || null}
                   courierName={order.courier_name || null}
                   createdAt={order.created_at}
+                  refundedAt={(order as any).refunded_at ? String((order as any).refunded_at) : null}
                 />
               </CardContent>
             </Card>

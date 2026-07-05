@@ -4,23 +4,35 @@ import { getDb } from "@/lib/db/client"
 import { Resend } from "resend"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazily construct the Resend client so a missing API key does not throw on
+// module import and 500 the entire login flow.
+let resendClient: Resend | null = null
+function getResend(): Resend {
+  if (!resendClient) {
+    resendClient = new Resend(process.env.RESEND_API_KEY)
+  }
+  return resendClient
+}
 
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json()
+    const body = await req.json()
 
-    if (!email || !email.includes("@")) {
+    if (!body?.email || typeof body.email !== "string" || !body.email.includes("@")) {
       return NextResponse.json(
         { error: "Invalid email address" },
         { status: 400 }
       )
     }
 
+    // Normalize the email consistently with the verify step so mixed-case
+    // addresses map to the same record and rate-limit bucket.
+    const email = body.email.toLowerCase().trim()
+
     // Rate limiting
     const clientIp = getClientIp(req)
-    const emailLimit = checkRateLimit(`otp-email:${email}`, { maxRequests: 3, windowMs: 600000 })
-    const ipLimit = checkRateLimit(`otp-ip:${clientIp}`, { maxRequests: 10, windowMs: 3600000 })
+    const emailLimit = await checkRateLimit(`otp-email:${email}`, { maxRequests: 3, windowMs: 600000 })
+    const ipLimit = await checkRateLimit(`otp-ip:${clientIp}`, { maxRequests: 10, windowMs: 3600000 })
     if (!emailLimit.allowed || !ipLimit.allowed) {
       return NextResponse.json(
         { error: "Too many OTP requests. Please try again later." },
@@ -43,6 +55,7 @@ export async function POST(req: Request) {
           email,
           otp: hashedOtp,
           expires_at: expiresAt,
+          attempts: 0,
           updated_at: new Date(),
         },
       },
@@ -51,7 +64,7 @@ export async function POST(req: Request) {
 
     // Send email using Resend
     if (process.env.RESEND_API_KEY) {
-      await resend.emails.send({
+      await getResend().emails.send({
         from: "Alaire <noreply@alaire.in>",
         to: email,
         subject: `${otp} — Your Alaire verification code`,

@@ -100,6 +100,21 @@ export async function updateCustomerAction(
 }
 
 /**
+ * Escape a value for safe inclusion in a CSV cell.
+ * - Doubles embedded double-quotes.
+ * - Guards against formula injection by prefixing cells that start with
+ *   =, +, -, @, tab, or carriage return with a single quote.
+ * - Always wraps the result in double quotes.
+ */
+function escapeCsv(value: string): string {
+  let str = value ?? ''
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`
+  }
+  return `"${str.replace(/"/g, '""')}"`
+}
+
+/**
  * Export customers to CSV format
  */
 export async function exportCustomersAction(): Promise<{
@@ -150,13 +165,13 @@ export async function exportCustomersAction(): Promise<{
         user.created_at.toLocaleDateString(),
         stats.count.toString(),
         stats.totalSpent.toFixed(2),
-        user.is_active ? 'Active' : 'Inactive',
+        user.is_active !== false ? 'Active' : 'Inactive',
       ]
     })
 
     const csv = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
+      ...rows.map(row => row.map(cell => escapeCsv(cell)).join(',')),
     ].join('\n')
 
     return { success: true, data: csv }

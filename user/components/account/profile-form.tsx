@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,15 @@ export function ProfileForm({ user, profile, addresses }: ProfileFormProps) {
     phone: profile?.phone ?? "",
   })
 
+  // Re-seed the form when the profile prop arrives/changes (it is fetched
+  // client-side after mount, so the initial props can be null).
+  useEffect(() => {
+    setFormData({
+      fullName: profile?.full_name ?? "",
+      phone: profile?.phone ?? "",
+    })
+  }, [profile?.id, profile?.full_name, profile?.phone])
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
@@ -32,14 +41,24 @@ export function ProfileForm({ user, profile, addresses }: ProfileFormProps) {
     setIsLoading(true)
 
     try {
+      // Only send changed fields. In particular, don't send an empty phone so
+      // an untouched/blank field can't wipe a previously saved phone number.
+      const payload: Record<string, string> = { userId: user.id }
+
+      const trimmedName = formData.fullName.trim()
+      if (trimmedName !== (profile?.full_name ?? "")) {
+        payload.fullName = trimmedName
+      }
+
+      const trimmedPhone = formData.phone.trim()
+      if (trimmedPhone && trimmedPhone !== (profile?.phone ?? "")) {
+        payload.phone = trimmedPhone
+      }
+
       const response = await fetch("/api/account/update-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: formData.fullName,
-          phone: formData.phone,
-          userId: user.id,
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {

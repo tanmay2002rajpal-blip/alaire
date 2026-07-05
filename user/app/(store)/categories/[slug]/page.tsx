@@ -1,13 +1,37 @@
 import { notFound } from "next/navigation"
+import Link from "next/link"
 import type { Metadata } from "next"
 import { getCategoryBySlug, getProducts, getCategories } from "@/lib/db/queries"
 import { expandProductsByColor } from "@/lib/expand-by-color"
 import { CategoryHero } from "@/components/categories"
 import { ProductGrid, ProductFilters } from "@/components/products"
+import { Button } from "@/components/ui/button"
+
+const PAGE_SIZE = 24
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+function firstParam(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v
+}
+
+function buildCategoryPageHref(
+  slug: string,
+  params: { [key: string]: string | string[] | undefined },
+  page: number
+): string {
+  const qs = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (key === "page") continue
+    const v = firstParam(value)
+    if (v) qs.set(key, v)
+  }
+  if (page > 1) qs.set("page", String(page))
+  const str = qs.toString()
+  return str ? `/categories/${slug}?${str}` : `/categories/${slug}`
 }
 
 export async function generateMetadata({
@@ -39,22 +63,24 @@ export default async function CategoryPage({
     notFound()
   }
 
-  // Parse filter params
-  const sort = (resolvedSearchParams.sort as string) ?? "newest"
-  const priceMin = resolvedSearchParams.priceMin
-    ? Number(resolvedSearchParams.priceMin)
-    : undefined
-  const priceMax = resolvedSearchParams.priceMax
-    ? Number(resolvedSearchParams.priceMax)
-    : undefined
+  // Parse filter params (standardized on price_min/price_max)
+  const sort = firstParam(resolvedSearchParams.sort) ?? "newest"
+  const priceMinRaw = firstParam(resolvedSearchParams.price_min)
+  const priceMaxRaw = firstParam(resolvedSearchParams.price_max)
+  const priceMin = priceMinRaw ? Number(priceMinRaw) : undefined
+  const priceMax = priceMaxRaw ? Number(priceMaxRaw) : undefined
+  const page = Math.max(1, parseInt(firstParam(resolvedSearchParams.page) || "1") || 1)
 
   const rawProducts = await getProducts({
     category: slug,
     sort: sort as "newest" | "price_asc" | "price_desc" | "name_asc",
     priceMin,
     priceMax,
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   })
 
+  const hasNextPage = rawProducts.length === PAGE_SIZE
   const products = expandProductsByColor(rawProducts)
   const categories = await getCategories()
 
@@ -85,6 +111,30 @@ export default async function CategoryPage({
                 <p className="mt-2 text-muted-foreground">
                   Try adjusting your filters or check back soon
                 </p>
+              </div>
+            )}
+
+            {(page > 1 || hasNextPage) && (
+              <div className="flex items-center justify-center gap-4 pt-8">
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href={buildCategoryPageHref(slug, resolvedSearchParams, page - 1)}
+                    aria-disabled={page <= 1}
+                    className={page <= 1 ? "pointer-events-none opacity-50" : ""}
+                  >
+                    Previous
+                  </Link>
+                </Button>
+                <span className="text-sm text-muted-foreground">Page {page}</span>
+                <Button asChild variant="outline" size="sm">
+                  <Link
+                    href={buildCategoryPageHref(slug, resolvedSearchParams, page + 1)}
+                    aria-disabled={!hasNextPage}
+                    className={!hasNextPage ? "pointer-events-none opacity-50" : ""}
+                  >
+                    Next
+                  </Link>
+                </Button>
               </div>
             )}
           </div>

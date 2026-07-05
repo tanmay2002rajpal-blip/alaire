@@ -1,3 +1,4 @@
+import { DEMO_IMAGES } from "@/lib/sample-images"
 import type { Product, ProductVariant } from "@/types"
 
 export type ColorExpandedProduct = Product & {
@@ -8,6 +9,9 @@ export type ColorExpandedProduct = Product & {
     image: string
     colorHex: string
   }
+  // Stable unique React key: a product expanded into N color cards keeps the
+  // same `id`, so consumers must key on this instead to avoid duplicate keys.
+  _key?: string
 }
 
 const COLOR_SLUGS: Record<string, string[]> = {
@@ -69,13 +73,16 @@ export function expandProductsByColor<T extends Product & { variants?: ProductVa
 
     // Create one entry per color
     for (const [color, { hex, variant }] of colorMap) {
+      // The variant's own image_url is the source of truth. URL-slug parsing
+      // only reliably matches demo assets, so gate it behind demo mode.
       const colorImage = variant.image_url
-        || findColorImage(product.images || [], color)
+        || (DEMO_IMAGES ? findColorImage(product.images || [], color) : null)
         || product.images?.[0]
         || ""
 
       result.push({
         ...product,
+        _key: `${product.id}-${color}`,
         _colorVariant: {
           color,
           image: colorImage,

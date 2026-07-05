@@ -103,8 +103,11 @@ export function NewArrivals({ products, categories }: NewArrivalsProps) {
             showDots={filteredProducts.length > 2}
             slideClassName="basis-[65%] sm:basis-[45%] lg:basis-[22%] pl-4"
           >
-            {filteredProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
+            {filteredProducts.map((product, index) => (
+              <ProductCard
+                key={(product as { _key?: string })._key ?? `${product.id}-${index}`}
+                product={product}
+              />
             ))}
           </EmblaCarousel>
         ) : (

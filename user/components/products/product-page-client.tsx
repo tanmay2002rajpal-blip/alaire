@@ -3,13 +3,15 @@
 import { useState, useMemo, useCallback } from "react"
 import { ProductGallery } from "./product-gallery"
 import { ProductInfo } from "./product-info"
-import type { Product, ProductVariant, ProductOption } from "@/types"
+import { DEMO_IMAGES } from "@/lib/sample-images"
+import type { Product, ProductVariant, ProductOption, ProductDetail } from "@/types"
 
 interface ProductPageClientProps {
   product: Product & {
     variants: ProductVariant[]
     options: ProductOption[]
     category?: { name: string; slug: string } | null
+    details?: ProductDetail[]
   }
   initialColor?: string
 }
@@ -51,11 +53,29 @@ export function ProductPageClient({ product, initialColor }: ProductPageClientPr
   const [selectedColor, setSelectedColor] = useState(defaultColor)
 
   const filteredImages = useMemo(() => {
-    if (!selectedColor || !product.images || product.images.length <= IMAGES_PER_COLOR) {
+    if (!selectedColor) return product.images || []
+
+    // Source of truth for a color's image: the matching variant's image_url.
+    // URL-slug parsing only works for demo assets whose filenames embed the
+    // color name — real Cloudinary uploads are timestamp-prefixed, so we only
+    // fall back to slug parsing in demo mode.
+    if (DEMO_IMAGES) {
+      if (product.images && product.images.length > IMAGES_PER_COLOR) {
+        return getImagesForColor(product.images, selectedColor)
+      }
       return product.images || []
     }
-    return getImagesForColor(product.images, selectedColor)
-  }, [product.images, selectedColor])
+
+    const colorVariant = product.variants?.find((v) => {
+      const opts = v.options as Record<string, string> | null
+      return (opts?.color || opts?.Color) === selectedColor
+    })
+    if (colorVariant?.image_url) {
+      const rest = (product.images || []).filter((img) => img !== colorVariant.image_url)
+      return [colorVariant.image_url, ...rest]
+    }
+    return product.images || []
+  }, [product.images, product.variants, selectedColor])
 
   const handleColorChange = useCallback((color: string) => {
     setSelectedColor(color)

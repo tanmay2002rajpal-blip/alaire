@@ -2,6 +2,11 @@ import { ObjectId } from 'mongodb'
 import { getOrdersCollection, getOrderItemsCollection, getOrderStatusHistoryCollection, getUsersCollection } from '@/lib/db/collections'
 import { toObjectId, paginate, totalPages } from '@/lib/db/helpers'
 
+// Escape regex metacharacters so user-supplied search text is treated literally
+function escapeRegex(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 // Types
 export interface OrderFilters {
   status?: string;
@@ -120,11 +125,19 @@ export async function getOrders(filters?: OrderFilters): Promise<PaginatedOrders
     filter.created_at = { ...filter.created_at, $gte: new Date(filters.dateFrom) }
   }
   if (filters?.dateTo) {
-    filter.created_at = { ...filter.created_at, $lte: new Date(filters.dateTo) }
+    // Include the entire "to" day: use an exclusive upper bound of dateTo + 1 day
+    const dateToEnd = new Date(filters.dateTo)
+    dateToEnd.setDate(dateToEnd.getDate() + 1)
+    filter.created_at = { ...filter.created_at, $lt: dateToEnd }
   }
 
   if (filters?.search) {
-    filter.order_number = { $regex: filters.search, $options: 'i' }
+    const pattern = escapeRegex(filters.search)
+    filter.$or = [
+      { order_number: { $regex: pattern, $options: 'i' } },
+      { 'shipping_address.full_name': { $regex: pattern, $options: 'i' } },
+      { email: { $regex: pattern, $options: 'i' } },
+    ]
   }
 
   const [ordersData, total] = await Promise.all([
@@ -292,7 +305,7 @@ export async function getOrderById(id: string): Promise<OrderDetail | null> {
 export async function getOrderStats(): Promise<OrderStats> {
   const ordersCol = await getOrdersCollection()
 
-  const statuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'] as const
+  const statuses = ['pending', 'paid', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'] as const
 
   // Run all counts in parallel
   const [totalOrders, ...statusCountResults] = await Promise.all([
@@ -313,7 +326,10 @@ export async function getOrderStats(): Promise<OrderStats> {
 
   return {
     total_orders: totalOrders,
-    pending: statusCounts.pending || 0,
+    // "Pending Orders" = the actionable / pending-fulfilment set. New storefront
+    // orders arrive as 'paid' (prepaid) or 'confirmed' (COD); none are ever the
+    // literal 'pending' status, so count the whole actionable set here.
+    pending: (statusCounts.paid || 0) + (statusCounts.confirmed || 0) + (statusCounts.processing || 0),
     confirmed: statusCounts.confirmed || 0,
     processing: statusCounts.processing || 0,
     shipped: statusCounts.shipped || 0,

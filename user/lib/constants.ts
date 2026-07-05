@@ -98,5 +98,5 @@ export const SOCIAL_LINKS = {
 export const SITE_CONFIG = {
   name: STORE_NAME,
   description: 'Curated collection of premium products for the modern lifestyle.',
-  url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+  url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002',
 } as const

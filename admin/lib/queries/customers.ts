@@ -71,7 +71,6 @@ export interface PaginatedCustomers {
  */
 export async function getCustomers(filters?: CustomerFilters): Promise<PaginatedCustomers> {
   const usersCol = await getUsersCollection()
-  const ordersCol = await getOrdersCollection()
 
   const { skip, limit: lim, page } = paginate(filters?.page, filters?.limit || 25)
   const sortBy = filters?.sort_by || 'created_at'
@@ -92,79 +91,78 @@ export async function getCustomers(filters?: CustomerFilters): Promise<Paginated
     filter.is_active = filters.status === 'active'
   }
 
-  // Get profiles with sorting for created_at
-  const mongoSort: Record<string, 1 | -1> = {}
-  if (sortBy === 'created_at') {
-    mongoSort.created_at = sortOrder === 'asc' ? 1 : -1
-  } else {
-    mongoSort.created_at = -1
-  }
+  const dir: 1 | -1 = sortOrder === 'asc' ? 1 : -1
+
+  // Sort across the WHOLE collection (not just the current page). Computed
+  // fields (total_orders / total_spent / last_order_at) are derived via a
+  // $lookup into orders so sorting by them orders every matching customer,
+  // then $skip/$limit paginate the already-sorted result.
+  const sortStage: Record<string, 1 | -1> =
+    sortBy === 'total_spent'
+      ? { total_spent: dir, created_at: -1 }
+      : sortBy === 'total_orders'
+        ? { total_orders: dir, created_at: -1 }
+        : sortBy === 'last_order'
+          ? { last_order_at: dir, created_at: -1 }
+          : { created_at: dir }
 
   const [profilesData, total] = await Promise.all([
-    usersCol.find(filter).sort(mongoSort).skip(skip).limit(lim).toArray(),
+    usersCol.aggregate([
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'orders',
+          // user_id may be stored as ObjectId or string — compare as strings.
+          let: { uid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: [{ $toString: '$user_id' }, { $toString: '$$uid' }] } } },
+            { $project: { total: 1, created_at: 1, status: 1 } },
+          ],
+          as: 'orders',
+        },
+      },
+      {
+        $addFields: {
+          total_orders: { $size: '$orders' },
+          // total_spent excludes cancelled/refunded orders.
+          total_spent: {
+            $sum: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: '$orders',
+                    as: 'o',
+                    cond: { $not: [{ $in: ['$$o.status', ['cancelled', 'refunded']] }] },
+                  },
+                },
+                as: 'o',
+                in: { $ifNull: ['$$o.total', 0] },
+              },
+            },
+          },
+          last_order_at: { $max: '$orders.created_at' },
+        },
+      },
+      { $project: { orders: 0 } },
+      { $sort: sortStage },
+      { $skip: skip },
+      { $limit: lim },
+    ]).toArray(),
     usersCol.countDocuments(filter),
   ])
 
-  // Get order data for these users
-  const userIds = profilesData.map(p => p._id)
-  const ordersData = userIds.length > 0
-    ? await ordersCol.find(
-        { user_id: { $in: userIds } },
-        { projection: { user_id: 1, total: 1, created_at: 1 } }
-      ).toArray()
-    : []
-
-  // Aggregate orders per user
-  const orderStats = new Map<string, { count: number; totalSpent: number; lastOrderAt: Date | null }>()
-  for (const order of ordersData) {
-    const uid = order.user_id.toString()
-    if (!orderStats.has(uid)) {
-      orderStats.set(uid, { count: 0, totalSpent: 0, lastOrderAt: null })
-    }
-    const stats = orderStats.get(uid)!
-    stats.count += 1
-    stats.totalSpent += order.total || 0
-    if (!stats.lastOrderAt || order.created_at > stats.lastOrderAt) {
-      stats.lastOrderAt = order.created_at
-    }
-  }
-
   // Transform data
-  let customers: Customer[] = profilesData.map(profile => {
-    const stats = orderStats.get(profile._id.toString()) || { count: 0, totalSpent: 0, lastOrderAt: null }
-
-    return {
-      id: profile._id.toString(),
-      email: profile.email,
-      full_name: profile.full_name,
-      phone: profile.phone,
-      created_at: profile.created_at ? new Date(profile.created_at).toISOString() : new Date().toISOString(),
-      last_order_at: stats.lastOrderAt ? new Date(stats.lastOrderAt).toISOString() : null,
-      total_orders: stats.count,
-      total_spent: stats.totalSpent,
-      is_active: profile.is_active ?? true,
-    }
-  })
-
-  // Sort by calculated fields if needed
-  if (sortBy === 'total_spent' || sortBy === 'total_orders' || sortBy === 'last_order') {
-    customers.sort((a, b) => {
-      let aVal: number, bVal: number
-
-      if (sortBy === 'total_spent') {
-        aVal = a.total_spent
-        bVal = b.total_spent
-      } else if (sortBy === 'total_orders') {
-        aVal = a.total_orders
-        bVal = b.total_orders
-      } else {
-        aVal = a.last_order_at ? new Date(a.last_order_at).getTime() : 0
-        bVal = b.last_order_at ? new Date(b.last_order_at).getTime() : 0
-      }
-
-      return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
-    })
-  }
+  const customers: Customer[] = profilesData.map(profile => ({
+    id: profile._id.toString(),
+    email: profile.email ?? null,
+    full_name: profile.full_name ?? null,
+    phone: profile.phone ?? null,
+    created_at: profile.created_at ? new Date(profile.created_at).toISOString() : new Date().toISOString(),
+    last_order_at: profile.last_order_at ? new Date(profile.last_order_at).toISOString() : null,
+    total_orders: profile.total_orders || 0,
+    total_spent: profile.total_spent || 0,
+    is_active: profile.is_active ?? true,
+  }))
 
   return {
     customers,
@@ -230,7 +228,8 @@ export async function getCustomerById(id: string): Promise<CustomerDetail | null
       { user_id: oid },
       { projection: { order_number: 1, status: 1, total: 1, created_at: 1 } }
     ).sort({ created_at: -1 }).toArray(),
-    addressesCol.find({ user_id: oid }).sort({ is_default: -1 }).toArray(),
+    // user_id may be stored as ObjectId or string — match both forms.
+    addressesCol.find({ user_id: { $in: [oid, oid.toString()] as unknown as ObjectId[] } }).sort({ is_default: -1 }).toArray(),
   ])
 
   const totalSpent = orders.reduce((sum, order) => sum + (order.total || 0), 0)
@@ -250,11 +249,12 @@ export async function getCustomerById(id: string): Promise<CustomerDetail | null
       id: addr._id.toString(),
       type: addr.type || 'shipping',
       full_name: addr.full_name || '',
-      address_line_1: addr.address_line_1 || '',
-      address_line_2: addr.address_line_2,
+      // Storefront addresses use line1/line2/pincode; fall back to those.
+      address_line_1: addr.address_line_1 || (addr as { line1?: string }).line1 || '',
+      address_line_2: addr.address_line_2 ?? (addr as { line2?: string | null }).line2 ?? null,
       city: addr.city || '',
       state: addr.state || '',
-      postal_code: addr.postal_code || '',
+      postal_code: addr.postal_code || (addr as { pincode?: string }).pincode || '',
       country: addr.country || '',
       phone: addr.phone,
       is_default: addr.is_default || false,

@@ -6,6 +6,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { Card, CardContent } from "@/components/ui/card"
+import { getDeliverySettings } from "@/lib/queries/delivery-settings"
+import { formatPrice } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { MessageCircle } from "lucide-react"
 import Link from "next/link"
@@ -123,7 +125,15 @@ const faqCategories = [
   },
 ]
 
-export default function FAQPage() {
+export const dynamic = "force-dynamic"
+
+export default async function FAQPage() {
+  const { deliveryFeeEnabled, freeDeliveryThreshold } = await getDeliverySettings()
+  const t = formatPrice(freeDeliveryThreshold)
+  // Keep the "shipping charges" answer in sync with the admin delivery settings.
+  const shippingChargesAnswer = deliveryFeeEnabled
+    ? `Shipping is FREE on all orders above ${t}. For orders below ${t}, shipping charges are calculated at checkout based on your delivery pincode.`
+    : "Shipping is FREE on all orders."
   return (
     <div className="container max-w-4xl py-12 md:py-16">
       {/* Header */}
@@ -146,7 +156,9 @@ export default function FAQPage() {
                     {faq.question}
                   </AccordionTrigger>
                   <AccordionContent className="text-muted-foreground">
-                    {faq.answer}
+                    {faq.question === "What are the shipping charges?"
+                      ? shippingChargesAnswer
+                      : faq.answer}
                   </AccordionContent>
                 </AccordionItem>
               ))}

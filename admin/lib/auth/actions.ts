@@ -6,8 +6,8 @@ import { ObjectId } from 'mongodb'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { getAdminUsersCollection, getAdminSessionsCollection, getActivityLogCollection } from '@/lib/db/collections'
+import { getDb } from '@/lib/db/client'
 import { signToken, setSessionCookie, clearSessionCookie, getSession } from './jwt'
-import { checkRateLimit, recordLoginAttempt, clearRateLimit } from './rate-limit'
 import { validateCsrfToken, generateCsrfToken, clearCsrfToken } from './csrf'
 import type { AdminUser } from './types'
 
@@ -16,6 +16,128 @@ interface LoginResult {
   error?: string
   rateLimited?: boolean
   retryAfter?: number
+}
+
+/**
+ * Persistent login rate limiting backed by a MongoDB TTL collection.
+ *
+ * In-memory maps reset on every serverless cold start and are not shared
+ * between concurrent instances, which makes brute-force throttling useless on
+ * Vercel. These helpers store a fixed-window counter per IP so the lockout is
+ * enforced across all instances, with a TTL index to reclaim stale docs.
+ *
+ * All operations FAIL OPEN (allow the login to proceed) if MongoDB is
+ * unreachable so a transient DB blip never locks admins out entirely.
+ */
+const RATE_LIMIT_COLLECTION = 'rate_limits'
+const MAX_LOGIN_ATTEMPTS = 5      // Maximum login attempts per window
+const LOGIN_WINDOW_MS = 60 * 1000 // Time window: 1 minute
+
+interface RateLimitDoc {
+  _id: string
+  count: number
+  window_start: Date
+  expires_at: Date
+}
+
+/** Ensure the TTL index exists (best-effort, runs once per instance) */
+let rateLimitIndexPromise: Promise<void> | null = null
+async function ensureRateLimitIndex(): Promise<void> {
+  if (!rateLimitIndexPromise) {
+    rateLimitIndexPromise = (async () => {
+      try {
+        const db = await getDb()
+        await db
+          .collection(RATE_LIMIT_COLLECTION)
+          .createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
+      } catch (err) {
+        // Non-fatal — the limiter still works without the TTL sweep.
+        console.error('admin rate-limit: failed to ensure TTL index', err)
+        rateLimitIndexPromise = null
+      }
+    })()
+  }
+  return rateLimitIndexPromise
+}
+
+/**
+ * Check if an IP is currently rate limited (read-only).
+ * @returns allowed status, remaining attempts and the window reset timestamp
+ */
+async function checkRateLimit(
+  ip: string
+): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+  const now = Date.now()
+  const key = `admin-login:${ip}`
+
+  try {
+    await ensureRateLimitIndex()
+    const db = await getDb()
+    const col = db.collection<RateLimitDoc>(RATE_LIMIT_COLLECTION)
+    const doc = await col.findOne({ _id: key })
+
+    // No entry, or the previous window has fully elapsed → allow.
+    if (!doc || doc.window_start.getTime() + LOGIN_WINDOW_MS <= now) {
+      return { allowed: true, remaining: MAX_LOGIN_ATTEMPTS, resetAt: now + LOGIN_WINDOW_MS }
+    }
+
+    const resetAt = doc.window_start.getTime() + LOGIN_WINDOW_MS
+    const remaining = Math.max(0, MAX_LOGIN_ATTEMPTS - doc.count)
+    return { allowed: doc.count < MAX_LOGIN_ATTEMPTS, remaining, resetAt }
+  } catch (err) {
+    // Fail open on infrastructure errors rather than blocking real admins.
+    console.error('admin rate-limit: check failed, allowing request', err)
+    return { allowed: true, remaining: MAX_LOGIN_ATTEMPTS, resetAt: now + LOGIN_WINDOW_MS }
+  }
+}
+
+/**
+ * Record a login attempt for an IP within the current fixed window.
+ */
+async function recordLoginAttempt(ip: string): Promise<void> {
+  const now = Date.now()
+  const key = `admin-login:${ip}`
+
+  try {
+    await ensureRateLimitIndex()
+    const db = await getDb()
+    const col = db.collection<RateLimitDoc>(RATE_LIMIT_COLLECTION)
+    const doc = await col.findOne({ _id: key })
+
+    if (!doc || doc.window_start.getTime() + LOGIN_WINDOW_MS <= now) {
+      // Start a fresh window.
+      await col.updateOne(
+        { _id: key },
+        {
+          $set: {
+            count: 1,
+            window_start: new Date(now),
+            expires_at: new Date(now + LOGIN_WINDOW_MS),
+          },
+        },
+        { upsert: true }
+      )
+    } else {
+      // Count this attempt within the active window.
+      await col.updateOne({ _id: key }, { $inc: { count: 1 } })
+    }
+  } catch (err) {
+    // Best-effort — a failed record must not block the login flow.
+    console.error('admin rate-limit: failed to record attempt', err)
+  }
+}
+
+/**
+ * Clear the rate limit for an IP (e.g. after a successful login).
+ */
+async function clearRateLimit(ip: string): Promise<void> {
+  const key = `admin-login:${ip}`
+  try {
+    const db = await getDb()
+    await db.collection<RateLimitDoc>(RATE_LIMIT_COLLECTION).deleteOne({ _id: key })
+  } catch (err) {
+    console.error('admin rate-limit: failed to clear', err)
+  }
 }
 
 /**
@@ -56,7 +178,7 @@ export async function login(
 
   // Check rate limiting
   const clientIp = await getClientIp()
-  const rateLimit = checkRateLimit(clientIp)
+  const rateLimit = await checkRateLimit(clientIp)
 
   if (!rateLimit.allowed) {
     const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000)
@@ -69,7 +191,7 @@ export async function login(
   }
 
   // Record this attempt
-  recordLoginAttempt(clientIp)
+  await recordLoginAttempt(clientIp)
 
   const adminUsers = await getAdminUsersCollection()
   const activityLog = await getActivityLogCollection()
@@ -128,7 +250,7 @@ export async function login(
   await setSessionCookie(token)
 
   // Clear rate limit on successful login
-  clearRateLimit(clientIp)
+  await clearRateLimit(clientIp)
 
   // Clear CSRF token (new one will be generated if needed)
   await clearCsrfToken()

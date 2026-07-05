@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import type { Metadata } from "next"
@@ -27,7 +27,14 @@ export default async function OrderConfirmationPage({
 }: OrderConfirmationPageProps) {
   const { id } = await params
   const session = await auth()
-  const order = await getOrderConfirmation(id, session?.user?.id)
+
+  // Require authentication: an order's items/address must never be exposed
+  // without proven ownership (prevents IDOR via a guessed order id).
+  if (!session?.user?.id) {
+    redirect(`/?callbackUrl=/order-confirmation/${id}`)
+  }
+
+  const order = await getOrderConfirmation(id, session.user.id)
 
   if (!order) {
     notFound()

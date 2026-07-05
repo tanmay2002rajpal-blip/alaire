@@ -6,7 +6,7 @@ import Link from "next/link"
 import gsap from "gsap"
 import { ScrollTrigger } from "gsap/ScrollTrigger"
 import { ArrowRight } from "lucide-react"
-import { CATEGORY_IMAGES } from "@/lib/sample-images"
+import { getSampleCategoryImage } from "@/lib/sample-images"
 import type { Category } from "@/types"
 
 gsap.registerPlugin(ScrollTrigger)
@@ -55,8 +55,7 @@ export function CategoryBento({ categories }: CategoryBentoProps) {
 
   const getImage = (cat: Category) =>
     cat.image_url ||
-    (CATEGORY_IMAGES as Record<string, string>)[cat.slug] ||
-    null
+    getSampleCategoryImage(cat.slug)
 
   return (
     <section className="section" ref={sectionRef}>
