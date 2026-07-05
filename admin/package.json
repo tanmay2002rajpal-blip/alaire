@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint",
-    "seed:admin": "tsx scripts/seed-admin.ts"
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "db:indexes": "tsx --env-file=.env.local scripts/create-indexes.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

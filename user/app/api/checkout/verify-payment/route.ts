@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
-import { ObjectId } from "mongodb"
 import { auth } from "@/lib/auth"
-import { getDb } from "@/lib/db/client"
-import { fshipClient } from "@/lib/fship/client"
-import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
-import { sendAdminOrderNotification } from "@/lib/emails/admin-notification"
+import { fulfillPaidOrder } from "@/lib/checkout/fulfill-order"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import { verifyPaymentSchema, validateRequest, type VerifyPaymentInput } from "@/lib/validations/api"
 
 export async function POST(request: Request) {
   try {
     const clientIp = getClientIp(request)
-    const rateLimitResult = checkRateLimit(`verify-payment:${clientIp}`, { maxRequests: 10, windowMs: 60000 })
+    const rateLimitResult = await checkRateLimit(`verify-payment:${clientIp}`, { maxRequests: 10, windowMs: 60000 })
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { message: "Too many requests. Please try again later." },
@@ -37,7 +33,6 @@ export async function POST(request: Request) {
     }
 
     const {
-      sessionId,
       razorpay_payment_id,
       razorpay_order_id,
       razorpay_signature,
@@ -65,321 +60,25 @@ export async function POST(request: Request) {
       )
     }
 
-    const db = await getDb()
-
     // ========================================================================
-    // Fetch Checkout Session
+    // Fulfil the paid order (shared with the Razorpay webhook safety net).
+    // Idempotent: whoever claims the checkout session first runs the full
+    // fulfillment; a replay/race returns the already-created order.
     // ========================================================================
 
-    const checkoutSession = await db.collection("checkout_sessions").findOne({
-      _id: new ObjectId(sessionId),
+    const result = await fulfillPaidOrder({
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
     })
 
-    if (!checkoutSession) {
-      return NextResponse.json(
-        { message: "Checkout session not found or expired" },
-        { status: 404 }
-      )
+    if (result.orderId) {
+      return NextResponse.json({ success: true, orderId: result.orderId })
     }
 
-    // Verify Razorpay order ID matches
-    if (checkoutSession.razorpay_order_id !== razorpay_order_id) {
-      return NextResponse.json(
-        { message: "Payment order mismatch" },
-        { status: 400 }
-      )
-    }
-
-    // ========================================================================
-    // Re-validate coupon and increment usage atomically
-    // ========================================================================
-
-    let discountCodeId: string | null = checkoutSession.discount_code_id || null
-    let discount = checkoutSession.discount_amount || 0
-
-    if (checkoutSession.discount_code && discountCodeId) {
-      const now = new Date()
-      const couponResult = await db.collection("coupons").findOneAndUpdate(
-        {
-          _id: new ObjectId(discountCodeId),
-          is_active: true,
-          $or: [
-            { valid_from: { $exists: false } },
-            { valid_from: null },
-            { valid_from: { $lte: now } },
-          ],
-          $and: [
-            {
-              $or: [
-                { valid_until: { $exists: false } },
-                { valid_until: null },
-                { valid_until: { $gte: now } },
-              ],
-            },
-          ],
-          $expr: {
-            $or: [
-              {
-                $and: [
-                  { $eq: [{ $ifNull: ["$usage_limit", null] }, null] },
-                  { $eq: [{ $ifNull: ["$max_uses", null] }, null] },
-                ],
-              },
-              {
-                $lt: [
-                  { $ifNull: ["$usage_count", { $ifNull: ["$current_uses", 0] }] },
-                  { $ifNull: ["$usage_limit", { $ifNull: ["$max_uses", Infinity] }] },
-                ],
-              },
-            ],
-          },
-        },
-        { $inc: { usage_count: 1 } },
-        { returnDocument: "before" }
-      )
-
-      if (!couponResult) {
-        discount = 0
-        discountCodeId = null
-      }
-    }
-
-    // Recalculate total with potentially updated discount
-    const total = Math.max(0, checkoutSession.subtotal - discount + checkoutSession.shipping_amount)
-
-    // ========================================================================
-    // Create Order (only now, after payment confirmed)
-    // ========================================================================
-
-    const items = checkoutSession.items
-    const shippingAddress = checkoutSession.shipping_address
-
-    const orderDoc = {
-      user_id: checkoutSession.user_id,
-      email: checkoutSession.email,
-      order_number: `AL-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`,
-      subtotal: checkoutSession.subtotal,
-      discount_amount: discount,
-      discount_code_id: discountCodeId,
-      shipping_amount: checkoutSession.shipping_amount,
-      total,
-      shipping_address: shippingAddress,
-      razorpay_order_id,
-      razorpay_payment_id,
-      wallet_amount_used: checkoutSession.wallet_amount_used || 0,
-      estimated_delivery_days: checkoutSession.estimated_delivery_days || null,
-      payment_method: "prepaid",
-      status: "paid",
-      paid_at: new Date(),
-      created_at: new Date(),
-      updated_at: new Date(),
-    }
-
-    const orderResult = await db.collection("orders").insertOne(orderDoc)
-    const orderId = orderResult.insertedId.toString()
-    const orderNumber = orderDoc.order_number
-
-    // Create order line items
-    const orderItems = items.map((item: any) => ({
-      order_id: orderResult.insertedId,
-      product_id: item.productId,
-      variant_id: item.variantId ?? null,
-      product_name: item.name,
-      variant_name: item.variantName ?? null,
-      price: item.price,
-      price_at_purchase: item.price,
-      quantity: item.quantity,
-      image_url: item.image ?? null,
-      created_at: new Date(),
-    }))
-
-    await db.collection("order_items").insertMany(orderItems)
-
-    // ========================================================================
-    // Status History
-    // ========================================================================
-
-    await db.collection("order_status_history").insertOne({
-      order_id: orderResult.insertedId,
-      status: "paid",
-      note: `Payment received via Razorpay (${razorpay_payment_id})${
-        checkoutSession.wallet_amount_used > 0 ? ` + ₹${checkoutSession.wallet_amount_used} from wallet` : ""
-      }`,
-      created_at: new Date(),
-    })
-
-    // ========================================================================
-    // Wallet Balance Deduction
-    // ========================================================================
-
-    if (checkoutSession.wallet_amount_used > 0 && checkoutSession.user_id) {
-      const wallet = await db
-        .collection("wallets")
-        .findOne({ user_id: checkoutSession.user_id })
-
-      if (wallet) {
-        await db
-          .collection("wallets")
-          .updateOne(
-            { _id: wallet._id, balance: { $gte: checkoutSession.wallet_amount_used } },
-            { $inc: { balance: -checkoutSession.wallet_amount_used } }
-          )
-
-        await db.collection("wallet_transactions").insertOne({
-          wallet_id: wallet._id,
-          type: "debit",
-          amount: checkoutSession.wallet_amount_used,
-          description: `Used for order ${orderNumber}`,
-          created_at: new Date(),
-        })
-      }
-    }
-
-    // ========================================================================
-    // Stock Reduction
-    // ========================================================================
-
-    const stockWarningItems: string[] = []
-
-    for (const item of items) {
-      if (item.variantId && ObjectId.isValid(item.variantId)) {
-        const result = await db.collection("product_variants").updateOne(
-          { _id: new ObjectId(item.variantId), stock_quantity: { $gte: item.quantity } },
-          { $inc: { stock_quantity: -item.quantity } }
-        )
-        if (result.modifiedCount === 0) {
-          console.error(`Stock insufficient for variant ${item.variantId}`)
-          stockWarningItems.push(item.variantId)
-        }
-      }
-    }
-
-    // Flag the order if any items had insufficient stock so admin can review
-    if (stockWarningItems.length > 0) {
-      await db.collection("orders").updateOne(
-        { _id: orderResult.insertedId },
-        {
-          $set: {
-            stock_warning: true,
-            stock_warning_variants: stockWarningItems,
-          },
-        }
-      )
-    }
-
-    // ========================================================================
-    // Delete Checkout Session
-    // ========================================================================
-
-    await db.collection("checkout_sessions").deleteOne({ _id: new ObjectId(sessionId) })
-
-    // ========================================================================
-    // Emails (non-blocking)
-    // ========================================================================
-
-    try {
-      if (shippingAddress && orderItems.length > 0) {
-        await sendOrderConfirmationEmail({
-          orderId,
-          orderNumber,
-          customerName: shippingAddress.full_name,
-          customerEmail: checkoutSession.email,
-          items: orderItems.map((item: any) => ({
-            product_name: item.product_name,
-            variant_name: item.variant_name ?? undefined,
-            quantity: item.quantity,
-            price: item.price,
-          })),
-          subtotal: checkoutSession.subtotal,
-          discount,
-          shipping: checkoutSession.shipping_amount,
-          walletUsed: checkoutSession.wallet_amount_used || 0,
-          total,
-          shippingAddress,
-          paymentMethod: "Prepaid (Razorpay)",
-        })
-      }
-    } catch (emailError) {
-      console.error("Order confirmation email failed (non-fatal):", emailError)
-    }
-
-    try {
-      if (shippingAddress && orderItems.length > 0) {
-        await sendAdminOrderNotification({
-          orderId,
-          orderNumber,
-          customerName: shippingAddress.full_name,
-          customerEmail: checkoutSession.email,
-          customerPhone: shippingAddress.phone,
-          items: orderItems.map((item: any) => ({
-            product_name: item.product_name,
-            variant_name: item.variant_name ?? undefined,
-            quantity: item.quantity,
-            price: item.price,
-          })),
-          subtotal: checkoutSession.subtotal,
-          discount,
-          shipping: checkoutSession.shipping_amount,
-          total,
-          paymentMethod: "Prepaid (Razorpay)",
-          shippingAddress,
-        })
-      }
-    } catch (adminEmailError) {
-      console.error("Admin notification email failed (non-fatal):", adminEmailError)
-    }
-
-    // ========================================================================
-    // FShip Shipment (non-blocking)
-    // ========================================================================
-
-    try {
-      const isFShipConfigured = !!process.env.FSHIP_API_KEY
-      const fshipWarehouseId = parseInt(process.env.FSHIP_WAREHOUSE_ID || "0", 10)
-      if (shippingAddress && orderItems.length > 0 && isFShipConfigured && fshipWarehouseId) {
-        const createResult = await fshipClient.createForwardOrder({
-          customer_Name: shippingAddress.full_name,
-          customer_Mobile: shippingAddress.phone,
-          customer_Address: [shippingAddress.line1, shippingAddress.line2].filter(Boolean).join(", "),
-          customer_PinCode: shippingAddress.pincode,
-          customer_City: shippingAddress.city || "",
-          orderId: orderNumber,
-          payment_Mode: 2,
-          express_Type: "air",
-          order_Amount: checkoutSession.subtotal,
-          total_Amount: checkoutSession.total,
-          cod_Amount: 0,
-          shipment_Weight: 0.5,
-          shipment_Length: 20,
-          shipment_Width: 15,
-          shipment_Height: 10,
-          volumetric_Weight: 0,
-          pick_Address_ID: fshipWarehouseId,
-          products: [{
-            productName: "Order Items",
-            unitPrice: checkoutSession.subtotal,
-            quantity: 1,
-          }],
-        })
-
-        if (createResult.status && createResult.waybill) {
-          await db.collection("orders").updateOne(
-            { _id: orderResult.insertedId },
-            {
-              $set: {
-                awb_number: createResult.waybill,
-                courier_name: "FShip",
-                fship_order_id: createResult.apiorderid || null,
-              },
-            }
-          )
-        }
-      }
-    } catch (shippingError) {
-      console.error("FShip shipment creation error (non-fatal):", shippingError)
-    }
-
-    return NextResponse.json({ success: true, orderId })
+    return NextResponse.json(
+      { message: result.error || "Checkout session not found or expired" },
+      { status: 404 }
+    )
   } catch (error) {
     console.error("Payment verification error:", error)
     return NextResponse.json(

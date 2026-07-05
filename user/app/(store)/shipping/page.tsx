@@ -35,7 +35,14 @@ const shippingZones = [
   },
 ]
 
-export default function ShippingPage() {
+import { getDeliverySettings } from "@/lib/queries/delivery-settings"
+import { formatPrice } from "@/lib/utils"
+
+export const dynamic = "force-dynamic"
+
+export default async function ShippingPage() {
+  const { deliveryFeeEnabled, freeDeliveryThreshold } = await getDeliverySettings()
+  const thresholdLabel = formatPrice(freeDeliveryThreshold)
   return (
     <div className="container max-w-4xl py-12 md:py-16">
       {/* Header */}
@@ -54,9 +61,13 @@ export default function ShippingPage() {
               <IndianRupee className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-lg">Free Shipping on Orders ₹999+</h3>
+              <h3 className="font-semibold text-lg">
+                {deliveryFeeEnabled ? `Free Shipping on Orders ${thresholdLabel}+` : "Free Shipping on All Orders"}
+              </h3>
               <p className="text-muted-foreground">
-                Enjoy free standard shipping on all orders above ₹999 across India.
+                {deliveryFeeEnabled
+                  ? `Enjoy free standard shipping on all orders above ${thresholdLabel} across India.`
+                  : "Enjoy free standard shipping on every order across India."}
               </p>
             </div>
           </div>

@@ -1,7 +1,7 @@
 'use server'
 
 import { ObjectId } from 'mongodb'
-import { getCouponsCollection } from '@/lib/db/collections'
+import { getCouponsCollection, getOrdersCollection } from '@/lib/db/collections'
 import { toObjectId, paginate, totalPages } from '@/lib/db/helpers'
 
 export interface Coupon {
@@ -149,10 +149,11 @@ export async function getCoupons(filters?: CouponFilters): Promise<PaginatedCoup
  */
 export async function getCouponStats(): Promise<CouponStats> {
   const couponsCol = await getCouponsCollection()
+  const ordersCol = await getOrdersCollection()
 
   const now = new Date()
 
-  const [totalCoupons, activeCoupons, couponsData] = await Promise.all([
+  const [totalCoupons, activeCoupons, usageAgg, savingsAgg] = await Promise.all([
     couponsCol.countDocuments(),
     couponsCol.countDocuments({
       is_active: true,
@@ -162,29 +163,28 @@ export async function getCouponStats(): Promise<CouponStats> {
         { valid_until: { $gte: now } },
       ],
     }),
-    couponsCol.find(
-      {},
-      { projection: { usage_count: 1, type: 1, value: 1 } }
-    ).toArray(),
+    couponsCol.aggregate<{ _id: null; total: number }>([
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$usage_count', 0] } } } },
+    ]).toArray(),
+    // "Total Savings" from usage_count * value is meaningless for percentage /
+    // buy_x_get_y coupons. Instead sum the ACTUAL discount_amount recorded on
+    // real coupon-linked orders (excluding cancelled/refunded).
+    ordersCol.aggregate<{ _id: null; total: number }>([
+      {
+        $match: {
+          discount_amount: { $gt: 0 },
+          status: { $nin: ['cancelled', 'refunded'] },
+        },
+      },
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$discount_amount', 0] } } } },
+    ]).toArray(),
   ])
-
-  let totalUsage = 0
-  let totalSavings = 0
-
-  for (const coupon of couponsData) {
-    totalUsage += coupon.usage_count || 0
-    if (coupon.type === 'percentage') {
-      totalSavings += (coupon.usage_count || 0) * coupon.value
-    } else {
-      totalSavings += (coupon.usage_count || 0) * coupon.value
-    }
-  }
 
   return {
     total_coupons: totalCoupons,
     active_coupons: activeCoupons,
-    total_usage: totalUsage,
-    total_savings: totalSavings,
+    total_usage: usageAgg[0]?.total || 0,
+    total_savings: savingsAgg[0]?.total || 0,
   }
 }
 

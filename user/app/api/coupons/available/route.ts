@@ -14,6 +14,7 @@ export async function GET(request: Request) {
       .collection("coupons")
       .find({
         is_active: true,
+        is_hidden: { $ne: true },
         $or: [
           // Currently valid
           {

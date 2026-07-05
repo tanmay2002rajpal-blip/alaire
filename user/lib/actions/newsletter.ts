@@ -42,7 +42,7 @@ export async function subscribeToNewsletter(email: string): Promise<SubscribeRes
 
   // Send welcome email (don't fail subscription if email fails)
   try {
-    await getResend().emails.send({
+    const { error: emailError } = await getResend().emails.send({
       from: "Alaire <newsletter@alaire.in>",
       to: email.toLowerCase(),
       subject: "Welcome to Alaire",
@@ -63,8 +63,11 @@ export async function subscribeToNewsletter(email: string): Promise<SubscribeRes
         </div>
       `,
     })
-  } catch (emailError) {
-    console.error("Welcome email failed:", emailError)
+    if (emailError) {
+      console.error("Welcome email failed:", emailError)
+    }
+  } catch (err) {
+    console.error("Welcome email failed:", err)
   }
 
   return { success: true }

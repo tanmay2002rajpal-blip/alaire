@@ -28,6 +28,8 @@ interface OrderFiltersProps {
 const ORDER_STATUSES = [
   { value: "all", label: "All Orders" },
   { value: "pending", label: "Pending" },
+  { value: "paid", label: "Paid" },
+  { value: "confirmed", label: "Confirmed" },
   { value: "processing", label: "Processing" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
@@ -72,6 +74,9 @@ export function OrderFilters({ filters }: OrderFiltersProps) {
           params.delete(key)
         }
       })
+
+      // Reset pagination whenever a filter changes so results start on page 1
+      params.delete("page")
 
       router.push(`?${params.toString()}`, { scroll: false })
     },

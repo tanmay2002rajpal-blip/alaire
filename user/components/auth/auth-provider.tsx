@@ -82,6 +82,29 @@ function AuthContextProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // If middleware bounced a guest here with ?authRequired=1, auto-open the
+  // sign-in popup (and remember where they were headed) instead of leaving
+  // them stranded on the home page.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("authRequired") === "1") {
+      // Middleware (server) determined there is NO valid session. Any user
+      // persisted in localStorage is stale — clear it, otherwise the effect
+      // that runs pendingCallback on a truthy `user` would immediately
+      // re-navigate to /checkout, get bounced by middleware, and loop.
+      clearStoredUser()
+      setLocalUser(null)
+      const next = params.get("next")
+      if (next) setPendingCallback(() => () => { window.location.href = next })
+      setIsAuthDialogOpen(true)
+      params.delete("authRequired")
+      params.delete("next")
+      const qs = params.toString()
+      window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""))
+    }
+  }, [])
+
   // Sync NextAuth session -> localStorage when it becomes available
   useEffect(() => {
     if (session?.user?.id) {

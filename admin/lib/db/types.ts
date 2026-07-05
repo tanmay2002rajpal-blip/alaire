@@ -94,6 +94,16 @@ export interface OrderDoc {
   awb_number?: string | null
   pickup_token?: string | null
   courier_name?: string | null
+  fship_order_id?: number | null
+  fship_label_url?: string | null
+  fship_routing_code?: string | null
+  pickup_order_id?: number | null
+  shipment_error?: string | null
+  shipment_cancelled?: boolean
+  shipment_cancel_failed?: string | null
+  refunded_at?: Date | null
+  refund_id?: string | null
+  wallet_amount_used?: number
   created_at: Date
   updated_at: Date
 }
@@ -160,6 +170,7 @@ export interface CouponDoc {
   valid_from: Date
   valid_until: Date | null
   is_active: boolean
+  is_hidden: boolean
   created_at: Date
   updated_at: Date
 }

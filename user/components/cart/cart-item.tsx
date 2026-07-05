@@ -17,7 +17,7 @@ interface CartItemProps {
 export function CartItem({ item }: CartItemProps) {
   const { updateQuantity, removeItem } = useCart()
 
-  const imageUrl = useMemo(() => {
+  const imageUrl = useMemo<string | null>(() => {
     if (item.image && !item.image.includes("placehold") && !item.image.includes("placeholder")) {
       return item.image
     }
@@ -28,8 +28,11 @@ export function CartItem({ item }: CartItemProps) {
     const slug = item.slug || item.productId
     const base = `/products/${slug}`
     if (!item.variantName) return base
+    // variantName is built as `Object.values(selectedOptions).join(" / ")` with
+    // Color as the first option, so the color is the FIRST segment — the old
+    // code grabbed the last segment (typically the size) by mistake.
     const parts = item.variantName.split(" / ")
-    const color = parts.length > 1 ? parts[parts.length - 1] : null
+    const color = parts.length > 1 ? parts[0] : null
     return color ? `${base}?color=${encodeURIComponent(color)}` : base
   }, [item.slug, item.productId, item.variantName])
 
@@ -40,13 +43,19 @@ export function CartItem({ item }: CartItemProps) {
         href={productUrl}
         className="relative aspect-square h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted/50 transition-transform hover:scale-105"
       >
-        <Image
-          src={imageUrl}
-          alt={item.name}
-          fill
-          sizes="96px"
-          className="object-cover"
-        />
+        {imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt={item.name}
+            fill
+            sizes="96px"
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+            No image
+          </div>
+        )}
       </Link>
 
       {/* Details */}
@@ -66,7 +75,7 @@ export function CartItem({ item }: CartItemProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+            className="h-8 w-8 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
             onClick={() => removeItem(item.id)}
           >
             <X className="h-4 w-4" />

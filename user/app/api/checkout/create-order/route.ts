@@ -3,7 +3,8 @@ import { ObjectId } from "mongodb"
 import Razorpay from "razorpay"
 import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
-import { fshipClient } from "@/lib/fship/client"
+import { createShipment, checkPincodeServiceability } from "@/lib/fship/actions"
+import { computeDiscount, type CouponLike } from "@/lib/actions/coupon"
 import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
 import { sendAdminOrderNotification } from "@/lib/emails/admin-notification"
 import { createOrderSchema, validateRequest, type CreateOrderInput } from "@/lib/validations/api"
@@ -27,7 +28,7 @@ function getRazorpay(): Razorpay {
 export async function POST(request: Request) {
   try {
     const clientIp = getClientIp(request)
-    const rateLimitResult = checkRateLimit(`checkout:${clientIp}`, CHECKOUT_RATE_LIMIT)
+    const rateLimitResult = await checkRateLimit(`checkout:${clientIp}`, CHECKOUT_RATE_LIMIT)
 
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
@@ -179,22 +180,57 @@ export async function POST(request: Request) {
     }
 
     // ========================================================================
-    // Server-side Price Verification
+    // Server-side Price Authority
     // ========================================================================
+    // NEVER trust client item.price. Resolve the authoritative price for every
+    // item server-side and MUTATE item.price so all downstream computations
+    // (subtotal, discount, order items, emails, shipment) use the trusted value.
+
+    // Fetch products (for base_price fallback) + build a default-variant price
+    // map for productId-only items.
+    const productDocs = productIdsWithoutVariant.length > 0
+      ? await db.collection("products").find({ _id: { $in: productIdsWithoutVariant } }).toArray()
+      : []
+    const productBasePriceMap = new Map<string, number>()
+    for (const p of productDocs) productBasePriceMap.set(p._id.toString(), Number(p.base_price))
+
+    const productVariantPriceMap = new Map<string, number>()
+    for (const v of productVariantDocs) {
+      const pid = v.product_id.toString()
+      if (!productVariantPriceMap.has(pid)) productVariantPriceMap.set(pid, Number(v.price))
+    }
 
     for (const item of items) {
+      let resolvedPrice: number | null = null
+
       if (item.variantId) {
         const variant = variantMap.get(item.variantId)
-        if (variant && variant.price !== item.price) {
+        if (!variant) {
           return NextResponse.json(
-            { message: `Price changed for ${item.name}. Please refresh your cart.` },
+            { message: `Item unavailable: ${item.name}. Please refresh your cart.` },
             { status: 400 }
           )
         }
+        resolvedPrice = Number(variant.price)
+      } else if (item.productId) {
+        resolvedPrice =
+          productVariantPriceMap.get(item.productId) ??
+          productBasePriceMap.get(item.productId) ??
+          null
       }
+
+      if (resolvedPrice === null || !Number.isFinite(resolvedPrice) || resolvedPrice <= 0) {
+        return NextResponse.json(
+          { message: `Could not verify price for ${item.name}. Please refresh your cart.` },
+          { status: 400 }
+        )
+      }
+
+      // Trust the server price from here on.
+      item.price = resolvedPrice
     }
 
-    // Recalculate subtotal server-side
+    // Recalculate subtotal from server-authoritative prices
     const calculatedSubtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
     // ========================================================================
@@ -254,49 +290,23 @@ export async function POST(request: Request) {
       if (code) {
         const minOrder = code.min_order_amount ?? 0
 
-        if (calculatedSubtotal >= minOrder) {
-          const discountValue = Number(code.value) || Number(code.discount_value) || 0
-          const discountType = code.type || code.discount_type
+        // Shared discount computation — caps fixed discounts at subtotal and
+        // rounds to 2 decimals, exactly matching validateCoupon (the UI).
+        const cartItemsForDiscount = items.map((item) => ({
+          price: item.price,
+          quantity: item.quantity,
+        }))
+        const computed =
+          calculatedSubtotal >= minOrder
+            ? await computeDiscount(code as CouponLike, calculatedSubtotal, cartItemsForDiscount)
+            : 0
 
-          if (discountType === "buy_x_get_y") {
-            const buyQty = Number(code.buy_quantity) || 2
-            const getQty = Number(code.get_quantity) || 1
-            const requiredQty = buyQty + getQty
-            const totalCartQty = items.reduce((sum, item) => sum + item.quantity, 0)
-
-            if (totalCartQty >= requiredQty) {
-              // Expand to individual unit prices, sort ascending
-              const unitPrices: number[] = []
-              for (const item of items) {
-                for (let i = 0; i < item.quantity; i++) {
-                  unitPrices.push(item.price)
-                }
-              }
-              unitPrices.sort((a, b) => a - b)
-              for (let i = 0; i < Math.min(getQty, unitPrices.length); i++) {
-                discount += unitPrices[i]
-              }
-              discountCodeId = code._id.toString()
-            } else {
-              // Not enough items — roll back
-              await db.collection("coupons").updateOne(
-                { _id: code._id },
-                { $inc: { usage_count: -1 } }
-              )
-            }
-          } else if (discountType === "percentage") {
-            discount = (calculatedSubtotal * discountValue) / 100
-            const maxDiscount = Number(code.max_discount) || Number(code.max_discount_amount) || 0
-            if (maxDiscount) {
-              discount = Math.min(discount, maxDiscount)
-            }
-            discountCodeId = code._id.toString()
-          } else {
-            discount = discountValue
-            discountCodeId = code._id.toString()
-          }
+        if (computed > 0) {
+          discount = computed
+          discountCodeId = code._id.toString()
         } else {
-          // Min order not met — roll back the usage increment
+          // Min order not met, buy-x-get-y qty not reached, or zero discount —
+          // roll back the usage increment we reserved above.
           await db.collection("coupons").updateOne(
             { _id: code._id },
             { $inc: { usage_count: -1 } }
@@ -309,8 +319,51 @@ export async function POST(request: Request) {
     // Total Calculation
     // ========================================================================
 
-    const shipping = shippingCost
-    const total = Math.max(0, calculatedSubtotal - discount + shipping)
+    // Server-authoritative shipping — NEVER trust client shippingCost (display
+    // only). Resolve delivery-fee settings from admin_settings, then apply the
+    // canonical shipping resolution: delivery fee off => free; else free over
+    // the threshold; otherwise recompute from pincode.
+    const deliveryEnabledSetting = await db.collection("admin_settings").findOne({ key: "delivery_fee_enabled" })
+    const deliveryThresholdSetting = await db.collection("admin_settings").findOne({ key: "free_delivery_threshold" })
+    const deliveryFeeEnabled = deliveryEnabledSetting?.value !== false
+    const thresholdValue = deliveryThresholdSetting?.value
+    const freeDeliveryThreshold =
+      typeof thresholdValue === "number" && isFinite(thresholdValue) ? thresholdValue : 999
+
+    let shipping = 0
+    if (!deliveryFeeEnabled) {
+      shipping = 0
+    } else if (calculatedSubtotal >= freeDeliveryThreshold) {
+      shipping = 0
+    } else {
+      try {
+        const serviceability = await checkPincodeServiceability(shippingAddress.pincode)
+        shipping = serviceability.success && serviceability.data
+          ? serviceability.data.shippingCost
+          : (shippingCost ?? 0)
+      } catch {
+        shipping = shippingCost ?? 0
+      }
+    }
+
+    const preWalletTotal = Math.max(0, calculatedSubtotal - discount + shipping)
+
+    // Wallet — re-validate against the user's ACTUAL balance server-side, cap it
+    // to both the balance and the amount due. Only applied for prepaid (debited
+    // atomically at payment confirmation); ignored for COD.
+    let walletApplied = 0
+    if (paymentMethod === "prepaid" && walletAmountUsed && walletAmountUsed > 0 && userId) {
+      const walletUserIds: (string | ObjectId)[] = [userId]
+      if (typeof userId === "string" && ObjectId.isValid(userId)) {
+        walletUserIds.push(new ObjectId(userId))
+      }
+      const wallet = await db.collection("wallets").findOne({ user_id: { $in: walletUserIds } })
+      const balance = Number(wallet?.balance) || 0
+      walletApplied = Math.max(0, Math.min(walletAmountUsed, balance, preWalletTotal))
+      walletApplied = Math.round(walletApplied * 100) / 100
+    }
+
+    const total = Math.max(0, preWalletTotal - walletApplied)
 
     // ========================================================================
     // Razorpay Order (Prepaid Only)
@@ -322,12 +375,23 @@ export async function POST(request: Request) {
     if (paymentMethod === "prepaid") {
       amountInPaise = Math.round(total * 100)
       const razorpay = getRazorpay()
-      const razorpayOrder = await razorpay.orders.create({
-        amount: amountInPaise,
-        currency: "INR",
-        receipt: `order_${Date.now()}`,
-      })
-      razorpayOrderId = razorpayOrder.id
+      try {
+        const razorpayOrder = await razorpay.orders.create({
+          amount: amountInPaise,
+          currency: "INR",
+          receipt: `order_${Date.now()}`,
+        })
+        razorpayOrderId = razorpayOrder.id
+      } catch (razorpayError) {
+        // Prevent coupon usage leak: release the slot we reserved above.
+        if (discountCodeId) {
+          await db.collection("coupons").updateOne(
+            { _id: new ObjectId(discountCodeId) },
+            { $inc: { usage_count: -1 } }
+          )
+        }
+        throw razorpayError
+      }
     }
 
     // ========================================================================
@@ -352,11 +416,11 @@ export async function POST(request: Request) {
         discount_code: discountCode || null,
         discount_code_id: discountCodeId,
         shipping_amount: shipping,
-        shipping_cost: shippingCost,
+        shipping_cost: shipping,
         total,
         shipping_address: shippingAddress,
         razorpay_order_id: razorpayOrderId,
-        wallet_amount_used: walletAmountUsed || 0,
+        wallet_amount_used: walletApplied,
         estimated_delivery_days: estimatedDays || null,
         created_at: new Date(),
         expires_at: new Date(Date.now() + 30 * 60 * 1000),
@@ -386,10 +450,11 @@ export async function POST(request: Request) {
       discount_amount: discount,
       discount_code_id: discountCodeId,
       shipping_amount: shipping,
+      shipping_cost: shipping,
       total,
       shipping_address: shippingAddress,
       razorpay_order_id: null,
-      wallet_amount_used: walletAmountUsed || 0,
+      wallet_amount_used: walletApplied,
       estimated_delivery_days: estimatedDays || null,
       payment_method: paymentMethod,
       status: "confirmed",
@@ -540,49 +605,65 @@ export async function POST(request: Request) {
         console.error("Admin notification email failed (non-fatal):", adminEmailError)
       }
 
-      // Create FShip shipment (non-blocking, only if configured)
-      const isFShipConfigured = !!process.env.FSHIP_API_KEY
-      const fshipWarehouseId = parseInt(process.env.FSHIP_WAREHOUSE_ID || "0", 10)
-      if (isFShipConfigured && fshipWarehouseId) try {
-        const createResult = await fshipClient.createForwardOrder({
-          customer_Name: shippingAddress.full_name,
-          customer_Mobile: shippingAddress.phone,
-          customer_Address: [shippingAddress.line1, shippingAddress.line2].filter(Boolean).join(", "),
-          customer_PinCode: shippingAddress.pincode,
-          customer_City: shippingAddress.city || "",
+      // Create FShip shipment via createShipment (also registers pickup).
+      // Non-blocking: on failure we record shipment_error but never fail the order.
+      try {
+        const totalQty = items.reduce((sum, item) => sum + item.quantity, 0)
+        const shipmentWeight = 0.5 * totalQty
+        const shipmentResult = await createShipment({
           orderId: orderNumber,
-          payment_Mode: 1,
-          express_Type: "air",
-          order_Amount: calculatedSubtotal,
-          total_Amount: total,
-          cod_Amount: total,
-          shipment_Weight: 0.5,
-          shipment_Length: 20,
-          shipment_Width: 15,
-          shipment_Height: 10,
-          volumetric_Weight: 0,
-          pick_Address_ID: fshipWarehouseId,
-          products: [{
-            productName: "Order Items",
-            unitPrice: calculatedSubtotal,
-            quantity: 1,
-          }],
+          consigneeName: shippingAddress.full_name,
+          consigneeAddress1: shippingAddress.line1,
+          consigneeAddress2: shippingAddress.line2,
+          consigneePincode: shippingAddress.pincode,
+          consigneeMobile: shippingAddress.phone,
+          consigneeEmail: email,
+          consigneeCity: shippingAddress.city || "",
+          weight: shipmentWeight,
+          declaredValue: total,
+          pickupDate: new Date().toISOString().split("T")[0],
+          pickupTime: "14:00",
+          paymentMode: "cod",
+          codAmount: total,
+          products: items.map((item) => ({
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            sku: item.variantId ? (variantMap.get(item.variantId)?.sku ?? undefined) : undefined,
+          })),
         })
 
-        if (createResult.status && createResult.waybill) {
+        if (shipmentResult.success && shipmentResult.awbNumber) {
           await db.collection("orders").updateOne(
             { _id: orderResult.insertedId },
             {
               $set: {
-                awb_number: createResult.waybill,
+                awb_number: shipmentResult.awbNumber,
                 courier_name: "FShip",
-                fship_order_id: createResult.apiorderid || null,
+                fship_order_id: shipmentResult.apiOrderId ?? null,
+                fship_label_url: shipmentResult.labelUrl ?? null,
+                fship_routing_code: shipmentResult.routingCode ?? null,
+                pickup_order_id: shipmentResult.pickupOrderId ?? null,
               },
             }
+          )
+        } else {
+          await db.collection("orders").updateOne(
+            { _id: orderResult.insertedId },
+            { $set: { shipment_error: shipmentResult.error || "Shipment creation failed" } }
           )
         }
       } catch (shippingError) {
         console.error("FShip shipment creation error (non-fatal):", shippingError)
+        await db.collection("orders").updateOne(
+          { _id: orderResult.insertedId },
+          {
+            $set: {
+              shipment_error:
+                shippingError instanceof Error ? shippingError.message : "Shipment creation failed",
+            },
+          }
+        )
       }
 
       return NextResponse.json({

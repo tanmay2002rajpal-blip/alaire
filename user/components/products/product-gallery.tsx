@@ -22,14 +22,16 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
   const prevIndexRef = useRef(0)
   const thumbContainerRef = useRef<HTMLDivElement>(null)
 
-  const displayImages =
-    images && images.length > 0
-      ? images.map((img) =>
-          !img || img.includes("placehold") || img.includes("placeholder")
-            ? getSampleProductImage(productName)
-            : img
-        )
-      : [getSampleProductImage(productName)]
+  // Only real images are shown. Placeholder/empty URLs are dropped; a stock
+  // sample is substituted solely in demo mode. When nothing real remains we
+  // render an honest "no image" placeholder instead of a fake photo.
+  const realImages = (images || []).filter(
+    (img) => img && !img.includes("placehold") && !img.includes("placeholder")
+  )
+  const sample = getSampleProductImage(productName)
+  const displayImages: string[] =
+    realImages.length > 0 ? realImages : sample ? [sample] : []
+  const hasImages = displayImages.length > 0
 
   // Reset to first image when images array changes (color switch)
   useEffect(() => {
@@ -78,6 +80,14 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
     setIsLightboxOpen(false)
     document.body.style.overflow = ""
   }
+
+  // Safety net: if the gallery unmounts while the lightbox is open, restore
+  // body scrolling so the page isn't left permanently locked.
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }, [])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -137,36 +147,46 @@ export function ProductGallery({ images, productName }: ProductGalleryProps) {
 
         {/* Main Image */}
         <div className="relative overflow-hidden rounded-lg bg-[#f5f5f5] group h-[350px] sm:h-[420px] md:h-[500px] md:flex-1 order-1 md:order-2">
-          <div
-            ref={mainImageRef}
-            className="relative h-full w-full cursor-zoom-in"
-            onClick={openLightbox}
-            onMouseEnter={() => setIsZooming(true)}
-            onMouseLeave={() => setIsZooming(false)}
-            onMouseMove={handleMouseMove}
-          >
-            <Image
-              src={displayImages[selectedIndex]}
-              alt={productName}
-              fill
-              sizes="(min-width: 1024px) 50vw, 100vw"
-              className={cn(
-                "object-contain transition-transform duration-300",
-                isZooming && "scale-150"
-              )}
-              style={
-                isZooming
-                  ? { transformOrigin: `${zoomPosition.x}% ${zoomPosition.y}%` }
-                  : undefined
-              }
-              priority
-            />
-          </div>
+          {hasImages ? (
+            <div
+              ref={mainImageRef}
+              className="relative h-full w-full cursor-zoom-in"
+              onClick={openLightbox}
+              onMouseEnter={() => setIsZooming(true)}
+              onMouseLeave={() => setIsZooming(false)}
+              onMouseMove={handleMouseMove}
+            >
+              <Image
+                src={displayImages[selectedIndex]}
+                alt={productName}
+                fill
+                sizes="(min-width: 1024px) 50vw, 100vw"
+                className={cn(
+                  "object-contain transition-transform duration-300",
+                  isZooming && "scale-150"
+                )}
+                style={
+                  isZooming
+                    ? { transformOrigin: `${zoomPosition.x}% ${zoomPosition.y}%` }
+                    : undefined
+                }
+                priority
+              />
+            </div>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <span className="font-serif text-7xl font-light text-muted-foreground/30">
+                {productName.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
 
-          <div className="absolute top-4 right-4 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-            <ZoomIn className="h-3.5 w-3.5" />
-            Click to zoom
-          </div>
+          {hasImages && (
+            <div className="absolute top-4 right-4 flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+              <ZoomIn className="h-3.5 w-3.5" />
+              Click to zoom
+            </div>
+          )}
 
           {displayImages.length > 1 && (
             <>

@@ -5,7 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ChevronRight } from "lucide-react"
 import { gsap } from "gsap"
-import { CATEGORY_IMAGES } from "@/lib/sample-images"
+import { getSampleCategoryImage } from "@/lib/sample-images"
 import type { Category } from "@/types"
 
 interface CategoryHeroProps {
@@ -36,22 +36,23 @@ export function CategoryHero({ category }: CategoryHeroProps) {
     return () => ctx.revert()
   }, [])
 
-  const imageUrl =
-    category.image_url ||
-    CATEGORY_IMAGES[category.slug as keyof typeof CATEGORY_IMAGES] ||
-    CATEGORY_IMAGES["new-arrivals"]
+  const imageUrl = category.image_url || getSampleCategoryImage(category.slug)
 
   return (
     <div ref={heroRef} className="relative h-[40vh] min-h-[300px] w-full overflow-hidden">
       {/* Background Image */}
-      <Image
-        src={imageUrl}
-        alt={category.name}
-        fill
-        priority
-        sizes="100vw"
-        className="object-cover"
-      />
+      {imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt={category.name}
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-neutral-800 via-neutral-900 to-black" />
+      )}
 
       {/* Overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />

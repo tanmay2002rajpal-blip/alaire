@@ -171,6 +171,10 @@ export function HeroCarousel({ slides }: HeroCarouselProps) {
     animateSlideIn(0)
   }, [animateSlideIn])
 
+  // Nothing to show — render nothing instead of a full-viewport black void
+  // (which also produced the nonsensical "01 / 00" counter).
+  if (slides.length === 0) return null
+
   return (
     <section
       ref={containerRef}

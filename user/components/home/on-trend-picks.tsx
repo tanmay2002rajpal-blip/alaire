@@ -155,7 +155,7 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
         <div className="overflow-hidden" ref={emblaRef}>
           <div className="flex">
             {products.map((product, index) => {
-              const imageUrl = product._colorVariant?.image || product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)
+              const imageUrl = product._colorVariant?.image || product.images?.[0] || getSampleProductImage(product.name, product.category?.slug) || null
               const isActive = index === selectedIndex
               const price = product.variants?.[0]?.price ?? product.base_price ?? 0
               const comparePrice = product.variants?.[0]?.compare_at_price
@@ -183,16 +183,24 @@ export function OnTrendPicks({ products }: OnTrendPicksProps) {
                         "transition-[transform,opacity] duration-200 ease-out"
                       )}
                     >
-                      <Image
-                        src={imageUrl}
-                        alt={product.name}
-                        fill
-                        className={cn(
-                          "object-cover transition-transform duration-700",
-                          isActive && "group-hover:scale-105"
-                        )}
-                        sizes="(max-width: 640px) 70vw, (max-width: 1024px) 50vw, 40vw"
-                      />
+                      {imageUrl ? (
+                        <Image
+                          src={imageUrl}
+                          alt={product.name}
+                          fill
+                          className={cn(
+                            "object-cover transition-transform duration-700",
+                            isActive && "group-hover:scale-105"
+                          )}
+                          sizes="(max-width: 640px) 70vw, (max-width: 1024px) 50vw, 40vw"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-muted">
+                          <span className="font-serif text-6xl font-light text-muted-foreground/30">
+                            {product.name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Discount badge */}
                       {hasDiscount && isActive && (

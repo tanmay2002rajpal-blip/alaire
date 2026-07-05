@@ -108,12 +108,14 @@ export async function getOrderById(
 }
 
 /**
- * Get order confirmation data (no auth required, limited fields for security).
+ * Get order confirmation data. Ownership is REQUIRED: the order is only
+ * returned when it belongs to the given user. Never expose an order's
+ * items/address without ownership (prevents IDOR).
  * Used by the order confirmation page shown right after placing an order.
  */
 export async function getOrderConfirmation(
   orderId: string,
-  userId?: string
+  userId: string | string[]
 ): Promise<{
   id: string
   order_number: string
@@ -130,11 +132,25 @@ export async function getOrderConfirmation(
 } | null> {
   const db = await getDb()
 
+  if (!orderId || !ObjectId.isValid(orderId)) return null
+
+  // Match both string and ObjectId forms of user_id (same as getOrderById)
+  const ids = Array.isArray(userId) ? userId : [userId]
+  const allIds: (string | ObjectId)[] = []
+  for (const id of ids) {
+    if (!id) continue
+    allIds.push(id)
+    if (ObjectId.isValid(id)) allIds.push(new ObjectId(id))
+  }
+
+  // Without a valid owner there is nothing to authorize against.
+  if (allIds.length === 0) return null
+
   const pipeline = [
     {
       $match: {
         _id: new ObjectId(orderId),
-        ...(userId ? { user_id: new ObjectId(userId) } : {}),
+        user_id: { $in: allIds },
       },
     },
     {

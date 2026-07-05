@@ -97,7 +97,7 @@ export function BestSellers({ products }: BestSellersProps) {
       {/* Horizontal scroll with snap */}
       <div className="rank-scroll flex gap-4 sm:gap-5 overflow-x-auto no-scrollbar snap-x snap-mandatory px-[max(1rem,calc((100vw-1400px)/2+1rem))]  pb-4">
         {topProducts.map((product, index) => {
-          const imageUrl = product._colorVariant?.image || product.images?.[0] || getSampleProductImage(product.name, product.category?.slug)
+          const imageUrl = product._colorVariant?.image || product.images?.[0] || getSampleProductImage(product.name, product.category?.slug) || null
           const price = product.variants?.[0]?.price ?? product.base_price ?? 0
           const comparePrice = product.variants?.[0]?.compare_at_price
           const hasDiscount = comparePrice != null && comparePrice > price
@@ -114,13 +114,21 @@ export function BestSellers({ products }: BestSellersProps) {
               <div className="relative rounded-2xl overflow-hidden transition-all">
                 {/* Product image */}
                 <div className="relative aspect-[4/5] overflow-hidden">
-                  <Image
-                    src={imageUrl}
-                    alt={product.name}
-                    fill
-                    className="object-cover transition-transform duration-700 group-hover:scale-105"
-                    sizes="360px"
-                  />
+                  {imageUrl ? (
+                    <Image
+                      src={imageUrl}
+                      alt={product.name}
+                      fill
+                      className="object-cover transition-transform duration-700 group-hover:scale-105"
+                      sizes="360px"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-white/5">
+                      <span className="font-serif text-6xl font-light text-white/20">
+                        {product.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Large rank number */}
                   <div className="absolute top-3 left-4 flex items-baseline gap-0.5">

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { SlidersHorizontal, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -44,6 +44,12 @@ const SORT_OPTIONS = [
 export function ProductFilters({ categories }: ProductFiltersProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
+
+  // On a category page (/categories/[slug]) the category is encoded in the
+  // path, so we keep filtering (price/sort) on the CURRENT pathname instead
+  // of always redirecting to /products and losing the category context.
+  const isCategoryPage = pathname?.startsWith("/categories/")
 
   const selectedCategory = searchParams.get("category")
   const selectedPriceMin = searchParams.get("price_min")
@@ -67,9 +73,13 @@ export function ProductFilters({ categories }: ProductFiltersProps) {
     [searchParams]
   )
 
+  // Selecting a category is a top-level browse action, so it navigates to
+  // the products listing filtered by that category.
   const handleCategoryChange = (slug: string, checked: boolean) => {
     const queryString = createQueryString({
       category: checked ? slug : null,
+      // reset pagination when the category changes
+      page: null,
     })
     router.push(`/products?${queryString}`)
   }
@@ -78,17 +88,20 @@ export function ProductFilters({ categories }: ProductFiltersProps) {
     const queryString = createQueryString({
       price_min: checked ? min.toString() : null,
       price_max: checked && max ? max.toString() : null,
+      page: null,
     })
-    router.push(`/products?${queryString}`)
+    router.push(`${pathname}?${queryString}`)
   }
 
   const handleSortChange = (value: string) => {
-    const queryString = createQueryString({ sort: value })
-    router.push(`/products?${queryString}`)
+    const queryString = createQueryString({ sort: value, page: null })
+    router.push(`${pathname}?${queryString}`)
   }
 
   const clearFilters = () => {
-    router.push("/products")
+    // On a category page, stay on the category and just drop the query params;
+    // on the products page this returns to the unfiltered listing.
+    router.push(isCategoryPage ? pathname : "/products")
   }
 
   const hasActiveFilters = selectedCategory || selectedPriceMin || selectedPriceMax

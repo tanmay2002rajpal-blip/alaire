@@ -1,4 +1,5 @@
 import { Bell, Package, Tag, Info } from "lucide-react"
+import { ObjectId } from "mongodb"
 import { auth } from "@/lib/auth"
 import { getDb } from "@/lib/db/client"
 import { serializeDocs } from "@/lib/db/helpers"
@@ -23,12 +24,21 @@ export default async function NotificationsPage() {
 
   const db = await getDb()
 
-  const notificationDocs = await db
-    .collection("notifications")
-    .find({ user_id: userId })
-    .sort({ created_at: -1 })
-    .limit(50)
-    .toArray()
+  // user_id may be stored as a string or an ObjectId (return-request writes an
+  // ObjectId). Match both forms so notifications always display.
+  const userIdForms: (string | ObjectId)[] = userId ? [userId] : []
+  if (userId && ObjectId.isValid(userId)) {
+    userIdForms.push(new ObjectId(userId))
+  }
+
+  const notificationDocs = userId
+    ? await db
+        .collection("notifications")
+        .find({ user_id: { $in: userIdForms } })
+        .sort({ created_at: -1 })
+        .limit(50)
+        .toArray()
+    : []
 
   const notifications = serializeDocs(notificationDocs)
 

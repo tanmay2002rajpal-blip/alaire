@@ -5,7 +5,6 @@ import Image from 'next/image'
 import { Upload, X, Loader2, ImageIcon, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
-  validateImage,
   uploadProductImage,
   uploadCategoryImage,
   uploadHeroImage,
@@ -15,8 +14,50 @@ import {
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
+/**
+ * Client-side allowed image MIME types. Kept in sync with the server-side
+ * ALLOWED_IMAGE_TYPES in @/lib/storage/images. Cloudinary transcodes
+ * heic/heif/avif on upload.
+ */
+const ALLOWED_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/heic',
+  'image/heif',
+  'image/avif',
+]
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+
+/**
+ * Plain client-side validation. Must NOT call the `validateImage` server
+ * action — that returns a Promise which is always truthy on the client and
+ * would reject every file. Returns an error string, or null when valid.
+ */
+function validateImageClient(file: File): string | null {
+  if (!file) {
+    return 'No file provided'
+  }
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return `Invalid file type. Allowed types: ${ALLOWED_IMAGE_TYPES.join(', ')}`
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`
+  }
+  return null
+}
+
 export interface ImageUploadProps {
   value: string | string[]
+  /**
+   * onChange contract:
+   *  - single-image mode (multiple=false): always called with a `string`
+   *    (the URL, or '' when cleared).
+   *  - multi-image mode (multiple=true): always called with a `string[]`.
+   */
   onChange: (urls: string | string[]) => void
   multiple?: boolean
   maxFiles?: number
@@ -49,7 +90,7 @@ export function ImageUpload({
 
   const uploadFile = useCallback(
     async (file: File): Promise<string | null> => {
-      const validationError = validateImage(file)
+      const validationError = validateImageClient(file)
       if (validationError) {
         toast.error('Invalid file', { description: validationError })
         return null
@@ -241,7 +282,7 @@ export function ImageUpload({
             <input
               type="file"
               multiple={multiple}
-              accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+              accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif"
               onChange={handleFileInput}
               disabled={disabled || isUploading}
               className="sr-only"

@@ -90,6 +90,7 @@ const productSchema = z.object({
   is_active: z.boolean(),
   images: z.array(z.string()),
   base_price: z.number().min(0, 'Price must be positive').optional().nullable(),
+  stock_quantity: z.number().int().min(0, 'Stock must be non-negative').optional().nullable(),
   has_variants: z.boolean(),
 })
 
@@ -108,6 +109,26 @@ const variantSchema = z.object({
 
 type VariantFormData = z.infer<typeof variantSchema>
 
+// Variant state carries the free-form `options` map (e.g. { Size: 'M', Color: 'Maroon' })
+// which is NOT part of the validation schema but must survive edit/save round-trips.
+type VariantFormState = VariantFormData & { options: Record<string, string> }
+
+// Sets (or clears) a single option key on the variant's free-form options map.
+// Empty values are removed so we never emit blank option entries downstream.
+function setOption(
+  options: Record<string, string> | undefined,
+  key: string,
+  value: string
+): Record<string, string> {
+  const next = { ...(options || {}) }
+  if (value.trim()) {
+    next[key] = value
+  } else {
+    delete next[key]
+  }
+  return next
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -122,7 +143,8 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [variants, setVariants] = useState<VariantFormData[]>(
+  const [activeTab, setActiveTab] = useState('basic')
+  const [variants, setVariants] = useState<VariantFormState[]>(
     product?.variants?.map(v => ({
       id: v.id,
       name: v.name,
@@ -130,16 +152,18 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
       price: v.price,
       compare_at_price: v.compare_at_price,
       stock_quantity: v.stock_quantity,
+      options: (v.options as Record<string, string>) || {},
       image_url: v.image_url,
       is_active: v.is_active,
     })) || []
   )
-  const [currentVariant, setCurrentVariant] = useState<VariantFormData>({
+  const [currentVariant, setCurrentVariant] = useState<VariantFormState>({
     name: '',
     sku: null,
     price: 0,
     compare_at_price: null,
     stock_quantity: 0,
+    options: {},
     image_url: null,
     is_active: true,
   })
@@ -161,6 +185,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
       is_active: product?.is_active ?? true,
       images: product?.images || [],
       base_price: product?.base_price || null,
+      stock_quantity: product?.total_stock ?? 0,
       has_variants: product?.has_variants ?? false,
     },
   })
@@ -175,6 +200,30 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
       setValue('slug', slugify(watchName))
     }
   }, [watchName, isNew, setValue])
+
+  // Maps each form field to the tab that contains it, so validation errors on a
+  // hidden tab surface instead of silently no-op'ing the Save/Publish buttons.
+  const FIELD_TO_TAB: Record<string, string> = {
+    name: 'basic',
+    slug: 'basic',
+    description: 'basic',
+    category_id: 'basic',
+    is_active: 'basic',
+    images: 'media',
+    base_price: 'pricing',
+    has_variants: 'pricing',
+    stock_quantity: 'inventory',
+  }
+
+  const onInvalid = (formErrors: Record<string, { message?: string } | undefined>) => {
+    const firstField = Object.keys(formErrors)[0]
+    const firstMessage = firstField ? formErrors[firstField]?.message : undefined
+    toast.error('Please fix the highlighted fields', {
+      description: firstMessage,
+    })
+    const tab = firstField ? FIELD_TO_TAB[firstField] : undefined
+    if (tab) setActiveTab(tab)
+  }
 
   const onSubmit = async (data: ProductFormData) => {
     setIsSubmitting(true)
@@ -252,7 +301,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
         setVariants([...variants, currentVariant])
         toast.success('Variant added')
       }
-      setCurrentVariant({ name: '', sku: null, price: 0, compare_at_price: null, stock_quantity: 0, image_url: null, is_active: true })
+      setCurrentVariant({ name: '', sku: null, price: 0, compare_at_price: null, stock_quantity: 0, options: {}, image_url: null, is_active: true })
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast.error('Validation error', {
@@ -273,7 +322,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
   }
 
   const handleCancelEditVariant = () => {
-    setCurrentVariant({ name: '', sku: null, price: 0, compare_at_price: null, stock_quantity: 0, image_url: null, is_active: true })
+    setCurrentVariant({ name: '', sku: null, price: 0, compare_at_price: null, stock_quantity: 0, options: {}, image_url: null, is_active: true })
     setEditingVariantIndex(null)
   }
 
@@ -338,7 +387,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
             variant="outline"
             onClick={() => {
               setValue('is_active', !watchIsActive)
-              handleSubmit(onSubmit)()
+              handleSubmit(onSubmit, onInvalid)()
             }}
             disabled={isSubmitting || isDeleting}
             className={watchIsActive
@@ -359,7 +408,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
             )}
           </Button>
           <Button
-            onClick={handleSubmit(onSubmit)}
+            onClick={handleSubmit(onSubmit, onInvalid)}
             disabled={isSubmitting || isDeleting}
           >
             {isSubmitting ? (
@@ -378,8 +427,8 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <Tabs defaultValue="basic" className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="basic">Basic Info</TabsTrigger>
             <TabsTrigger value="media">Media</TabsTrigger>
@@ -421,7 +470,7 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                     id="slug"
                     {...register('slug')}
                     placeholder="premium-leather-jacket"
-                    disabled={isSubmitting || isNew}
+                    disabled={isSubmitting}
                   />
                   {errors.slug && (
                     <p className="text-sm text-destructive">{errors.slug.message}</p>
@@ -537,8 +586,10 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                       type="number"
                       step="0.01"
                       {...register('base_price', {
-                        valueAsNumber: true,
-                        setValueAs: (v) => v === '' ? null : parseFloat(v)
+                        setValueAs: (v) =>
+                          v === '' || v == null || Number.isNaN(parseFloat(v))
+                            ? null
+                            : parseFloat(v),
                       })}
                       placeholder="0.00"
                       disabled={isSubmitting}
@@ -659,6 +710,38 @@ export function ProductEditorClient({ product, categories, isNew }: ProductEdito
                           })
                         }
                         placeholder="799 (original price for strikethrough)"
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="variant_option_size">Size</Label>
+                      <Input
+                        id="variant_option_size"
+                        value={currentVariant.options?.Size || ''}
+                        onChange={(e) =>
+                          setCurrentVariant({
+                            ...currentVariant,
+                            options: setOption(currentVariant.options, 'Size', e.target.value),
+                          })
+                        }
+                        placeholder="e.g., M"
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="variant_option_color">Color</Label>
+                      <Input
+                        id="variant_option_color"
+                        value={currentVariant.options?.Color || ''}
+                        onChange={(e) =>
+                          setCurrentVariant({
+                            ...currentVariant,
+                            options: setOption(currentVariant.options, 'Color', e.target.value),
+                          })
+                        }
+                        placeholder="e.g., Maroon"
                         disabled={isSubmitting}
                       />
                     </div>

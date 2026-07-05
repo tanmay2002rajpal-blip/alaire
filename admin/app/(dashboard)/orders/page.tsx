@@ -153,7 +153,8 @@ function StatusTabs({ currentStatus, searchParams }: {
 }) {
   const statuses = [
     { value: '', label: 'All' },
-    { value: 'pending', label: 'Pending' },
+    { value: 'paid', label: 'Paid' },
+    { value: 'confirmed', label: 'Confirmed' },
     { value: 'processing', label: 'Processing' },
     { value: 'shipped', label: 'Shipped' },
     { value: 'delivered', label: 'Delivered' },

@@ -5,7 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { gsap } from "gsap"
-import { CATEGORY_IMAGES } from "@/lib/sample-images"
+import { getSampleCategoryImage } from "@/lib/sample-images"
 import type { Category } from "@/types"
 
 interface CategoryCardProps {
@@ -31,10 +31,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
     }
   }
 
-  const imageUrl =
-    category.image_url ||
-    CATEGORY_IMAGES[category.slug as keyof typeof CATEGORY_IMAGES] ||
-    CATEGORY_IMAGES["new-arrivals"]
+  const imageUrl = category.image_url || getSampleCategoryImage(category.slug)
 
   return (
     <Link
@@ -44,13 +41,21 @@ export function CategoryCard({ category }: CategoryCardProps) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <Image
-        src={imageUrl}
-        alt={category.name}
-        fill
-        sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, (min-width: 640px) 50vw, 100vw"
-        className="object-cover transition-transform duration-700 ease-out"
-      />
+      {imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt={category.name}
+          fill
+          sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, (min-width: 640px) 50vw, 100vw"
+          className="object-cover transition-transform duration-700 ease-out"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-accent/20 via-muted to-accent/5">
+          <span className="font-serif text-6xl font-light text-accent/30">
+            {category.name.charAt(0).toUpperCase()}
+          </span>
+        </div>
+      )}
 
       {/* Overlay gradient */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent transition-opacity duration-500" />

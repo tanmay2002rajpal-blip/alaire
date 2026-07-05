@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Share2, ChevronDown, Package, Sparkles, Ruler, ShieldCheck, Check } from "lucide-react"
+import { Share2, ChevronDown, Package, Sparkles, Ruler, Check } from "lucide-react"
 import { AnimatedQuantity } from "@/components/ui/animated-quantity"
 import { Button } from "@/components/ui/button"
 import { WishlistButton } from "@/components/wishlist"
@@ -9,15 +9,16 @@ import { Separator } from "@/components/ui/separator"
 import { VariantSelector } from "./variant-selector"
 import { AddToCartButton } from "./add-to-cart-button"
 import { formatPrice, calculateDiscount } from "@/lib/utils"
-import { getSampleProductImage } from "@/lib/sample-images"
+import { getSampleProductImage, DEMO_IMAGES } from "@/lib/sample-images"
 import { cn } from "@/lib/utils"
-import type { Product, ProductVariant, ProductOption } from "@/types"
+import type { Product, ProductVariant, ProductOption, ProductDetail } from "@/types"
 
 interface ProductInfoProps {
   product: Product & {
     variants: ProductVariant[]
     options: ProductOption[]
     category?: { name: string; slug: string } | null
+    details?: ProductDetail[]
   }
   onColorChange?: (color: string) => void
   initialColor?: string
@@ -102,14 +103,17 @@ function getColorImage(
   selectedOptions: Record<string, string>,
   productName: string,
   categorySlug?: string | null
-): string {
+): string | undefined {
   const color = selectedOptions["Color"] || selectedOptions["color"]
-  if (color && images && images.length > 0) {
+  // URL-slug parsing is unreliable for Cloudinary uploads (timestamp-prefixed
+  // names), so only attempt it in demo mode. In production the caller relies on
+  // the variant's own image_url as the source of truth.
+  if (DEMO_IMAGES && color && images && images.length > 0) {
     const slug = color.toLowerCase().replace(/\s+/g, "-")
     const match = images.find((url) => url.toLowerCase().includes(`/${slug}-`) || url.toLowerCase().includes(`/${slug}.`))
     if (match) return match
   }
-  return images?.[0] || getSampleProductImage(productName, categorySlug ?? undefined)
+  return images?.[0] || getSampleProductImage(productName, categorySlug ?? undefined) || undefined
 }
 
 export function ProductInfo({ product, onColorChange, initialColor }: ProductInfoProps) {
@@ -141,8 +145,14 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
   const compareAtPrice = selectedVariant?.compare_at_price
   const discount = compareAtPrice ? calculateDiscount(compareAtPrice, price) : null
 
+  // When a product has variants but the chosen combination matches none, the
+  // selection is unavailable — never fall through to a cart add with an
+  // undefined variantId.
+  const hasVariants = !!product.variants && product.variants.length > 0
+  const variantUnavailable = hasVariants && !selectedVariant
+
   const stockQuantity = selectedVariant?.stock_quantity ?? 0
-  const inStock = selectedVariant ? stockQuantity > 0 : true
+  const inStock = hasVariants ? (selectedVariant ? stockQuantity > 0 : false) : true
   const lowStock = stockQuantity > 0 && stockQuantity <= 5
   const allOptionsSelected =
     product.options?.length === 0 ||
@@ -195,11 +205,6 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
         )}
       </div>
 
-      {/* Short tagline */}
-      <p className="text-sm text-muted-foreground">
-        Ultra-soft micro modal fabric with M-shaped ergonomic support. Comfort that lasts all day.
-      </p>
-
       <Separator />
 
       {/* Variant Selector */}
@@ -210,6 +215,14 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
           selectedOptions={selectedOptions}
           onOptionChange={handleOptionChange}
         />
+      )}
+
+      {/* Unavailable combination */}
+      {variantUnavailable && (
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-destructive" />
+          <p className="text-sm font-medium text-destructive">This combination is unavailable</p>
+        </div>
       )}
 
       {/* Stock Status */}
@@ -261,7 +274,7 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
           image={selectedVariant?.image_url || getColorImage(product.images, selectedOptions, product.name, product.category?.slug)}
           maxQuantity={selectedVariant?.stock_quantity ?? 10}
           quantity={quantity}
-          disabled={!inStock || !allOptionsSelected}
+          disabled={!inStock || !allOptionsSelected || variantUnavailable}
           className="w-full sm:flex-1"
         />
         <div className="flex gap-3">
@@ -313,45 +326,17 @@ export function ProductInfo({ product, onColorChange, initialColor }: ProductInf
           </CollapsibleSection>
         )}
 
-        <CollapsibleSection title="Product Details" icon={Ruler}>
-          <div className="grid grid-cols-2 gap-y-3 text-sm">
-            <div className="text-muted-foreground">Material</div>
-            <div className="font-medium">Micro Modal</div>
-            <div className="text-muted-foreground">Fit</div>
-            <div className="font-medium">Modern body-hugging fit</div>
-            <div className="text-muted-foreground">Waistband</div>
-            <div className="font-medium">Soft stretch elastic with ALAIRE branding</div>
-            <div className="text-muted-foreground">Support</div>
-            <div className="font-medium">Ergonomic M-shaped pouch</div>
-            <div className="text-muted-foreground">Pattern</div>
-            <div className="font-medium">Solid</div>
-            <div className="text-muted-foreground">Pack of</div>
-            <div className="font-medium">1</div>
-            <div className="text-muted-foreground">Ideal For</div>
-            <div className="font-medium">Men</div>
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection title="Care Instructions" icon={ShieldCheck}>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
-              Machine wash cold with similar colours
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
-              Do not bleach
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
-              Tumble dry low
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/60" />
-              Do not iron on print
-            </li>
-          </ul>
-        </CollapsibleSection>
+        {/* Additional detail tabs, driven entirely by product data. Hidden when
+            the product has no detail entries. */}
+        {product.details
+          ?.filter((detail) => detail.content && detail.content.trim())
+          .map((detail) => (
+            <CollapsibleSection key={detail.id} title={detail.tab_name} icon={Ruler}>
+              <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                {detail.content}
+              </div>
+            </CollapsibleSection>
+          ))}
       </div>
     </div>
   )

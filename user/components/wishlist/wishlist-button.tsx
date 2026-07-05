@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Heart, Loader2 } from "lucide-react"
+import { Heart } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useWishlist } from "@/hooks"
+import { useAuth } from "@/components/auth/auth-provider"
 
 interface WishlistButtonProps {
   productId: string
@@ -18,18 +19,46 @@ export function WishlistButton({
   variant = "default",
   className,
 }: WishlistButtonProps) {
-  const { isInWishlist, toggleWishlist } = useWishlist()
+  const { isInWishlist, toggleWishlist, hydrateFromServer } = useWishlist()
+  const { user } = useAuth()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => setMounted(true), [])
 
+  // Hydrate the local store from the DB wishlist once the user is authenticated.
+  useEffect(() => {
+    if (user) hydrateFromServer()
+  }, [user, hydrateFromServer])
+
   const inWishlist = mounted && isInWishlist(productId)
 
-  const handleToggle = (e?: React.MouseEvent) => {
+  const handleToggle = async (e?: React.MouseEvent) => {
     e?.preventDefault()
     e?.stopPropagation()
+
+    const wasInWishlist = isInWishlist(productId)
+    // Optimistic local update (also keeps guest wishlists in localStorage).
     toggleWishlist(productId)
-    toast.success(inWishlist ? "Removed from wishlist" : "Added to wishlist")
+    toast.success(wasInWishlist ? "Removed from wishlist" : "Added to wishlist")
+
+    // Persist to the DB for authenticated users.
+    if (user) {
+      try {
+        const res = await fetch("/api/wishlist/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ productId }),
+        })
+        if (!res.ok) {
+          // Revert optimistic change on failure.
+          toggleWishlist(productId)
+          toast.error("Could not update wishlist. Please try again.")
+        }
+      } catch {
+        toggleWishlist(productId)
+        toast.error("Could not update wishlist. Please try again.")
+      }
+    }
   }
 
   if (variant === "icon") {

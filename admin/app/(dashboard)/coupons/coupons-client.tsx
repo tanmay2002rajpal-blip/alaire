@@ -83,6 +83,22 @@ import {
 } from '@/lib/actions/coupons'
 import type { Coupon, CouponStats, PaginatedCoupons, CreateCouponData } from '@/lib/queries/coupons'
 
+// The shared Coupon/CreateCouponData types don't yet include is_hidden or allow
+// null for clearable fields; widen locally without editing that shared file.
+type CouponWithHidden = Coupon & { is_hidden?: boolean }
+type CouponMutationData = Omit<
+  CreateCouponData,
+  'buy_quantity' | 'get_quantity' | 'min_order_amount' | 'max_discount' | 'usage_limit' | 'valid_until'
+> & {
+  is_hidden?: boolean
+  buy_quantity?: number | null
+  get_quantity?: number | null
+  min_order_amount?: number | null
+  max_discount?: number | null
+  usage_limit?: number | null
+  valid_until?: string | null
+}
+
 interface CouponsClientProps {
   coupons: PaginatedCoupons
   stats: CouponStats
@@ -110,6 +126,7 @@ const couponSchema = z.object({
   valid_from: z.string().min(1, 'Start date is required'),
   valid_until: z.string().optional().nullable(),
   is_active: z.boolean(),
+  is_hidden: z.boolean(),
 }).refine((data) => {
   if (data.discount_type === 'buy_x_get_y') {
     return data.buy_quantity && data.buy_quantity >= 1 && data.get_quantity && data.get_quantity >= 1
@@ -233,11 +250,13 @@ export function CouponsClient({
       valid_from: new Date().toISOString().split('T')[0],
       valid_until: null,
       is_active: true,
+      is_hidden: false,
     },
   })
 
   const watchDiscountType = watch('discount_type')
   const watchIsActive = watch('is_active')
+  const watchIsHidden = watch('is_hidden')
 
   // Update URL with new filters
   const updateFilters = (updates: Record<string, string | undefined>) => {
@@ -296,6 +315,7 @@ export function CouponsClient({
       valid_from: new Date().toISOString().split('T')[0],
       valid_until: null,
       is_active: true,
+      is_hidden: false,
     })
     setIsDialogOpen(true)
   }
@@ -315,6 +335,7 @@ export function CouponsClient({
       valid_from: coupon.valid_from.split('T')[0],
       valid_until: coupon.valid_until?.split('T')[0] || null,
       is_active: coupon.is_active,
+      is_hidden: (coupon as CouponWithHidden).is_hidden ?? false,
     })
     setIsDialogOpen(true)
   }
@@ -345,18 +366,23 @@ export function CouponsClient({
   const onSubmit = async (data: CouponFormData) => {
     setIsSubmitting(true)
     try {
-      const couponData: CreateCouponData = {
+      // Send explicit null (not undefined) for cleared optional fields so the
+      // server can unset them, while preserving a legitimate 0.
+      const couponData: CouponMutationData = {
         code: data.code,
         discount_type: data.discount_type,
         discount_value: data.discount_value,
-        buy_quantity: data.discount_type === 'buy_x_get_y' ? (data.buy_quantity || undefined) : undefined,
-        get_quantity: data.discount_type === 'buy_x_get_y' ? (data.get_quantity || undefined) : undefined,
-        min_order_amount: data.min_order_amount || undefined,
-        max_discount: data.max_discount || undefined,
-        usage_limit: data.usage_limit || undefined,
+        // Send explicit null when the type isn't buy_x_get_y so the server
+        // clears any stale quantities; send the real numbers when it is.
+        buy_quantity: data.discount_type === 'buy_x_get_y' ? data.buy_quantity : null,
+        get_quantity: data.discount_type === 'buy_x_get_y' ? data.get_quantity : null,
+        min_order_amount: data.min_order_amount ?? null,
+        max_discount: data.max_discount ?? null,
+        usage_limit: data.usage_limit ?? null,
         valid_from: data.valid_from,
-        valid_until: data.valid_until || undefined,
+        valid_until: data.valid_until || null,
         is_active: data.is_active,
+        is_hidden: data.is_hidden,
       }
 
       let result
@@ -880,6 +906,21 @@ export function CouponsClient({
                 id="is_active"
                 checked={watchIsActive}
                 onCheckedChange={(checked) => setValue('is_active', checked)}
+              />
+            </div>
+
+            {/* Hidden Coupon */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="is_hidden">Hidden coupon</Label>
+                <p className="text-sm text-muted-foreground">
+                  Not shown on storefront — share the code privately
+                </p>
+              </div>
+              <Switch
+                id="is_hidden"
+                checked={watchIsHidden}
+                onCheckedChange={(checked) => setValue('is_hidden', checked)}
               />
             </div>
 

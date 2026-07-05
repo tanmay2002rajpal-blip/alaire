@@ -25,10 +25,18 @@ export async function POST(request: Request) {
 
     const db = await getDb()
 
+    // user_id may be stored as a string or an ObjectId (return-request writes an
+    // ObjectId). Match both forms so mark-read works regardless of how it was set.
+    const userId = session.user.id
+    const userIdForms: (string | ObjectId)[] = [userId]
+    if (ObjectId.isValid(userId)) {
+      userIdForms.push(new ObjectId(userId))
+    }
+
     await db.collection("notifications").updateOne(
       {
         _id: new ObjectId(notificationId),
-        user_id: session.user.id,
+        user_id: { $in: userIdForms },
       },
       { $set: { read: true } }
     )

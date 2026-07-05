@@ -24,11 +24,15 @@ export interface FShipCourier {
 }
 
 export interface ServiceabilityResponse {
-  source: string
-  destination: string
+  source?: string
+  destination?: string
+  source_pincode?: string
+  destination_pincode?: string
+  zone?: string
   pickup: string
-  reverse: string
-  prepaid: string
+  reverse?: string
+  prepaid?: string
+  delivery?: 'Yes' | 'No'
   cod: string
   status: boolean
   response: string
@@ -110,6 +114,7 @@ export interface CreateOrderResponse {
   order_status: string
   apiorderid: number
   waybill: string
+  labelurl?: string
   status: boolean
   response: string
 }
@@ -143,11 +148,15 @@ export interface TrackingHistoryResponse {
     orderedon: string
   }
   trackingdata: Array<{
-    DateandTime: string
-    Status: string
-    Remark: string
-    Location: string
-    shipmentJourney: number
+    dateandTime?: string
+    status?: string
+    remark?: string
+    location?: string
+    DateandTime?: string
+    Status?: string
+    Remark?: string
+    Location?: string
+    shipmentJourney?: number
   }>
 }
 
@@ -180,6 +189,8 @@ export interface ShippingLabelResponse {
     OrderId: string
     AWBNumber: string
     RoutingCode: string
+    LabelUrl?: string
+    labelurl?: string
     ShipmentType: string
     PaymentMode: string
     CODAmount: string

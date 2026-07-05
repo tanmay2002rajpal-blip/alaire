@@ -25,9 +25,21 @@ export async function POST(request: Request) {
 
     const db = await getDb()
 
+    const userId = session.user.id
+    let targetUserId = userId
+    if (userId.includes("@")) {
+      const userDoc = await db.collection("users").findOne({ email: userId })
+      if (userDoc) targetUserId = userDoc._id.toString()
+    }
+
+    // Match both string and ObjectId forms of user_id.
+    const userIdVariants: (string | ObjectId)[] = [targetUserId]
+    if (userId !== targetUserId) userIdVariants.push(userId)
+    if (ObjectId.isValid(targetUserId)) userIdVariants.push(new ObjectId(targetUserId))
+
     await db.collection("wishlists").deleteOne({
       _id: new ObjectId(itemId),
-      user_id: session.user.id,
+      user_id: { $in: userIdVariants },
     })
 
     return NextResponse.json({ success: true })

@@ -5,7 +5,7 @@ import type { PincodeData, TrackingActivity } from './types'
 import { mapFShipError, getFShipHealthStatus, isFShipConfigured } from './config'
 import { createDiagnostic, saveDiagnostic } from './diagnostics'
 
-const DEFAULT_WAREHOUSE_PINCODE = '125001'
+const DEFAULT_WAREHOUSE_PINCODE = process.env.FSHIP_WAREHOUSE_PINCODE || '125001'
 const DEFAULT_SHIPPING_COST = 99
 const DEFAULT_ESTIMATED_DAYS = 5
 
@@ -103,7 +103,7 @@ export async function checkPincodeServiceability(
     }
 
     const isServiceable =
-      serviceabilityResponse.prepaid === 'Yes' || serviceabilityResponse.cod === 'Yes'
+      serviceabilityResponse.delivery === 'Yes' || serviceabilityResponse.cod === 'Yes'
 
     if (!isServiceable) {
       return {
@@ -268,6 +268,7 @@ export async function createShipment(orderData: {
         customer_Mobile: orderData.consigneeMobile,
         customer_Emailid: orderData.consigneeEmail || '',
         customer_Address: [orderData.consigneeAddress1, orderData.consigneeAddress2].filter(Boolean).join(', '),
+        customer_Address_Type: 'Home',
         customer_PinCode: orderData.consigneePincode,
         customer_City: orderData.consigneeCity || '',
         orderId: orderData.orderId,
@@ -349,6 +350,8 @@ export async function createShipment(orderData: {
       awbNumber: createResponse.waybill,
       apiOrderId: createResponse.apiorderid,
       pickupOrderId,
+      labelUrl: createResponse.labelurl,
+      routingCode: createResponse.route_code,
       courierName: 'FShip',
     }
   } catch (error) {
@@ -396,10 +399,10 @@ export async function getOrderTracking(
     }
 
     const activities: TrackingActivity[] = trackingResponse.trackingdata.map((scan) => ({
-      date: scan.DateandTime,
-      status: scan.Status,
-      activity: scan.Remark,
-      location: scan.Location,
+      date: scan.dateandTime ?? scan.DateandTime ?? '',
+      status: scan.status ?? scan.Status ?? '',
+      activity: scan.remark ?? scan.Remark ?? '',
+      location: scan.location ?? scan.Location ?? '',
     }))
 
     return {
@@ -414,6 +417,61 @@ export async function getOrderTracking(
       error: error instanceof Error
         ? error.message
         : 'Failed to retrieve tracking information. Please try again later.',
+    }
+  }
+}
+
+interface ShipmentLabelResult {
+  success: boolean
+  labelUrl?: string
+  routingCode?: string
+  error?: string
+}
+
+export async function getShipmentLabel(awb: string): Promise<ShipmentLabelResult> {
+  try {
+    if (!awb || awb.trim().length === 0) {
+      return { success: false, error: 'Please provide a valid waybill number.' }
+    }
+
+    const trimmedAwb = awb.trim()
+    const labelResponse = await fshipClient.getShippingLabel(trimmedAwb)
+
+    const statusOk =
+      typeof labelResponse.status === 'string'
+        ? labelResponse.status.toLowerCase() === 'success'
+        : !!labelResponse.status
+
+    if (!statusOk || !labelResponse.resultDetails) {
+      return {
+        success: false,
+        error: 'No label information found for this waybill number.',
+      }
+    }
+
+    const details =
+      labelResponse.resultDetails[trimmedAwb] ||
+      Object.values(labelResponse.resultDetails)[0]
+
+    if (!details) {
+      return {
+        success: false,
+        error: 'No label information found for this waybill number.',
+      }
+    }
+
+    return {
+      success: true,
+      labelUrl: details.LabelUrl ?? details.labelurl,
+      routingCode: details.RoutingCode,
+    }
+  } catch (error) {
+    console.error('FShip label fetch error:', error)
+    return {
+      success: false,
+      error: error instanceof Error
+        ? error.message
+        : 'Failed to retrieve shipping label. Please try again later.',
     }
   }
 }

@@ -32,8 +32,14 @@ export async function POST(request: Request) {
       if (userDoc) targetUserId = userDoc._id.toString()
     }
 
+    // Match both string and ObjectId forms of user_id so we find entries
+    // regardless of how they were stored (mirrors the account wishlist read).
+    const userIdVariants: (string | ObjectId)[] = [targetUserId]
+    if (userId !== targetUserId) userIdVariants.push(userId)
+    if (ObjectId.isValid(targetUserId)) userIdVariants.push(new ObjectId(targetUserId))
+
     const existing = await db.collection("wishlists").findOne({
-      user_id: targetUserId,
+      user_id: { $in: userIdVariants },
       product_id: productId,
     })
 

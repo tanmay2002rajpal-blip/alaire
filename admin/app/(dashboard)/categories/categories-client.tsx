@@ -566,9 +566,12 @@ export function CategoriesClient({ initialCategories }: CategoriesClientProps) {
             <div className="space-y-2">
               <Label>Category Image</Label>
               <ImageUpload
-                value={formData.image ? [formData.image] : []}
-                onChange={(urls) =>
-                  setFormData((prev) => ({ ...prev, image: urls[0] || '' }))
+                value={formData.image || ''}
+                onChange={(url) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    image: typeof url === 'string' ? url : url[0] || '',
+                  }))
                 }
                 maxFiles={1}
                 bucket="category-images"

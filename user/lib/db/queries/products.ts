@@ -22,6 +22,7 @@ export interface GetProductsOptions {
   limit?: number
   offset?: number
   filter?: "sale"
+  search?: string
 }
 
 // ============================================================================
@@ -40,6 +41,7 @@ export async function getProducts(
     limit = 24,
     offset = 0,
     filter,
+    search,
   } = options
 
   // Build match filter
@@ -51,6 +53,12 @@ export async function getProducts(
       // Match both ObjectId and string forms since products may store either
       match.category_id = { $in: [cat._id, cat._id.toString()] }
     }
+  }
+
+  // Text search: case-insensitive regex on product name
+  if (search && search.trim()) {
+    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    match.name = { $regex: escaped, $options: "i" }
   }
 
   // Build sort
@@ -70,11 +78,8 @@ export async function getProducts(
       sortObj = { created_at: -1 }
   }
 
-  const pipeline = [
+  const pipeline: Record<string, unknown>[] = [
     { $match: match },
-    { $sort: sortObj },
-    { $skip: offset },
-    { $limit: limit },
     {
       $lookup: {
         from: "product_variants",
@@ -83,6 +88,56 @@ export async function getProducts(
         as: "variants",
       },
     },
+    // Compute the effective price (first variant price, falling back to
+    // base_price) and a sale flag so price/sale filtering can happen in the
+    // aggregation BEFORE $skip/$limit (prevents silently dropping matches).
+    {
+      $addFields: {
+        _effective_price: {
+          $ifNull: [{ $arrayElemAt: ["$variants.price", 0] }, "$base_price"],
+        },
+        _has_sale: {
+          $gt: [
+            {
+              $size: {
+                $filter: {
+                  input: { $ifNull: ["$variants", []] },
+                  as: "v",
+                  cond: {
+                    $and: [
+                      { $ne: ["$$v.compare_at_price", null] },
+                      { $gt: ["$$v.compare_at_price", { $ifNull: ["$$v.price", 0] }] },
+                    ],
+                  },
+                },
+              },
+            },
+            0,
+          ],
+        },
+      },
+    },
+  ]
+
+  // Price / sale filtering as a real $match before pagination
+  const postMatch: Record<string, unknown> = {}
+  if (priceMin !== undefined || priceMax !== undefined) {
+    const priceCond: Record<string, number> = {}
+    if (priceMin !== undefined) priceCond.$gte = priceMin
+    if (priceMax !== undefined) priceCond.$lte = priceMax
+    postMatch._effective_price = priceCond
+  }
+  if (filter === "sale") {
+    postMatch._has_sale = true
+  }
+  if (Object.keys(postMatch).length > 0) {
+    pipeline.push({ $match: postMatch })
+  }
+
+  pipeline.push(
+    { $sort: sortObj },
+    { $skip: offset },
+    { $limit: limit },
     {
       $lookup: {
         from: "categories",
@@ -96,12 +151,12 @@ export async function getProducts(
         category: { $arrayElemAt: ["$categoryArr", 0] },
       },
     },
-    { $project: { categoryArr: 0 } },
-  ]
+    { $project: { categoryArr: 0, _effective_price: 0, _has_sale: 0 } }
+  )
 
   const docs = await db.collection("products").aggregate(pipeline).toArray()
 
-  let products = docs.map((doc) => {
+  const products = docs.map((doc) => {
     const s = serializeDoc(doc)
     return {
       ...s,
@@ -109,25 +164,6 @@ export async function getProducts(
       category: s.category ? serializeDoc(s.category) : null,
     } as unknown as ProductWithRelations
   })
-
-  // Client-side price filtering
-  if (priceMin !== undefined || priceMax !== undefined) {
-    products = products.filter((product) => {
-      const price = product.variants?.[0]?.price ?? product.base_price ?? 0
-      if (priceMin !== undefined && price < priceMin) return false
-      if (priceMax !== undefined && price > priceMax) return false
-      return true
-    })
-  }
-
-  // Sale filter: keep only products where any variant has a compare_at_price > price
-  if (filter === "sale") {
-    products = products.filter((product) =>
-      product.variants?.some(
-        (v) => v.compare_at_price != null && v.compare_at_price > (v.price ?? 0)
-      )
-    )
-  }
 
   return products
 }
@@ -372,10 +408,15 @@ export async function getRelatedProducts(
 
   // Fallback: same category
   if (categoryId) {
+    // Match both ObjectId and string forms of category_id since products
+    // may store either.
+    const categoryMatch: (string | ObjectId)[] = [categoryId]
+    if (ObjectId.isValid(categoryId)) categoryMatch.push(new ObjectId(categoryId))
+
     const pipeline = [
       {
         $match: {
-          category_id: categoryId,
+          category_id: { $in: categoryMatch },
           is_active: true,
           _id: { $ne: new ObjectId(productId) },
         },

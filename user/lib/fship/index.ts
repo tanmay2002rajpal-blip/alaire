@@ -12,4 +12,4 @@ export type {
 
 export { fshipClient } from './client'
 
-export { checkPincodeServiceability, getOrderTracking, createShipment } from './actions'
+export { checkPincodeServiceability, getOrderTracking, createShipment, getShipmentLabel } from './actions'

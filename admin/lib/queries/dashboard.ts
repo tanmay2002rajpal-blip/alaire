@@ -2,6 +2,11 @@
 
 import { getOrdersCollection, getProductVariantsCollection, getUsersCollection, getActivityLogCollection } from '@/lib/db/collections'
 
+// Shared "valid revenue" status set — excludes pending, cancelled and refunded.
+const VALID_REVENUE_STATUSES = ['paid', 'confirmed', 'processing', 'shipped', 'delivered']
+// Actionable / pending-fulfilment set — new storefront orders arrive as paid/confirmed.
+const ACTIONABLE_STATUSES = ['paid', 'confirmed', 'processing']
+
 // Types for return values
 export interface DashboardStats {
   todayRevenue: number;
@@ -63,14 +68,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
     const [todayOrders, yesterdayOrders, pendingCount, lowStockCount, newCustomersCount] = await Promise.all([
       ordersCol.find(
-        { created_at: { $gte: today, $lt: tomorrow } },
+        { created_at: { $gte: today, $lt: tomorrow }, status: { $in: VALID_REVENUE_STATUSES } },
         { projection: { total: 1 } }
       ).toArray(),
       ordersCol.find(
-        { created_at: { $gte: yesterday, $lt: today } },
+        { created_at: { $gte: yesterday, $lt: today }, status: { $in: VALID_REVENUE_STATUSES } },
         { projection: { total: 1 } }
       ).toArray(),
-      ordersCol.countDocuments({ status: { $in: ['pending', 'processing'] } }),
+      ordersCol.countDocuments({ status: { $in: ACTIONABLE_STATUSES } }),
       variantsCol.countDocuments({ is_active: true, stock_quantity: { $lt: 10 } }),
       usersCol.countDocuments({ created_at: { $gte: weekAgo } }),
     ])
@@ -164,7 +169,7 @@ export async function getRevenueChart(days = 7): Promise<RevenueChartData[]> {
     startDate.setHours(0, 0, 0, 0)
 
     const orders = await ordersCol.find(
-      { created_at: { $gte: startDate, $lte: endDate } },
+      { created_at: { $gte: startDate, $lte: endDate }, status: { $in: VALID_REVENUE_STATUSES } },
       { projection: { total: 1, created_at: 1 } }
     ).sort({ created_at: 1 }).toArray()
 

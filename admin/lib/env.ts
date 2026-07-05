@@ -9,30 +9,39 @@
  * Required environment variables for the admin app
  */
 const requiredEnvVars = [
-  'ADMIN_API_SECRET',
-  'ADMIN_JWT_SECRET',
+  // Database
   'MONGODB_URI',
+  'MONGODB_DB',
+  // Auth
+  'ADMIN_JWT_SECRET',
+  'ADMIN_API_SECRET',
+  // Media (Cloudinary)
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET',
+  // Transactional email (Resend)
+  'RESEND_API_KEY',
 ] as const;
 
 type RequiredEnvVar = (typeof requiredEnvVars)[number];
 
-interface EnvConfig {
-  ADMIN_API_SECRET: string;
-  ADMIN_JWT_SECRET: string;
-  MONGODB_URI: string;
-}
+type EnvConfig = Record<RequiredEnvVar, string>;
 
 /**
  * Validates that all required environment variables are set.
  * Call this at app startup to fail fast if config is missing.
  * 
- * @throws {Error} If any required environment variable is missing
+ * Only throws when NODE_ENV === 'production' (fail fast on bad config). In
+ * other environments missing required variables are logged as a warning so
+ * local development is not broken.
+ *
+ * @throws {Error} In production, if any required environment variable is missing
  * @returns {EnvConfig} Validated environment configuration
- * 
+ *
  * @example
  * ```ts
  * import { validateEnv } from '@/lib/env'
- * const env = validateEnv() // Throws if ADMIN_API_SECRET missing
+ * const env = validateEnv() // Throws (in production) if ADMIN_API_SECRET missing
  * ```
  */
 export function validateEnv(): EnvConfig {
@@ -45,17 +54,20 @@ export function validateEnv(): EnvConfig {
   }
 
   if (missing.length > 0) {
-    throw new Error(
+    const message =
       `Missing required environment variables:\n${missing.map(v => `  - ${v}`).join('\n')}\n\n` +
-      'Please check your .env.local file and ensure all required variables are set.'
-    );
+      'Please check your .env.local file and ensure all required variables are set.';
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(message);
+    }
+
+    console.warn(`[env] ${message}`);
   }
 
-  return {
-    ADMIN_API_SECRET: process.env.ADMIN_API_SECRET!,
-    ADMIN_JWT_SECRET: process.env.ADMIN_JWT_SECRET!,
-    MONGODB_URI: process.env.MONGODB_URI!,
-  };
+  return Object.fromEntries(
+    requiredEnvVars.map(v => [v, process.env[v] ?? '']),
+  ) as EnvConfig;
 }
 
 /**

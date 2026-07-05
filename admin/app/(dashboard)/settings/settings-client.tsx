@@ -55,6 +55,7 @@ import { toast } from 'sonner'
 import {
   saveNotificationEmails,
   saveCodSetting,
+  saveDeliverySettings,
   clearActiveCartsAction,
   clearOrdersAction,
   createAdminUser,
@@ -69,6 +70,8 @@ interface SettingsClientProps {
   adminUsers: AdminUserListItem[]
   currentAdminId: string
   codEnabled: boolean
+  deliveryFeeEnabled: boolean
+  freeDeliveryThreshold: number
 }
 
 export function SettingsClient({
@@ -76,6 +79,8 @@ export function SettingsClient({
   adminUsers: initialAdminUsers,
   currentAdminId,
   codEnabled: initialCodEnabled,
+  deliveryFeeEnabled: initialDeliveryFeeEnabled,
+  freeDeliveryThreshold: initialFreeDeliveryThreshold,
 }: SettingsClientProps) {
   return (
     <div className="space-y-6">
@@ -106,8 +111,12 @@ export function SettingsClient({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="store">
+        <TabsContent value="store" className="space-y-4">
           <StoreSettingsTab initialCodEnabled={initialCodEnabled} />
+          <DeliverySettingsTab
+            initialDeliveryFeeEnabled={initialDeliveryFeeEnabled}
+            initialFreeDeliveryThreshold={initialFreeDeliveryThreshold}
+          />
         </TabsContent>
 
         <TabsContent value="notifications">
@@ -177,21 +186,127 @@ function StoreSettingsTab({ initialCodEnabled }: { initialCodEnabled: boolean })
   )
 }
 
+// ─── Delivery Settings Tab ─────────────────────────────────────────────────
+
+function DeliverySettingsTab({
+  initialDeliveryFeeEnabled,
+  initialFreeDeliveryThreshold,
+}: {
+  initialDeliveryFeeEnabled: boolean
+  initialFreeDeliveryThreshold: number
+}) {
+  const [deliveryFeeEnabled, setDeliveryFeeEnabled] = useState(initialDeliveryFeeEnabled)
+  const [thresholdInput, setThresholdInput] = useState(String(initialFreeDeliveryThreshold))
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    // Guard against NaN/empty — fall back to 0 when the input is not a valid number.
+    const parsed = Number(thresholdInput)
+    const threshold = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+
+    setSaving(true)
+    try {
+      const result = await saveDeliverySettings({
+        deliveryFeeEnabled,
+        freeDeliveryThreshold: threshold,
+      })
+      if (result.success) {
+        setThresholdInput(String(threshold))
+        toast.success('Delivery settings saved')
+      } else {
+        toast.error(result.error || 'Failed to save')
+      }
+    } catch {
+      toast.error('An unexpected error occurred')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Delivery</CardTitle>
+        <CardDescription>Configure delivery fees and free-delivery thresholds</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label>Charge delivery fees on orders</Label>
+            <p className="text-sm text-muted-foreground">
+              When off, all orders ship free regardless of amount
+            </p>
+          </div>
+          <Switch
+            checked={deliveryFeeEnabled}
+            onCheckedChange={setDeliveryFeeEnabled}
+            disabled={saving}
+          />
+        </div>
+
+        {deliveryFeeEnabled && (
+          <div className="space-y-2">
+            <Label htmlFor="free-delivery-threshold">
+              Free delivery for orders above (₹)
+            </Label>
+            <Input
+              id="free-delivery-threshold"
+              type="number"
+              min={0}
+              step={1}
+              value={thresholdInput}
+              onChange={(e) => setThresholdInput(e.target.value)}
+              disabled={saving}
+              className="max-w-xs"
+            />
+            <p className="text-sm text-muted-foreground">
+              Orders at or above this subtotal ship free; otherwise the pincode rate applies
+            </p>
+          </div>
+        )}
+
+        <div className="pt-4 border-t">
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Data Management Tab ──────────────────────────────────────────────────
+
+// Typed-confirmation sentinels — must exactly match the values validated
+// server-side in lib/actions/settings.ts before any mass-delete runs.
+const CLEAR_CARTS_CONFIRMATION = 'DELETE ALL CARTS'
+const CLEAR_ORDERS_CONFIRMATION = 'DELETE ALL ORDERS'
 
 function DataManagementTab() {
   const [clearingCarts, setClearingCarts] = useState(false)
   const [clearingOrders, setClearingOrders] = useState(false)
   const [showClearCartsDialog, setShowClearCartsDialog] = useState(false)
   const [showClearOrdersDialog, setShowClearOrdersDialog] = useState(false)
+  const [cartsConfirmText, setCartsConfirmText] = useState('')
+  const [ordersConfirmText, setOrdersConfirmText] = useState('')
+
+  const cartsConfirmed = cartsConfirmText === CLEAR_CARTS_CONFIRMATION
+  const ordersConfirmed = ordersConfirmText === CLEAR_ORDERS_CONFIRMATION
 
   async function handleClearCarts() {
+    if (!cartsConfirmed) return
     setClearingCarts(true)
     try {
-      const result = await clearActiveCartsAction()
+      const result = await clearActiveCartsAction(cartsConfirmText)
       if (result.success) {
         toast.success('All active carts cleared')
         setShowClearCartsDialog(false)
+        setCartsConfirmText('')
       } else {
         toast.error(result.error || 'Failed to clear carts')
       }
@@ -203,12 +318,14 @@ function DataManagementTab() {
   }
 
   async function handleClearOrders() {
+    if (!ordersConfirmed) return
     setClearingOrders(true)
     try {
-      const result = await clearOrdersAction()
+      const result = await clearOrdersAction(ordersConfirmText)
       if (result.success) {
         toast.success('All orders data cleared')
         setShowClearOrdersDialog(false)
+        setOrdersConfirmText('')
       } else {
         toast.error(result.error || 'Failed to clear orders')
       }
@@ -250,7 +367,13 @@ function DataManagementTab() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={showClearCartsDialog} onOpenChange={setShowClearCartsDialog}>
+      <AlertDialog
+        open={showClearCartsDialog}
+        onOpenChange={(open) => {
+          setShowClearCartsDialog(open)
+          if (!open) setCartsConfirmText('')
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Clear All Active Carts</AlertDialogTitle>
@@ -258,11 +381,31 @@ function DataManagementTab() {
               This will permanently delete all active cart data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="clear-carts-confirm">
+              Type{' '}
+              <span className="font-semibold text-foreground">
+                {CLEAR_CARTS_CONFIRMATION}
+              </span>{' '}
+              to confirm
+            </Label>
+            <Input
+              id="clear-carts-confirm"
+              value={cartsConfirmText}
+              onChange={(e) => setCartsConfirmText(e.target.value)}
+              placeholder={CLEAR_CARTS_CONFIRMATION}
+              disabled={clearingCarts}
+              autoComplete="off"
+            />
+            {cartsConfirmText.length > 0 && !cartsConfirmed && (
+              <p className="text-sm text-destructive">Confirmation text did not match</p>
+            )}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={clearingCarts}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleClearCarts}
-              disabled={clearingCarts}
+              disabled={clearingCarts || !cartsConfirmed}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {clearingCarts && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -272,7 +415,13 @@ function DataManagementTab() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showClearOrdersDialog} onOpenChange={setShowClearOrdersDialog}>
+      <AlertDialog
+        open={showClearOrdersDialog}
+        onOpenChange={(open) => {
+          setShowClearOrdersDialog(open)
+          if (!open) setOrdersConfirmText('')
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Clear All Orders</AlertDialogTitle>
@@ -280,11 +429,31 @@ function DataManagementTab() {
               This will permanently delete all orders, order items, and order status history. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="clear-orders-confirm">
+              Type{' '}
+              <span className="font-semibold text-foreground">
+                {CLEAR_ORDERS_CONFIRMATION}
+              </span>{' '}
+              to confirm
+            </Label>
+            <Input
+              id="clear-orders-confirm"
+              value={ordersConfirmText}
+              onChange={(e) => setOrdersConfirmText(e.target.value)}
+              placeholder={CLEAR_ORDERS_CONFIRMATION}
+              disabled={clearingOrders}
+              autoComplete="off"
+            />
+            {ordersConfirmText.length > 0 && !ordersConfirmed && (
+              <p className="text-sm text-destructive">Confirmation text did not match</p>
+            )}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={clearingOrders}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleClearOrders}
-              disabled={clearingOrders}
+              disabled={clearingOrders || !ordersConfirmed}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {clearingOrders && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

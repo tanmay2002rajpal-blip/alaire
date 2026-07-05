@@ -118,7 +118,7 @@ function buildEmail({
               <tr>
                 <td style="padding: 32px 20px; text-align: center;">
                   <p style="margin: 0 0 8px; font-family: -apple-system, sans-serif; font-size: 13px; color: #8a7e6b;">
-                    Need help? Reach us at <a href="mailto:alaireinnerwear@gmail.com" style="color: #c4a265; text-decoration: none;">alaireinnerwear@gmail.com</a>
+                    Need help? Reach us at <a href="mailto:${process.env.SUPPORT_EMAIL || "support@alaire.in"}" style="color: #c4a265; text-decoration: none;">${process.env.SUPPORT_EMAIL || "support@alaire.in"}</a>
                   </p>
                   <p style="margin: 0; font-family: -apple-system, sans-serif; font-size: 12px; color: #b8ad9e;">
                     &copy; ${new Date().getFullYear()} Alaire. Crafted with intention.
@@ -178,12 +178,16 @@ export async function sendOrderProcessingEmail(data: OrderStatusEmailData): Prom
   })
 
   try {
-    await getResend().emails.send({
-      from: "Alaire <alaireinnerwear@gmail.com>",
+    const { error } = await getResend().emails.send({
+      from: "Alaire <noreply@alaire.in>",
       to: data.customerEmail,
       subject: `Your Order ${orderNumber} is Being Prepared`,
       html,
     })
+    if (error) {
+      console.error("Failed to send processing email:", error)
+      return false
+    }
     return true
   } catch (error) {
     console.error("Failed to send processing email:", error)
@@ -262,12 +266,16 @@ export async function sendOrderShippedEmail(data: OrderStatusEmailData): Promise
   })
 
   try {
-    await getResend().emails.send({
-      from: "Alaire <alaireinnerwear@gmail.com>",
+    const { error } = await getResend().emails.send({
+      from: "Alaire <noreply@alaire.in>",
       to: data.customerEmail,
       subject: `Your Alaire Order ${orderNumber} Has Shipped`,
       html,
     })
+    if (error) {
+      console.error("Failed to send shipped email:", error)
+      return false
+    }
     return true
   } catch (error) {
     console.error("Failed to send shipped email:", error)
@@ -323,12 +331,16 @@ export async function sendOrderDeliveredEmail(data: OrderStatusEmailData): Promi
   })
 
   try {
-    await getResend().emails.send({
-      from: "Alaire <alaireinnerwear@gmail.com>",
+    const { error } = await getResend().emails.send({
+      from: "Alaire <noreply@alaire.in>",
       to: data.customerEmail,
       subject: `Your Alaire Order ${orderNumber} Has Been Delivered`,
       html,
     })
+    if (error) {
+      console.error("Failed to send delivered email:", error)
+      return false
+    }
     return true
   } catch (error) {
     console.error("Failed to send delivered email:", error)
@@ -367,12 +379,16 @@ export async function sendOrderCancelledEmail(data: OrderStatusEmailData): Promi
   })
 
   try {
-    await getResend().emails.send({
-      from: "Alaire <alaireinnerwear@gmail.com>",
+    const { error } = await getResend().emails.send({
+      from: "Alaire <noreply@alaire.in>",
       to: data.customerEmail,
       subject: `Order ${orderNumber} Has Been Cancelled`,
       html,
     })
+    if (error) {
+      console.error("Failed to send cancelled email:", error)
+      return false
+    }
     return true
   } catch (error) {
     console.error("Failed to send cancelled email:", error)
@@ -424,12 +440,16 @@ export async function sendOrderRefundEmail(data: OrderStatusEmailData): Promise<
   })
 
   try {
-    await getResend().emails.send({
-      from: "Alaire <alaireinnerwear@gmail.com>",
+    const { error } = await getResend().emails.send({
+      from: "Alaire <noreply@alaire.in>",
       to: data.customerEmail,
       subject: `Refund Processed — Order ${orderNumber}`,
       html,
     })
+    if (error) {
+      console.error("Failed to send refund email:", error)
+      return false
+    }
     return true
   } catch (error) {
     console.error("Failed to send refund email:", error)

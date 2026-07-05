@@ -29,8 +29,14 @@ const nextConfig: NextConfig = {
         hostname: "images.unsplash.com",
       },
       {
+        // Instagram serves media from many sharded subdomains
+        // (scontent-*.cdninstagram.com), so match them all.
         protocol: "https",
-        hostname: "scontent.cdninstagram.com",
+        hostname: "*.cdninstagram.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.fbcdn.net",
       },
     ],
     // Modern image formats for better compression

@@ -19,6 +19,33 @@ function useIsMounted() {
   )
 }
 
+/**
+ * Delivery-fee settings resolved from admin (GET /api/site-settings/delivery).
+ */
+interface DeliverySettings {
+  deliveryFeeEnabled: boolean
+  freeDeliveryThreshold: number
+}
+
+/**
+ * Canonical shipping resolution — MUST stay identical to the server logic in
+ * /api/checkout/create-order so the fee the customer sees always equals what
+ * the server charges.
+ *
+ * - Delivery fee disabled       => always free (0)
+ * - Subtotal >= free threshold  => free (0)
+ * - Otherwise                   => the FShip pincode rate (0 until checked)
+ */
+function resolveShipping(
+  subtotal: number,
+  pincodeShippingCost: number,
+  { deliveryFeeEnabled, freeDeliveryThreshold }: DeliverySettings
+): number {
+  if (!deliveryFeeEnabled) return 0
+  if (subtotal >= freeDeliveryThreshold) return 0
+  return pincodeShippingCost
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const { items, getSubtotal, clearCart } = useCart()
@@ -34,10 +61,17 @@ export default function CheckoutPage() {
   const [walletBalance, setWalletBalance] = useState(0)
   const [useWallet, setUseWallet] = useState(false)
 
-  // Shipping state (from pincode checker)
-  const [shippingCost, setShippingCost] = useState(0)
+  // Raw pincode shipping rate (from the pincode checker / saved-address lookup).
+  // This is the un-resolved FShip cost; the DISPLAYED/charged shipping is derived
+  // from it via resolveShipping() below, honoring the admin delivery settings.
+  const [pincodeShippingCost, setPincodeShippingCost] = useState(0)
   const [estimatedDays, setEstimatedDays] = useState(0)
 
+  // Admin delivery-fee settings (single source of truth for free vs. paid shipping).
+  const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
+    deliveryFeeEnabled: true,
+    freeDeliveryThreshold: 999,
+  })
 
   useEffect(() => {
     async function fetchWallet() {
@@ -54,6 +88,28 @@ export default function CheckoutPage() {
     }
     fetchWallet()
   }, [user])
+
+  // Fetch admin delivery settings once on mount. Defaults stay {true, 999} on error.
+  useEffect(() => {
+    async function fetchDeliverySettings() {
+      try {
+        const res = await fetch("/api/site-settings/delivery")
+        if (res.ok) {
+          const data = await res.json()
+          setDeliverySettings({
+            deliveryFeeEnabled: data.deliveryFeeEnabled !== false,
+            freeDeliveryThreshold:
+              typeof data.freeDeliveryThreshold === "number" && isFinite(data.freeDeliveryThreshold)
+                ? data.freeDeliveryThreshold
+                : 999,
+          })
+        }
+      } catch {
+        // Keep defaults {true, 999} on error
+      }
+    }
+    fetchDeliverySettings()
+  }, [])
 
   if (!mounted) {
     return (
@@ -106,8 +162,13 @@ export default function CheckoutPage() {
 
   const subtotal = getSubtotal()
 
+  // Single source of truth for the shipping the customer SEES and is CHARGED.
+  // Derived from the raw pincode rate + admin delivery settings, using the same
+  // canonical logic as the server, so display == charge.
+  const displayedShipping = resolveShipping(subtotal, pincodeShippingCost, deliverySettings)
+
   // Calculate wallet amount to use
-  const afterDiscountAndShipping = subtotal - discount + shippingCost
+  const afterDiscountAndShipping = subtotal - discount + displayedShipping
   const walletAmountUsed = useWallet
     ? Math.min(walletBalance, afterDiscountAndShipping)
     : 0
@@ -127,7 +188,8 @@ export default function CheckoutPage() {
   }
 
   const handleShippingChange = (cost: number, days?: number) => {
-    setShippingCost(cost)
+    // Store the RAW pincode rate; displayed/charged shipping is derived from it.
+    setPincodeShippingCost(cost)
     if (days !== undefined) setEstimatedDays(days)
   }
 
@@ -172,7 +234,7 @@ export default function CheckoutPage() {
               items={items}
               subtotal={subtotal}
               discount={discount}
-              shippingCost={shippingCost}
+              shippingCost={displayedShipping}
               estimatedDays={estimatedDays}
               walletAmountUsed={walletAmountUsed}
               couponCode={couponCode}
@@ -194,7 +256,7 @@ export default function CheckoutPage() {
               items={items}
               subtotal={subtotal}
               discount={discount}
-              shipping={shippingCost}
+              shipping={displayedShipping}
               estimatedDays={estimatedDays}
               walletBalance={walletBalance}
               useWallet={useWallet}

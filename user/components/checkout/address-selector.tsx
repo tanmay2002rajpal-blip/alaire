@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Plus, Check, Trash2, Loader2, Truck, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -44,9 +44,15 @@ const INDIAN_STATES = [
 interface AddressSelectorProps {
   onSelect: (address: Address) => void
   selectedId?: string
+  /**
+   * Notifies the parent of the shipping rate for the SELECTED saved address so
+   * the order summary reflects the same fee the server will charge. Fed the raw
+   * FShip pincode rate (parent derives free-vs-paid from admin delivery settings).
+   */
+  onShippingChange?: (cost: number, days?: number) => void
 }
 
-export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) {
+export function AddressSelector({ onSelect, selectedId, onShippingChange }: AddressSelectorProps) {
   const [addresses, setAddresses] = useState<Address[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -66,6 +72,19 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
   const [pincodeError, setPincodeError] = useState<string | null>(null)
   const [cityAutoFilled, setCityAutoFilled] = useState(false)
   const [stateAutoFilled, setStateAutoFilled] = useState(false)
+
+  // Shipping-lookup state for the currently SELECTED saved address. Used to show
+  // an inline hint when a saved address has no / an unresolvable pincode so we
+  // never silently display "Free" when a delivery fee would actually apply.
+  const [isLookingUpSelected, setIsLookingUpSelected] = useState(false)
+  const [selectedShippingUnknown, setSelectedShippingUnknown] = useState(false)
+
+  // Keep the latest onShippingChange without making it an effect dependency
+  // (the parent recreates it every render). Combined with the pincode-dedupe
+  // ref below, this prevents the selected-address lookup from looping.
+  const onShippingChangeRef = useRef(onShippingChange)
+  onShippingChangeRef.current = onShippingChange
+  const lastLookedUpPincodeRef = useRef<string | null>(null)
 
   /**
    * Looks up city, state, serviceability, and delivery estimate from a 6-digit pincode.
@@ -154,9 +173,77 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
     }
   }, [selectedId, addresses, onSelect])
 
+  // Recompute shipping whenever the SELECTED saved address changes. This feeds
+  // the same onShippingChange path the New Address tab uses, so switching between
+  // saved addresses / tabs keeps the order summary in sync with the pincode rate.
+  // Deduped on pincode so re-renders don't re-trigger the lookup.
+  useEffect(() => {
+    const notify = onShippingChangeRef.current
+    if (!notify) return
+
+    const selected = addresses.find((a) => a.id === selectedId)
+    if (!selected) return
+
+    const pincode = (selected.pincode || "").trim()
+
+    // Skip if we've already resolved this exact pincode.
+    if (lastLookedUpPincodeRef.current === pincode) return
+    lastLookedUpPincodeRef.current = pincode
+
+    // No / malformed pincode on a saved address: don't silently show "Free".
+    // Reset the rate to 0 and surface a "calculated at delivery" hint instead.
+    if (!/^\d{6}$/.test(pincode)) {
+      setIsLookingUpSelected(false)
+      setSelectedShippingUnknown(true)
+      notify(0)
+      return
+    }
+
+    let cancelled = false
+    setSelectedShippingUnknown(false)
+    setIsLookingUpSelected(true)
+
+    checkPincodeServiceability(pincode)
+      .then((result) => {
+        if (cancelled) return
+        if (result.success && result.data) {
+          setSelectedShippingUnknown(false)
+          onShippingChangeRef.current?.(result.data.shippingCost, result.data.estimatedDays)
+        } else {
+          // Serviceability unknown — surface it rather than defaulting to Free.
+          setSelectedShippingUnknown(true)
+          onShippingChangeRef.current?.(0)
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSelectedShippingUnknown(true)
+        onShippingChangeRef.current?.(0)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLookingUpSelected(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId, addresses])
+
   const handleAddAddress = async () => {
     if (!formData.full_name || !formData.phone || !formData.line1 || !formData.city || !formData.state || !formData.pincode) {
       toast.error("Please fill all required fields")
+      return
+    }
+
+    // Block saving with an invalid pincode — shipping can't be resolved for it.
+    if (!/^\d{6}$/.test(formData.pincode)) {
+      toast.error("Please enter a valid 6-digit pincode")
+      return
+    }
+
+    // Block saving a pincode we've confirmed is not serviceable.
+    if (pincodeData && !pincodeData.serviceable) {
+      toast.error("Delivery is not available to this pincode. Please use a different address.")
       return
     }
 
@@ -273,6 +360,24 @@ export function AddressSelector({ onSelect, selectedId }: AddressSelectorProps) 
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Shipping status for the selected saved address */}
+      {selectedId && isLookingUpSelected && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Calculating delivery fee...
+        </p>
+      )}
+      {selectedId && !isLookingUpSelected && selectedShippingUnknown && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <p className="text-xs text-amber-700">
+              Delivery fee will be calculated at delivery for this address.
+            </p>
+          </div>
         </div>
       )}
 

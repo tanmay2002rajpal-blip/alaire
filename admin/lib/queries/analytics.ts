@@ -4,7 +4,7 @@
  */
 
 import { ObjectId } from 'mongodb'
-import { getOrdersCollection, getOrderItemsCollection, getProductsCollection, getCategoriesCollection, getUsersCollection } from '@/lib/db/collections'
+import { getOrdersCollection, getProductsCollection, getCategoriesCollection, getUsersCollection } from '@/lib/db/collections'
 import { getDb } from '@/lib/db/client'
 
 export interface SalesStats {
@@ -52,7 +52,6 @@ export interface RecentOrder {
  */
 export async function getSalesStats(): Promise<SalesStats> {
   const ordersCol = await getOrdersCollection()
-  const orderItemsCol = await getOrderItemsCollection()
 
   const validStatuses = ['paid', 'confirmed', 'processing', 'shipped', 'delivered']
 
@@ -66,9 +65,20 @@ export async function getSalesStats(): Promise<SalesStats> {
   const totalOrders = orders.length
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
-  // Get units sold
-  const unitsResult = await orderItemsCol.aggregate<{ _id: null; total: number }>([
-    { $group: { _id: null, total: { $sum: '$quantity' } } },
+  // Get units sold — count only items belonging to revenue-valid orders so the
+  // number stays consistent with the status-filtered revenue above.
+  const unitsResult = await ordersCol.aggregate<{ _id: null; total: number }>([
+    { $match: { status: { $in: validStatuses } } },
+    {
+      $lookup: {
+        from: 'order_items',
+        localField: '_id',
+        foreignField: 'order_id',
+        as: 'items',
+      },
+    },
+    { $unwind: '$items' },
+    { $group: { _id: null, total: { $sum: '$items.quantity' } } },
   ]).toArray()
   const totalUnitsSold = unitsResult[0]?.total || 0
 
@@ -113,66 +123,83 @@ export async function getSalesStats(): Promise<SalesStats> {
 export async function getDailySales(days: number = 30): Promise<DailySales[]> {
   const ordersCol = await getOrdersCollection()
 
+  // Query a little earlier than the display window so timezone-shifted orders
+  // near the boundary are not dropped; buckets below limit the visible range.
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - days)
   startDate.setHours(0, 0, 0, 0)
 
   const validStatuses = ['paid', 'confirmed', 'processing', 'shipped', 'delivered']
 
-  const orders = await ordersCol.find(
+  // Bucket by IST calendar day (+05:30) directly in Mongo so revenue lands on
+  // the correct local date instead of drifting to the UTC day.
+  const results = await ordersCol.aggregate<{ _id: string; revenue: number; orders: number }>([
     {
-      status: { $in: validStatuses },
-      created_at: { $gte: startDate },
+      $match: {
+        status: { $in: validStatuses },
+        created_at: { $gte: startDate },
+      },
     },
-    { projection: { total: 1, created_at: 1 } }
-  ).sort({ created_at: 1 }).toArray()
+    {
+      $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$created_at', timezone: '+05:30' } },
+        revenue: { $sum: '$total' },
+        orders: { $sum: 1 },
+      },
+    },
+  ]).toArray()
 
-  // Group by date
-  const salesByDate: Record<string, DailySales> = {}
+  const resultMap = new Map(results.map(r => [r._id, r]))
 
-  // Initialize all dates with 0
-  for (let i = 0; i <= days; i++) {
+  // Build exactly `days` buckets ending today, keyed by IST calendar date.
+  const istFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' })
+  const salesByDate: DailySales[] = []
+  for (let i = days - 1; i >= 0; i--) {
     const date = new Date()
-    date.setDate(date.getDate() - (days - i))
-    const dateStr = date.toISOString().split("T")[0]
-    salesByDate[dateStr] = { date: dateStr, revenue: 0, orders: 0 }
+    date.setDate(date.getDate() - i)
+    const dateStr = istFormatter.format(date)
+    const r = resultMap.get(dateStr)
+    salesByDate.push({ date: dateStr, revenue: r?.revenue || 0, orders: r?.orders || 0 })
   }
 
-  // Aggregate orders
-  for (const order of orders) {
-    const dateStr = (order.created_at instanceof Date
-      ? order.created_at.toISOString()
-      : String(order.created_at)).split("T")[0]
-    if (salesByDate[dateStr]) {
-      salesByDate[dateStr].revenue += order.total || 0
-      salesByDate[dateStr].orders += 1
-    }
-  }
-
-  return Object.values(salesByDate)
+  return salesByDate
 }
 
 /**
  * Get top selling products
  */
 export async function getTopProducts(limit: number = 5): Promise<TopProduct[]> {
-  const orderItemsCol = await getOrderItemsCollection()
+  const ordersCol = await getOrdersCollection()
 
-  const results = await orderItemsCol.aggregate<{
+  const validStatuses = ['paid', 'confirmed', 'processing', 'shipped', 'delivered']
+
+  // Start from revenue-valid orders, then join order_items so cancelled/refunded
+  // orders do not inflate units/revenue (shared valid-status set).
+  const results = await ordersCol.aggregate<{
     _id: string
     name: string
     imageUrl: string | null
     unitsSold: number
     revenue: number
   }>([
-    { $match: { product_id: { $ne: null } } },
+    { $match: { status: { $in: validStatuses } } },
+    {
+      $lookup: {
+        from: 'order_items',
+        localField: '_id',
+        foreignField: 'order_id',
+        as: 'items',
+      },
+    },
+    { $unwind: '$items' },
+    { $match: { 'items.product_id': { $ne: null } } },
     {
       $group: {
-        _id: { $toString: '$product_id' },
-        name: { $first: '$product_name' },
-        imageUrl: { $first: '$image_url' },
-        unitsSold: { $sum: '$quantity' },
-        revenue: { $sum: { $multiply: ['$quantity', '$price_at_purchase'] } },
+        _id: { $toString: '$items.product_id' },
+        name: { $first: '$items.product_name' },
+        imageUrl: { $first: '$items.image_url' },
+        unitsSold: { $sum: '$items.quantity' },
+        revenue: { $sum: { $multiply: ['$items.quantity', '$items.price_at_purchase'] } },
       },
     },
     { $sort: { unitsSold: -1 } },
@@ -192,21 +219,50 @@ export async function getTopProducts(limit: number = 5): Promise<TopProduct[]> {
  * Get sales by category
  */
 export async function getSalesByCategory(): Promise<TopCategory[]> {
-  const orderItemsCol = await getOrderItemsCollection()
+  const ordersCol = await getOrdersCollection()
   const productsCol = await getProductsCollection()
   const categoriesCol = await getCategoriesCollection()
 
-  const orderItems = await orderItemsCol.find(
-    { product_id: { $ne: null } },
-    { projection: { product_id: 1, quantity: 1, price_at_purchase: 1 } }
-  ).toArray()
+  const validStatuses = ['paid', 'confirmed', 'processing', 'shipped', 'delivered']
+
+  // Only count items from revenue-valid orders (shared valid-status set) so
+  // cancelled/refunded orders do not inflate category units/revenue.
+  const orderItems = await ordersCol.aggregate<{
+    product_id: unknown
+    quantity: number
+    price_at_purchase: number
+  }>([
+    { $match: { status: { $in: validStatuses } } },
+    {
+      $lookup: {
+        from: 'order_items',
+        localField: '_id',
+        foreignField: 'order_id',
+        as: 'items',
+      },
+    },
+    { $unwind: '$items' },
+    { $match: { 'items.product_id': { $ne: null } } },
+    {
+      $project: {
+        _id: 0,
+        product_id: '$items.product_id',
+        quantity: '$items.quantity',
+        price_at_purchase: '$items.price_at_purchase',
+      },
+    },
+  ]).toArray()
 
   if (orderItems.length === 0) return []
 
-  // Get product categories
-  const productIds = [...new Set(orderItems.map(i => i.product_id).filter(Boolean))]
+  // Get product categories. order_items.product_id is stored as a string, so
+  // convert to ObjectId (guarding against invalid ids) before matching _id.
+  const productIds = [...new Set(orderItems.map(i => i.product_id?.toString()).filter(Boolean))] as string[]
+  const productObjectIds = productIds
+    .filter(id => ObjectId.isValid(id))
+    .map(id => new ObjectId(id))
   const products = await productsCol.find(
-    { _id: { $in: productIds as any } },
+    { _id: { $in: productObjectIds } },
     { projection: { category_id: 1 } }
   ).toArray()
 
@@ -349,10 +405,10 @@ export async function getBestSellerProducts(limit = 10): Promise<{
   const db = await getDb()
 
   const pipeline = [
-    // Join with orders to get completed orders only
+    // Join with orders to get revenue-valid orders only (shared valid-status set)
     {
       $match: {
-        status: { $in: ["delivered", "shipped", "confirmed", "processing"] }
+        status: { $in: ["paid", "confirmed", "processing", "shipped", "delivered"] }
       }
     },
     // Unwind order items
@@ -393,7 +449,8 @@ export async function getBestSellerProducts(limit = 10): Promise<{
         from: "categories",
         let: { catId: "$category_id" },
         pipeline: [
-          { $match: { $expr: { $eq: [{ $toString: "$_id" }, "$$catId"] } } }
+          // category_id may be stored as ObjectId or string; compare as strings on both sides
+          { $match: { $expr: { $eq: [{ $toString: "$_id" }, { $toString: "$$catId" }] } } }
         ],
         as: "categoryArr"
       }
@@ -441,10 +498,13 @@ export async function getProductVariantSales(productId: string): Promise<{
 }[]> {
   const db = await getDb()
 
-  // Get all variants for this product
-  const variants = await db.collection("product_variants")
-    .find({ product_id: productId })
-    .toArray()
+  // Get all variants for this product. product_variants.product_id is stored as
+  // an ObjectId, so convert the incoming string id (guarding invalid ids).
+  const variants = ObjectId.isValid(productId)
+    ? await db.collection("product_variants")
+        .find({ product_id: new ObjectId(productId) })
+        .toArray()
+    : []
 
   if (variants.length === 0) return []
 
@@ -452,7 +512,7 @@ export async function getProductVariantSales(productId: string): Promise<{
   const variantSales = await db.collection("orders").aggregate([
     {
       $match: {
-        status: { $in: ["delivered", "shipped", "confirmed", "processing"] }
+        status: { $in: ["paid", "confirmed", "processing", "shipped", "delivered"] }
       }
     },
     {
