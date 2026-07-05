@@ -61,9 +61,9 @@ export async function POST(request: Request) {
     }
 
     // ========================================================================
-    // Fulfil the paid order (shared with the Razorpay webhook safety net).
-    // Idempotent: whoever claims the checkout session first runs the full
-    // fulfillment; a replay/race returns the already-created order.
+    // Fulfil the paid order. Idempotent: whoever claims the checkout session
+    // first runs the full fulfillment; a replay/double-submit returns the
+    // already-created order.
     // ========================================================================
 
     const result = await fulfillPaidOrder({

@@ -25,18 +25,6 @@ const requiredEnvVars = [
   'RESEND_API_KEY',
 ] as const;
 
-/**
- * Optional-but-recommended environment variables. Missing values only warn
- * (never throw) so the app still boots, but the gap is visible in logs.
- *
- * RAZORPAY_WEBHOOK_SECRET is the HMAC key for the Razorpay webhook safety net
- * (/api/webhooks/razorpay). Without it that route rejects every event, so the
- * "closed tab after capture = money taken, no order" gap re-opens.
- */
-const optionalEnvVars = [
-  'RAZORPAY_WEBHOOK_SECRET',
-] as const;
-
 type RequiredEnvVar = (typeof requiredEnvVars)[number];
 
 type EnvConfig = Record<RequiredEnvVar, string>;
@@ -71,18 +59,6 @@ export function validateEnv(): EnvConfig {
     }
 
     console.warn(`[env] ${message}`);
-  }
-
-  // Optional vars: warn (don't throw) so the gap is visible without blocking boot.
-  for (const envVar of optionalEnvVars) {
-    if (!process.env[envVar]) {
-      console.warn(
-        `[env] Optional environment variable not set: ${envVar}. ` +
-        (envVar === 'RAZORPAY_WEBHOOK_SECRET'
-          ? 'The Razorpay webhook safety net (/api/webhooks/razorpay) will reject all events until this is configured.'
-          : '')
-      );
-    }
   }
 
   return Object.fromEntries(

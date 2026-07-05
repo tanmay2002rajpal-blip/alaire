@@ -5,15 +5,12 @@ import { sendOrderConfirmationEmail } from "@/lib/emails/order-confirmation"
 import { sendAdminOrderNotification } from "@/lib/emails/admin-notification"
 
 /**
- * Fulfil a paid Razorpay order EXACTLY ONCE.
- *
- * Shared between the browser-driven verify-payment route and the server-to-server
- * Razorpay webhook so that a customer can never be charged without an order being
- * created (a closed tab after capture would otherwise leave money taken, no order).
+ * Fulfil a paid Razorpay order EXACTLY ONCE (called by verify-payment after the
+ * browser confirms a successful payment).
  *
  * Idempotency: the checkout_sessions doc is claimed atomically via findOneAndDelete
  * BEFORE anything is created. Whoever wins the claim runs the full fulfillment; any
- * later caller (replay, webhook + tab racing) finds no session and returns the
+ * later caller (replay / double-submit) finds no session and returns the
  * already-created order — this is success, NOT an error.
  */
 export async function fulfillPaidOrder(params: {
