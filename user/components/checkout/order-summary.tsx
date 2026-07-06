@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
-import { Loader2, Tag, X, Wallet, Clock, Copy, Check, Truck } from "lucide-react"
+import { Loader2, Tag, X, Wallet, Clock, Truck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -50,7 +50,7 @@ export function OrderSummary({
 }: OrderSummaryProps) {
   const [couponInput, setCouponInput] = useState("")
   const [isValidating, setIsValidating] = useState(false)
-  const [copiedCode, setCopiedCode] = useState<string | null>(null)
+  const pendingApplied = useRef(false)
 
   interface AvailableCoupon {
     code: string
@@ -79,8 +79,9 @@ export function OrderSummary({
   const afterDiscount = subtotal - discount + shipping
   const total = Math.max(0, afterDiscount - walletAmountUsed)
 
-  const handleApplyCoupon = async () => {
-    if (!couponInput.trim()) {
+  const handleApplyCoupon = async (codeArg?: string) => {
+    const code = (codeArg ?? couponInput).trim()
+    if (!code) {
       toast.error("Please enter a coupon code")
       return
     }
@@ -91,7 +92,7 @@ export function OrderSummary({
         price: item.price,
         quantity: item.quantity,
       }))
-      const result = await validateCoupon(couponInput.trim(), subtotal, cartItemsForValidation)
+      const result = await validateCoupon(code, subtotal, cartItemsForValidation)
       if (result.success && result.discount) {
         onCouponApply?.(result.code!, result.discount)
         setCouponInput("")
@@ -105,6 +106,20 @@ export function OrderSummary({
       setIsValidating(false)
     }
   }
+
+  // Auto-apply a coupon picked from the cart page's "Available Offers" (which
+  // stashes the code in sessionStorage before sending the shopper to checkout).
+  // Runs once, after cart totals are ready and only if no coupon is applied yet.
+  useEffect(() => {
+    if (pendingApplied.current) return
+    if (!onCouponApply || couponCode || subtotal <= 0 || items.length === 0) return
+    const pending = typeof window !== "undefined" ? sessionStorage.getItem("alaire_pending_coupon") : null
+    if (!pending) return
+    pendingApplied.current = true
+    sessionStorage.removeItem("alaire_pending_coupon")
+    void handleApplyCoupon(pending)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCouponApply, couponCode, subtotal, items])
 
   const handleRemoveCoupon = () => {
     onCouponRemove?.()
@@ -194,7 +209,7 @@ export function OrderSummary({
                 />
                 <Button
                   variant="outline"
-                  onClick={handleApplyCoupon}
+                  onClick={() => handleApplyCoupon()}
                   disabled={isValidating}
                 >
                   {isValidating ? (
@@ -221,36 +236,34 @@ export function OrderSummary({
                   key={coupon.code}
                   className={`border rounded-lg p-2.5 text-xs ${
                     coupon.is_eligible
-                      ? "border-green-200 bg-green-50/50 cursor-pointer hover:border-green-300 transition-colors"
+                      ? "border-green-200 bg-green-50/50"
                       : coupon.is_upcoming
                       ? "border-amber-200 bg-amber-50/50"
                       : "border-muted bg-muted/30"
                   }`}
-                  onClick={() => {
-                    if (coupon.is_eligible && onCouponApply) {
-                      setCouponInput(coupon.code)
-                    }
-                  }}
                 >
-                  <div className="flex items-center justify-between mb-0.5">
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
                     <span className="font-mono font-bold text-xs tracking-wide">
                       {coupon.code}
                     </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        navigator.clipboard.writeText(coupon.code)
-                        setCopiedCode(coupon.code)
-                        setTimeout(() => setCopiedCode(null), 2000)
-                      }}
-                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
-                    >
-                      {copiedCode === coupon.code ? (
-                        <Check className="h-3 w-3 text-green-600" />
-                      ) : (
-                        <Copy className="h-3 w-3" />
-                      )}
-                    </button>
+                    {coupon.is_eligible && onCouponApply && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2.5 text-xs shrink-0"
+                        disabled={isValidating}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void handleApplyCoupon(coupon.code)
+                        }}
+                      >
+                        {isValidating ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          "Apply"
+                        )}
+                      </Button>
+                    )}
                   </div>
                   <p className="text-muted-foreground">
                     {coupon.type === "percentage"

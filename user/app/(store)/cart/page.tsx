@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Minus, Plus, Trash2, ShoppingBag, Tag, Clock, Copy, Check } from "lucide-react"
+import { Minus, Plus, Trash2, ShoppingBag, Tag, Clock } from "lucide-react"
 import { useCart, CartItem } from "@/hooks/use-cart"
 import { useAuth } from "@/components/auth/auth-provider"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,18 @@ export default function CartPage() {
   const { user, isLoading: authLoading, openAuthDialog } = useAuth()
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
-  const [copiedCode, setCopiedCode] = useState<string | null>(null)
+
+  // Stash the chosen offer's code, then send the shopper to checkout where the
+  // Order Summary auto-applies it. Guests get the auth dialog first (checkout is
+  // auth-gated) — the code stays stashed and applies once they land on checkout.
+  const applyOfferAtCheckout = (code: string) => {
+    sessionStorage.setItem("alaire_pending_coupon", code)
+    if (!authLoading && !user) {
+      openAuthDialog()
+    } else {
+      router.push("/checkout")
+    }
+  }
 
   interface AvailableCoupon {
     code: string
@@ -247,24 +258,20 @@ export default function CartPage() {
                           : "border-muted bg-muted/30"
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between gap-2 mb-1">
                         <span className="font-mono font-bold text-sm tracking-wide">
                           {coupon.code}
                         </span>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(coupon.code)
-                            setCopiedCode(coupon.code)
-                            setTimeout(() => setCopiedCode(null), 2000)
-                          }}
-                          className="text-muted-foreground hover:text-foreground transition-colors p-1"
-                        >
-                          {copiedCode === coupon.code ? (
-                            <Check className="h-3.5 w-3.5 text-green-600" />
-                          ) : (
-                            <Copy className="h-3.5 w-3.5" />
-                          )}
-                        </button>
+                        {coupon.is_eligible && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2.5 text-xs shrink-0"
+                            onClick={() => applyOfferAtCheckout(coupon.code)}
+                          >
+                            Apply
+                          </Button>
+                        )}
                       </div>
                       <p className="text-muted-foreground">
                         {coupon.type === "percentage"

@@ -2,6 +2,7 @@ import { Header, Footer, PromoBanner } from "@/components/layout"
 import { CartDrawer } from "@/components/cart"
 import { CartSync } from "@/components/cart/cart-sync"
 import { AuthProvider, AuthDialog } from "@/components/auth"
+import { ReviewPopup } from "@/components/reviews/review-popup"
 import { LenisProvider } from "@/providers"
 
 export default async function StoreLayout({
@@ -28,6 +29,7 @@ export default async function StoreLayout({
           <Footer />
           <CartDrawer />
           <CartSync />
+          <ReviewPopup />
         </div>
         <AuthDialog />
       </LenisProvider>

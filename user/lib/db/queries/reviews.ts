@@ -77,6 +77,101 @@ export async function getReviewSummary(
   }
 }
 
+// ============================================================================
+// Social-proof popup: recent approved reviews across all products
+// ============================================================================
+
+export interface PopupReview {
+  id: string
+  name: string
+  avatar: string | null
+  rating: number
+  content: string
+  productName: string
+  productSlug: string
+  productImage: string | null
+  verified: boolean
+}
+
+/**
+ * Recent approved reviews (any product) for the storefront's rotating
+ * "customer review" popup. Joins product name/image and a privacy-trimmed
+ * reviewer name (first name + last initial). Returns [] when there are none.
+ */
+export async function getRecentReviewsForPopup(limit = 20): Promise<PopupReview[]> {
+  const db = await getDb()
+
+  const reviews = await db
+    .collection("reviews")
+    .find({ is_approved: true })
+    .sort({ created_at: -1 })
+    .limit(limit)
+    .toArray()
+
+  if (reviews.length === 0) return []
+
+  // Products (name, slug, first image)
+  const productIds = [...new Set(reviews.map((r) => r.product_id).filter(Boolean))]
+  const productObjectIds = productIds.filter((id: string) => ObjectId.isValid(id)).map((id: string) => new ObjectId(id))
+  const products = productObjectIds.length
+    ? await db
+        .collection("products")
+        .find({ _id: { $in: productObjectIds } })
+        .project({ name: 1, slug: 1, images: 1 })
+        .toArray()
+    : []
+  const productMap = products.reduce((acc, p) => {
+    acc[p._id.toString()] = {
+      name: p.name as string,
+      slug: p.slug as string,
+      image: Array.isArray(p.images) && p.images.length > 0 ? (p.images[0] as string) : null,
+    }
+    return acc
+  }, {} as Record<string, { name: string; slug: string; image: string | null }>)
+
+  // Reviewers (privacy-trimmed name + avatar)
+  const userIds = [...new Set(reviews.map((r) => r.user_id).filter(Boolean))]
+  const userObjectIds = userIds.filter((id: string) => ObjectId.isValid(id)).map((id: string) => new ObjectId(id))
+  const users = userObjectIds.length
+    ? await db
+        .collection("users")
+        .find({ _id: { $in: userObjectIds } })
+        .project({ full_name: 1, name: 1, avatar_url: 1, image: 1 })
+        .toArray()
+    : []
+  const userMap = users.reduce((acc, u) => {
+    acc[u._id.toString()] = {
+      name: (u.full_name || u.name || null) as string | null,
+      avatar: (u.avatar_url || u.image || null) as string | null,
+    }
+    return acc
+  }, {} as Record<string, { name: string | null; avatar: string | null }>)
+
+  return reviews
+    .map((r) => {
+      const product = productMap[r.product_id]
+      if (!product) return null // orphaned review — skip
+
+      const u = userMap[r.user_id] || { name: null, avatar: null }
+      const full = (u.name || "Verified Buyer").trim()
+      const parts = full.split(/\s+/)
+      const display = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0]
+
+      return {
+        id: r._id.toString(),
+        name: display,
+        avatar: u.avatar,
+        rating: r.rating,
+        content: r.content,
+        productName: product.name,
+        productSlug: product.slug,
+        productImage: product.image,
+        verified: !!r.is_verified_purchase,
+      }
+    })
+    .filter(Boolean) as PopupReview[]
+}
+
 export async function canUserReview(
   userId: string,
   productId: string
