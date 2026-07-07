@@ -8,6 +8,7 @@ import {
   BestSellers,
   InstagramFeed,
   NewsletterSection,
+  Testimonials,
 } from "@/components/home"
 import {
   getNewArrivals,
@@ -15,6 +16,7 @@ import {
   getCategories,
   getHeroSlides,
 } from "@/lib/db/queries"
+import { getRecentReviewsForPopup } from "@/lib/db/queries/reviews"
 import { expandProductsByColor } from "@/lib/expand-by-color"
 import { getInstagramFeed } from "@/lib/instagram/api"
 
@@ -31,12 +33,14 @@ export default async function HomePage() {
     newArrivals,
     bestSellers,
     instagramPosts,
+    testimonials,
   ] = await Promise.all([
     getCategories(),
     getHeroSlides(),
     getNewArrivals(undefined, 12),
     getBestSellers(undefined, 12),
     getInstagramFeed(8).catch(() => []),
+    getRecentReviewsForPopup(15).catch(() => []),
   ])
 
   const slides = heroSlides.map((slide) => ({
@@ -62,6 +66,7 @@ export default async function HomePage() {
       <BestSellers products={expandProductsByColor(bestSellers)} />
       <InstagramFeed posts={instagramPosts} />
       <NewsletterSection />
+      <Testimonials reviews={testimonials} />
     </>
   )
 }
